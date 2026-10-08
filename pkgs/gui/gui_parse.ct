@@ -523,7 +523,15 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: List
                     break
                 }
                 var pn: Str = gword(src, cur)
-                glit(src, cur, 58)
+                // W1a:分隔符 :/= 双收(冒号形 legacy;值三形不变)
+                gws(src, cur)
+                var sep: I32 = byte_at(src, cur.load())
+                if sep != 58 {
+                    if sep != 61 {
+                        panic("gui: 实例 prop 期待 : 或 = @byte " + cur.load().to_string())
+                    }
+                }
+                cur.store(cur.load() + 1)
                 gws(src, cur)
                 var pv: Str = ""
                 if byte_at(src, cur.load()) == 34 {

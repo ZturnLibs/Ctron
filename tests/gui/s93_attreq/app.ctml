@@ -1,0 +1,23 @@
+// s93_attreq —— W1a:组件实例属性 = 形(冒号形 legacy 双收)。值三形:串/{itemvar 直穿}
+pub view Badge (label: Str, tone: Str) {
+  <vbox class="bd">
+    <label class="bt">{label}</label>
+    <label class="b2">{tone}</label>
+  </vbox>
+}
+view Root (m: Model) {
+  <vbox class="root">
+    <Badge label="OK93" tone="STATIC93"/>
+    <each u in={m.tags}>
+      <Badge label={u} tone="ROW93"/>
+    </each>
+    <label class="tone">{m.tone}</label>
+    <label class="done">DONE93</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style bd { direction: column gap: 4 bg: SURFACE padding: 8 }
+style bt { fg: TEXT size: 16 h: 24 }
+style b2 { fg: TEXT_MUTED size: 13 h: 20 }
+style tone { fg: ACCENT size: 14 h: 22 }
+style done { fg: ACCENT size: 14 h: 22 }

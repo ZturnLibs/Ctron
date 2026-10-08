@@ -1,0 +1,94 @@
+// tests/gui/s93_attreq —— W1a 验收:实例属性 = 形(冒号形 legacy 双收)
+// 内嵌口径:编译三面(骨架收集/检查深查/折叠重建)吃 = 形 + run(ViewCall) 合成全链;
+// 文件口径:运行时 gt_parse 吃 = 形(read_file 锚形态)。
+// 值三形:串字面量直取(label="OK93");{表达式} 实参 = itemvar 直穿(each 内 {u},s49 已证形);
+// 成员链读走根视图 slot({m.tone},gui_snippets 已证领域)。
+use gui.{test, d_frame, d_expect_text}
+
+struct Model {
+    var tone: Str
+    var tags: List[Str]
+}
+
+fn make() -> Model {
+    var tl = List[Str]()
+    tl.push("TAG-A93")
+    tl.push("TAG-B93")
+    return Model { tone: "WARN93", tags: tl }
+}
+
+// ── 内嵌档视图(编译面输入;与 app.ctml 同内容)──
+pub view Badge (label: Str, tone: Str) {
+  <vbox class="bd">
+    <label class="bt">{label}</label>
+    <label class="b2">{tone}</label>
+  </vbox>
+}
+view Root (m: Model) {
+  <vbox class="root">
+    <Badge label="OK93" tone="STATIC93"/>
+    <each u in={m.tags}>
+      <Badge label={u} tone="ROW93"/>
+    </each>
+    <label class="tone">{m.tone}</label>
+    <label class="done">DONE93</label>
+  </vbox>
+}
+style root { direction: column gap: 8 padding: 16 }
+style bd { direction: column gap: 4 bg: SURFACE padding: 8 }
+style bt { fg: TEXT size: 16 h: 24 }
+style b2 { fg: TEXT_MUTED size: 13 h: 20 }
+style tone { fg: ACCENT size: 14 h: 22 }
+style done { fg: ACCENT size: 14 h: 22 }
+
+fn bind_noop(buf: List[Str]) {
+}
+
+fn act_noop(name: Str, args: List[Str]) {
+}
+
+fn headless_suite() -> I32 {
+    // 内嵌口径:desugar 合成 __gui_bind_Root/__gui_act_Root(s41 形)
+    var src: Str = ctron_embedded()
+    var m = Box[Model](make())
+    var rc: I32 = test(src, 320, 320,
+        |buf| __gui_bind_Root(buf, m),
+        |name, ar| __gui_act_Root(name, ar, m),
+        |k| {
+        },
+        |t, actc, k2| {
+            d_frame(t, |buf| __gui_bind_Root(buf, m))
+            d_expect_text(t, "OK93")
+            d_expect_text(t, "STATIC93")
+            d_expect_text(t, "TAG-A93")
+            d_expect_text(t, "ROW93")
+            d_expect_text(t, "WARN93")
+            d_expect_text(t, "DONE93")
+            println("S93-EMBED-GREEN")
+        })
+    // 文件口径:read_file 形态,运行时 gt_parse
+    var src2: Str = src
+    var m2 = Box[Model](make())
+    var rc2: I32 = test(src2, 320, 320,
+        |buf| bind_noop(buf),
+        |name, ar| act_noop(name, ar),
+        |k| {
+        },
+        |t, actc, k2| {
+            d_frame(t, |buf| bind_noop(buf))
+            d_expect_text(t, "OK93")
+            d_expect_text(t, "DONE93")
+            println("S93-FILE-GREEN")
+        })
+    if rc != 0 {
+        return rc
+    }
+    return rc2
+}
+
+fn main() -> I32 {
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        return headless_suite()
+    }
+    return run(Root(m: make()))
+}
