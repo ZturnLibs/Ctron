@@ -1670,3 +1670,25 @@ cargo/target)剩 12 红全为 **r 码臂**(compiler-rust 缺 tier/plugin/codes �
 - **门**(t27-cloret 分支基线,c877adac 之上):smoke --full **193 ok/0 fail**+
   meta 全绿+suite 分歧=fb7/fb8 宿主列(对端在册 parity 债,非本批)+fx_cloval/
   fx_with_expr 双臂逐字一致+捕获探针 native 1/2/3+min9 双引擎 10/10。
+
+## 发射面 std use 静默 fail-open(2026-10-07 调查立案;根因已定罪,修复待批)
+
+- **症状**:用户程序 `use std.crypto.{sha256_hex}` 在**无 CTRON_STDPATH** 时
+  `ctc.sh emit` **rc=0** 产出必然编译失败的 C(符号只有调用点无定义,返回型
+  错标 int);同场景 check 显式 E2020 rc=1、run 带 W8902 出路指引——**唯 emit
+  哑**(fail-open,违 D7 哲学)。
+- **根因(探针实证,CTRON_EMIT_DEBUG 门控已还原)**:emit 驱动的
+  `pkg_load_use` 在 std 根解析缺位时**静默保留未展开 Use 节点**(合并后 file
+  顶层仅 [File, Use, main] 三元;带 STDPATH 同管道 = 8 节点全量合并,产物含
+  原型+调用+**定义**三件齐 12 处引用)。trans 对未解析调用名直出 `t_<名>` +
+  缺省 int 型。
+- **连带真缺口(独立)**:`StringBuilder` 内建类型发射臂缺失(产物
+  t_StringBuilder/t_push_str 未定义;与 std use 无关——该型为内建,非 std
+  合并面)。
+- **修复提案(小批)**:emit 驱动 pkg_load_use 后,对残留 `Use` 节点
+  (segs[1]=="std")出与 check 同文 E2020(或 W8902 带出路)并 rc=1——
+  fail-closed 对齐;实现位 driver_emit.ct 合并后检查点,低冲突。
+- **调查坑**:①emit 缓存键不含编译器身份且宿主 stdout 重定向进产物 C
+  (探针输出一直在 .cache/emit/*.c 里);②ctc.sh emit 面必须
+  `rm -rf .cache/emit` 后再以 env 直跑方能观测管线;③合并 file 顶层含
+  非数组元素(P1b 戳),`[0]` 探针即崩「索引目标非数组」。
