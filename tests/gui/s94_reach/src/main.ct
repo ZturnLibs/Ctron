@@ -1,0 +1,77 @@
+// tests/gui/s94_reach —— W1b 验收:合成事件表=实例化根可达闭包。
+// VUsed 被根实例化(其事件头须备处理器=E8121 合约面);VUnused 未实例化
+// (其事件头不进合成臂=处理器免备,桩裁剪核心断言)。
+// 实现前:VUnused 的事件臂照生成→cc 面 implicit-declaration 烂错(失败态)。
+use gui.{test, d_click, d_frame, d_expect_text}
+
+struct Model {
+    var hits: I32
+    var label: Str
+}
+
+fn make() -> Model {
+    return Model { hits: 0, label: "初始" }
+}
+
+fn vused_hit(m: Box[Model]) {
+    m.hits = m.hits + 1
+    m.label = "命中" + m.hits.to_string()
+}
+
+view VUsed (label: Str) {
+  <vbox class="vu">
+    <label class="vul">{label}</label>
+    <button class="vub" on:click={vused_hit()}>点我</button>
+  </vbox>
+}
+
+view VUnused (label: Str) {
+  <vbox class="vx">
+    <label class="vxl">{label}</label>
+    <button class="vxb" on:click={vunused_hit()}>孤件</button>
+  </vbox>
+}
+
+view Root (m: Model) {
+  <vbox class="root">
+    <VUsed label={m.label}/>
+    <label class="done">DONE94</label>
+  </vbox>
+}
+
+style root { direction: column gap: 8 padding: 16 }
+style vu { direction: column gap: 4 bg: SURFACE padding: 8 }
+style vul { fg: TEXT size: 15 h: 22 }
+style vub { bg: ACCENT fg: TEXT w: 80 h: 28 }
+style vx { direction: column gap: 4 bg: ELEVATED padding: 8 }
+style vxl { fg: TEXT_MUTED size: 15 h: 22 }
+style vxb { bg: SURFACE fg: TEXT w: 80 h: 28 }
+style done { fg: ACCENT size: 14 h: 22 }
+
+fn headless_suite() -> I32 {
+    var src: Str = ctron_embedded()
+    var m = Box[Model](make())
+    var rc: I32 = test(src, 320, 240,
+        |buf| __gui_bind_Root(buf, m),
+        |name, ar| __gui_act_Root(name, ar, m),
+        |k| {
+        },
+        |t, actc2, k2| {
+            d_frame(t, |buf| __gui_bind_Root(buf, m))
+            d_expect_text(t, "初始")
+            d_expect_text(t, "DONE94")
+            // 事件:VUsed 点击 → 合成 act → vused_hit(状态回流)
+            actc2(d_click(t, "vused_hit"), List[Str]())
+            d_frame(t, |buf| __gui_bind_Root(buf, m))
+            d_expect_text(t, "命中1")
+            println("S94-REACH-GREEN")
+        })
+    return rc
+}
+
+fn main() -> I32 {
+    if env_get("CTRON_GUI_HEADLESS") != "" {
+        return headless_suite()
+    }
+    return run(Root(m: make()))
+}

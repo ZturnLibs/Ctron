@@ -1,3 +1,14 @@
+> **W1 批已落地(2026-10-09,GUI 无胶水装配 W1a+W1b;设计 docs/superpowers/specs/2026-10-09-gui-glueless-assembly-design.md)。
+> W1a:组件实例属性分隔符 `:`/`=` 双收(运行时 gt_node 显式双收;编译骨架/检查/折叠三面位置性
+> 放行经 s93_attreq 双口径实证,显式校验留 W4 冒号退役翻转)。W1b:合成事件表改**实例化根可达
+> 闭包**(gui_ds_reach_filter,IR 行级过滤——骨架平面数组无视图名表绕行),未实例化组件事件头
+> 零需求,gui_snippets 32 空壳桩清实证;**E8121**(实例化组件调用形事件头缺宿主处理器,编译期
+> panic 门——名字形缺失为 legacy 既有绿行为,收紧随 W2.5 ev 合约;零参 fn 与缺失经 gui_fn_exists
+> 分辨,s50 零参 dialog_close 实证歧义)。夹具 s93_attreq/s94_reach;decls 锁 519→521(+2:
+> gui_ds_reach_filter/gui_fn_exists)。E8121 负例 = s94 注释口径(cc/desugar 面码,check 语料
+> 不适用);E8122(签名不符)随 W2.5 ev 契约另件。冒号形退役+e8 负例随 W4。
+>
+
 # 测试覆盖审计(v0.5 规范 ↔ 测试集)
 
 > **E2080 批已落地(2026-10-08,let 不可变门;规范 §4.1/§10 已修订)。**

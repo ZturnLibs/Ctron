@@ -78,45 +78,7 @@ fn del_confirm(m: Box[Model]) {
     m.status = "deleted"
 }
 
-// 库全事件名集空壳桩:骨架面按合并库全量注册事件表(未实例化组件也在),
-// 消费方按需备桩;实际行为经 act 名字分发(本应用仅实例化 Select/WList/Dialog)
-fn menu_toggle(m: Box[Model]) {
-}
-
-fn menu_pick(m: Box[Model], row: I32) {
-}
-
-fn list_sel(m: Box[Model], row: I32) {
-}
-
-fn slide(m: Box[Model], p: Str) {
-}
-
-fn ml2_pick(m: Box[Model], row: I32) {
-}
-
-fn ed_toggle(m: Box[Model]) {
-}
-
-fn ed_pick(m: Box[Model], row: I32) {
-}
-
-fn tab_go(m: Box[Model], row: I32) {
-}
-
-fn acc_toggle(m: Box[Model]) {
-}
-
-fn tip_noop(m: Box[Model]) {
-}
-
-fn tab_pick(m: Box[Model], row: I32) {
-}
-
-fn wtt() -> Bool {
-    return false
-}
-
+// W1b 桩裁剪:合成事件表=实例化根可达闭包,未实例化组件事件头零需求(原 32 个空壳桩清)
 // 统一对话框契约(pkgs/gui_widgets):遮罩/取消=仅关,确认=删并关
 fn dialog_close(m: Box[Model]) {
     m.delopen = false
@@ -135,53 +97,8 @@ fn set_content(m: Box[Model], text: Str) {
 }
 
 // Palette 桩(库 0.3 新事件头;本例未实例化,骨架面全量注册=按需备桩)
-fn pal_type(m: Box[Model], text: Str) {
-}
-fn pal_go(m: Box[Model], text: Str) {
-}
-fn pal_pick(m: Box[Model], row: I32) {
-}
-fn pal_close(m: Box[Model]) {
-}
-
 // DatePick/TimePick 桩(库 0.4 新事件头;本例未实例化,骨架面全量注册=按需备桩)
-fn dp_prev(m: Box[Model]) {
-}
-fn dp_next(m: Box[Model]) {
-}
-fn dp0(m: Box[Model], row: I32) {
-}
-fn dp1(m: Box[Model], row: I32) {
-}
-fn dp2(m: Box[Model], row: I32) {
-}
-fn dp3(m: Box[Model], row: I32) {
-}
-fn dp4(m: Box[Model], row: I32) {
-}
-fn dp5(m: Box[Model], row: I32) {
-}
-fn dp6(m: Box[Model], row: I32) {
-}
-fn tp_step(m: Box[Model], s: Str) {
-}
-
 // ColorPick 桩(库 0.5 新事件头;按需备桩)
-fn cp_paint(m: Box[Model]) {
-}
-fn cp_drag(m: Box[Model], px: Str, py: Str) {
-}
-fn cp_hue(m: Box[Model], row: I32) {
-}
-fn cp_hex(m: Box[Model], text: Str) {
-}
-fn lt_paint(m: Box[Model]) {
-}
-fn bc_paint(m: Box[Model]) {
-}
-
-
-
 fn headless_suite() -> I32 {
     var src: Str = ctron_embedded()
     var m = Box[Model](make())

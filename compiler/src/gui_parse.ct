@@ -1527,6 +1527,19 @@ fn gui_ty_is_box(t: List[Str]) -> Bool {
 
 // P2 契约Ⅱ:名 → 形参型别头表(首匹配;未声明空表)——组件事件 ev_arg
 // 解码器选型依据(Box: 前缀=模型捕获,I32→i/Bool→b/余 s)
+// W1b:fn 存在性(零参 fn 与缺失分辨——gui_fn_ptyps 空表双义,s50 实证)
+fn gui_fn_exists(file: List[Str], nm: Str) -> Bool {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if or2(d[0] == "Fn", or2(d[0] == "FnC", or2(d[0] == "FnPub", d[0] == "FnExt"))) && d[1] == nm {
+            return true
+        }
+        i += 1
+    }
+    return false
+}
+
 fn gui_fn_ptyps(file: List[Str], nm: Str) -> List[Str] {
     var out = List[Str]()
     var i: I32 = 1
@@ -3870,6 +3883,115 @@ fn gui_ds_ptyps(file: List[Str], pnames: List[Str]) -> List[Str] {
     return out
 }
 
+// W1b:可达闭包过滤——从靶视图(末位 GuiBlock view 行)沿实例边闭包,
+// 闭包外 view 行剔除(style 行保留:样式表与实例化无关)。
+// 实证:合成 act 按合并全量视图注册事件臂并调宿主 fn(未实例化组件也在),
+// 消费方被迫为库全事件头备桩;过滤后仅实例化闭包内视图入骨架,桩消失。
+// 引用扫描 = 体 token 流 '<' 后大写首词;fixpoint 迭代至不动点。
+// 骨架平面数组无视图名表,行级过滤免根名映射(s49 靶视图居末约定保持)。
+fn gui_ds_reach_filter(file: List[Str], out: List[Str]) -> I32 {
+    var names = List[Str]()
+    var idx = List[I32]()
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "GuiBlock" {
+            if d[1] == "view" {
+                names.push(d[2])
+                idx.push(i)
+            }
+        }
+        i += 1
+    }
+    if idx.len == 0 {
+        var j: I32 = 0
+        while j < file.len {
+            out.push(file[j])
+            j += 1
+        }
+        return 0
+    }
+    var inset = List[Str]()
+    var wl = List[Str]()
+    inset.push(names[names.len - 1])
+    wl.push(names[names.len - 1])
+    var w: I32 = 0
+    while w < wl.len {
+        var body: Str = ""
+        var k: I32 = 0
+        while k < idx.len {
+            if names[k] == wl[w] {
+                body = file[idx[k]][4]
+            }
+            k += 1
+        }
+        var tks = List[Str]()
+        gui_split(body, tks)
+        var q: I32 = 0
+        while q + 1 < tks.len {
+            if tks[q].len == 1 {
+                if byte_at(tks[q], 0) == 60 {
+                    var tg: Str = tks[q + 1]
+                    if tg.len > 0 {
+                        var fb: I32 = byte_at(tg, 0)
+                        if fb >= 65 {
+                            if fb <= 90 {
+                                var seen: Bool = false
+                                var s2: I32 = 0
+                                while s2 < inset.len {
+                                    if inset[s2] == tg {
+                                        seen = true
+                                    }
+                                    s2 += 1
+                                }
+                                var known: Bool = false
+                                var s3: I32 = 0
+                                while s3 < names.len {
+                                    if names[s3] == tg {
+                                        known = true
+                                    }
+                                    s3 += 1
+                                }
+                                if known {
+                                    if !seen {
+                                        inset.push(tg)
+                                        wl.push(tg)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            q += 1
+        }
+        w += 1
+    }
+    out.push(file[0])
+    var r: I32 = 1
+    while r < file.len {
+        var d2 = file[r]
+        var keep: Bool = true
+        if d2[0] == "GuiBlock" {
+            if d2[1] == "view" {
+                keep = false
+                var s4: I32 = 0
+                while s4 < inset.len {
+                    if inset[s4] == d2[2] {
+                        keep = true
+                    }
+                    s4 += 1
+                }
+            }
+        }
+        if keep {
+            out.push(d2)
+        }
+        r += 1
+    }
+    return 0
+}
+
 // 骨架表驱动收集:标量查询路径(+型)/each 列表表达式/事件表/input on:input
 // 处理器(inps = 名通道前缀分支的调用表达式,8c-4④ 键入持久化面)
 // bset/bty = GUI-30 默认写回集(无 on:input 的 input/textarea 点链 bind + 型别)
@@ -3893,8 +4015,10 @@ fn gui_ds_collect_slots(file: List[Str], pnames: List[Str], paths: List[Str], pt
     var sk = List[Str]()
     var sv = List[Str]()
     var skprops = List[Str]()
-    gui_sk_build(file, ntag, nflag, ncls, npre, nbid, npost, nfc, ns, nes, nec, f_evn, f_evf, btns, sk, sv, skprops)
-    var ptyps: List[Str] = gui_ds_ptyps(file, pnames)
+    var ffile = List[Str]()
+    gui_ds_reach_filter(file, ffile)
+    gui_sk_build(ffile, ntag, nflag, ncls, npre, nbid, npost, nfc, ns, nes, nec, f_evn, f_evf, btns, sk, sv, skprops)
+    var ptyps: List[Str] = gui_ds_ptyps(ffile, pnames)
     // 多树走查(组件跨文件/靶视图居末后):sk 平面数组含全部视图的树,
     // 走查须从每个树根(非任何节点孩子者)起步——单根 stid=[0] 在靶视图
     // 居末时只走组件树,主文件实例实参/事件全漏(s49 探针实证)
@@ -4604,6 +4728,17 @@ fn gui_ds_gen(file: List[Str], vname: Str, pnames: List[Str], ptyps: List[Str], 
         var headC: Str = gui_ev_head2(cvf[k], argcC, aoC)
         if headC.len > 0 {
             var ptsl = gui_fn_ptyps(file, headC)
+            // W1b 契约门(裁 2 严格,调用形限定):可达闭包内组件事件头缺宿主
+            // 处理器 = E8121 编译错(此前落空成无参裸调→cc 面 implicit-
+            // declaration 烂错)。名字形缺失为 legacy 既有绿行为,收紧随 W2.5
+            // ev 合约;零参 fn 与缺失经 gui_fn_exists 分辨(ptsl 空表歧义,s50 实证)
+            if ptsl.len == 0 {
+                if argcC[0] >= 0 {
+                    if !gui_fn_exists(file, headC) {
+                        panic("gui E8121: 组件事件处理器未声明 " + headC + "(实例化组件事件头须在宿主实现)")
+                    }
+                }
+            }
             var hasm: Bool = false
             if ptsl.len > 0 {
                 if ptsl[0].len >= 4 {
