@@ -1692,3 +1692,27 @@ cargo/target)剩 12 红全为 **r 码臂**(compiler-rust 缺 tier/plugin/codes �
   (探针输出一直在 .cache/emit/*.c 里);②ctc.sh emit 面必须
   `rm -rf .cache/emit` 后再以 env 直跑方能观测管线;③合并 file 顶层含
   非数组元素(P1b 戳),`[0]` 探针即崩「索引目标非数组」。
+
+### StringBuilder 发射臂实现地图(2026-10-07 调查定案;待实现批)
+
+- **语义锚(interp)**:值 = cx 复合 ["SB", seg1, seg2...](eval_call:112 ctor;
+  push_str = cx.push 段表原地变;to_string = 段连接;len = 段字节和
+  [eval_expr:277])。
+- **emit 降位点全图(trans_expr)**:①ctor Call StringBuilder()→ 现落泛型
+  t_StringBuilder(无定义);②成员 push_str → 泛型兜底
+  `t_+m(ct_arg_cast(objt,p0,obj))`(≈行 1306);③成员 len → 型别分派
+  ("L"→list->n / "N"→ctron_len 动态魔数 / 其余 strlen;≈行 417);④to_string
+  → 按接收者码分派(ctron_i32_to_string 等;sb 句柄现错落 i 桥)。
+- **实现路径(定案)**:SB 构造调用的 ct_typeof 返回 **"N"**(二义动态型,
+  ctron_len 魔数分派先例)→ ③len 自动落 ctron_len(扩 SB magic 返字节和);
+  ②push_str 独名特臂(sb 专属方法,无歧义)→ ctron_sb_push 句柄形
+  (指针 int32 往返 = fn 值同款 idiom);④to_string 走 "N" 的既有 to_string
+  降位(若为静态 i 桥则扩魔数动态);①ctor 臂 → ctron_sb_new。
+- **runtime**:ctron_sb { magic, char* data }(魔数 "CtrNSB";推入=realloc
+  追加;str=arena 拷;len=strlen)——单缓冲形(段表语义在 interp,emit 单缓冲
+  等价,推入序一致)。
+- **边界**:`.len`/`.to_string` 的 "N" 通道要求 SB 句柄永不与真 I32 撞
+  (句柄=堆指针魔数,值 I32 恒小 → magic 不匹配即走原路 ✓);用户自定义
+  push_str/to_string 方法(struct 方法)不受独名特臂影响(特臂仅
+  receiver=裸 StringBuilder 构造链——实现时以 ct_typeof=="N" 且 ctor 溯源
+  双验,或直接独名 + 登记撞名概率)。
