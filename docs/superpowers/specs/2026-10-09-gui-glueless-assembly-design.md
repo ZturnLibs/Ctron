@@ -329,3 +329,21 @@ pub view PersonCard (p: Person, open: Bool) ev fold() {
 - **备案(触发即议)**:语言核心引入一等函数值后,handler-prop 可作 ev 声明的
   换皮形(接线点 `on:` 语法不动);语言级一等视图(fn 类型化 view)另立大档。
 - 旧名字形事件 `{inc}` 与旧三闭包入口:降 legacy 保留兼容,文档不再出现。
+
+## 12. 规范面影响(核心规范零文法改动,GUI spec 主战场)
+
+核心语言规范(`docs/spec/` 12 章)与 GUI/CTML 设计规范
+(`2026-09-16-gui-ctml-design.md`)是两套;本方案对前者零文法章改动
+(裁 4 的文档面含义),对后者大面积修订。**宪法:spec 修订随各波夹具落库
+同批提交(GUI-27 先例),不留文档债到 W4 一把清。**
+
+| 规范 | 位置 | 动作 | 随波 |
+|---|---|---|---|
+| 核心 spec §10 诊断码注册表 | 10-diagnostics-conformance.md | 新 E 码族登记(漏必接事件/错签/组件体未声明名/漏必填 prop/默认值型别/前置块禁面);E2080 批先例 | W1b 起各波 |
+| 核心 spec §10 | 同上 | 顺带核清现状缺口:现存 GUI E81xx 码 grep 实证未在 §10 在册——补登记或确证 e8_corpus 单独管理口径,二选一定案 | W1b |
+| 核心 spec 内建登记 | 按 ctron_gui_entry(J18)/ctron_embedded 先例口径 | `read_view` 三处注册的规范面登记;运行时读盘 effect 定性跟随 read_file 现状 | W3 |
+| 核心 spec 文法章 | 01 词法/03 类型/04 表达式 | **零改动**(CTML 文法不在核心词法章;view 签名默认值不经核心 fn 文法;if 表达式 J20 既有) | — |
+| GUI spec §4 CTML 语言设计 | 2026-09-16-gui-ctml-design.md | 主战场:props 冒号形条款改 `=` 形;新增 ev 子句/前置计算块/默认值+opt/组件体白名单门文法条款 | W1a–W2.5 各波同批 |
+| GUI spec §6 运行时与数据流 | 同上 | 可达闭包收集语义/`__gui_prep` 通道/run_app+test_app/read_view 锚语义 | W2–W3 |
+| GUI spec §13 内置组件规范 | 同上 | gui_widgets 事件头合约表迁 ev 声明形态(Dialog 三路首件) | W2.5 |
+| pkgs/gui/README | 域包文档 | 入口 API 收口+习语定稿 | W4 |
