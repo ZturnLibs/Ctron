@@ -9,5 +9,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y gcc python3
       - name: 宿主 seed(首次引导)
         run: make -C compiler-c
+      - name: std 参考页漂移门(std_doc --check,镜像 pages.yml spec 漂移门)
+        run: python3 tools/std_doc.py --check
       - name: 全量门禁
         run: ./ci.sh

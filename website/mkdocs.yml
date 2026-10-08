@@ -42,7 +42,36 @@ nav:
       - 8 效果系统与 comptime: spec/08-effects-comptime.md
       - 9 档位与互操作: spec/09-profiles-ffi.md
       - 10 诊断契约与符合性: spec/10-diagnostics-conformance.md
-  - Std Reference: std/README.md
+      - 11 网络: spec/11-net.md
+      - 12 数据库: spec/12-db.md
+  - Std Reference:
+      - Overview: std/README.md
+      - config: std/config.md
+      - crypto: std/crypto.md
+      - csv: std/csv.md
+      - enc: std/enc.md
+      - fmap: std/fmap.md
+      - fs: std/fs.md
+      - hash: std/hash.md
+      - heap: std/heap.md
+      - iter: std/iter.md
+      - json: std/json.md
+      - log: std/log.md
+      - map: std/map.md
+      - math: std/math.md
+      - ndjson: std/ndjson.md
+      - opt: std/opt.md
+      - path: std/path.md
+      - pb: std/pb.md
+      - process: std/process.md
+      - rand: std/rand.md
+      - set: std/set.md
+      - sort: std/sort.md
+      - str: std/str.md
+      - strconv: std/strconv.md
+      - time: std/time.md
+      - unicode: std/unicode.md
+      - uuid: std/uuid.md
   - Examples: examples.md
   - Server: server-guide.md
   - Download: download.md

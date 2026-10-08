@@ -125,6 +125,11 @@ E3040(变体 `.tier`)一次诊断、加载即止;`--profile=bare` 将有效档�
 
 - **规范源**:本目录。`compiler/test/stdpkg/std/` 是**同步副本**(测试种子),
   smoke 含逐字节漂移断言——修改 std/ 后必须同步副本,否则门禁红。
+- **参考页与 agent 通道**(2026-10-09):逐模块 API 参考页住 `website/docs/std/`
+  (`tools/std_doc.py` 自源码注释生成,ctron-doc iface 投影;页内 `hand:desc`
+  界定手写简介区);机器消费 = `compiler/ctc.sh doc lib/std/<mod>.ct
+  --format=json`(pub 符号表+注释,确定性)。漂移门 = CI `std_doc --check`;
+  改 std 源码注释后复跑生成器随批提交。
 - **示例**:examples/* 的 `std/` 副本是**钉定快照**(按需子集),允许落后;
   升级示例属示例维护,不强制同步。
 - `config.ct`(2026-09-17):CTCL 清单校验内核(`config_diags`),黄金对拍第四线内核同源(selfhosted/ctcl_chk.ct 为驱动镜像,两处须同步修改)。

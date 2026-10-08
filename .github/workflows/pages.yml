@@ -4,13 +4,13 @@
 #           upload-pages-artifact(strict 下断链/警告即红)
 #   deploy  GitHub Pages 官方 deploy-pages 通路(environment url 回写)
 #
-# 触发面:website/**、docs/spec/**(spec 同步源头)、std/**(std 参考页源头)与两件同步/生成工具,加 workflow_dispatch 手动门。
+# 触发面:website/**、docs/spec/**(spec 同步源头)、lib/std/**(std 参考页源头;0930 库根布局后旧触发 'std/**' 永不命中,2026-10-09 修)与两件同步/生成工具,加 workflow_dispatch 手动门。
 # environment.url 的 ${{ }} 内嵌表达式必须引号包起(flow 映射里裸 { 不可解析)。
 name: pages
 on:
   push:
     branches: [main]
-    paths: ['website/**', 'docs/spec/**', 'std/**', 'tools/sync_site_spec.sh', 'tools/std_doc.py']
+    paths: ['website/**', 'docs/spec/**', 'lib/std/**', 'tools/sync_site_spec.sh', 'tools/std_doc.py']
   workflow_dispatch:
 permissions: {contents: read, pages: write, id-token: write}
 concurrency: {group: pages, cancel-in-progress: false}
