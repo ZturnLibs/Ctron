@@ -568,7 +568,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 
 ### T50 · 闭源分发 S1/S2【条件触发件】
 
-- **预估:** 未估(按 spec S1+S2 触发条件)。**前置:** T49 + 用户触发。**状态:** ✅ 主体完成(2026-10-06;用户点名触发。S1a 序列化/回读 + S2a 工件端到端已先行落库(见闭源分发泳道);本批 = D8-2 L2 摘要校验(E5054/E5055 fail-closed,seal 编排层 SHA256SUMS+self_digest)+ S1a-iii match/enum 工件补验 + E2020.use.read 工件点名。余债:S1b 缓存接线(加速触发线挂账:面积×3/占比>60%,实测 ≈44% 未触)/ L1 升 ctc pkg verify 命令面 + L3 in-language 重算 + 命名空间(均 S3/S4 需求方触发))
+- **预估:** 未估(按 spec S1+S2 触发条件)。**前置:** T49 + 用户触发。**状态:** ✅ **关闭(2026-10-08 用户裁决:主链完成,设计闭环达成)**。spec §10 S0–S4 全部有实现落地(载体 S0/S1a/S2a+D8-2 L2+L1 verify 命令面+L3 ctron-verify --deep[11ms/75KB]+S3-α/β/γ/δ 四层轨迹+S4-①②③④ blob/attest/日志仓/seal)+设计闭环(§7.4 命名空间/§5.5 加载期腿三策略成文)+发射面两短板销账(std use 静默 fail-open 4ba1b37c/StringBuilder 发射臂 001ac06f,smoke 224/0)。六件触发件在册随触发即动:S1b 加速接线/加载期腿 B/C/命名空间实现/日志仓远端同步/ps1 Windows conformance/多文件工件 tar。始末:2026-10-06 用户点名触发→1006-07 十七批(见闭源分发泳道台账)→1008 SB 发射臂收官。
 - **目标:** 闭源包分发泳道 spec v2(`2026-09-21-closed-pkg-distribution-design.md`)的 S1(_iface 投影编译)/S2(ctart 工件分发+解析链③实装)。**登记纪律:触发条件勿提前**(记忆口径)。
 - **验收:** 按该 spec 各阶段出口。
 - **坑位:** 本件是占位卡——用户点名即先重读 spec 触发条件,未到则呈报不开工。
@@ -657,7 +657,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 | T47 | multipart | W9 | **已完成**(1006,解析器 P6-C 已在库;corpus i_multipart 验收收口) | 见 git |
 | T48 | CTCL 迁移 | W9 | **已完成**(1002,三线硬切+104 份全迁+ctron_smoke 双探针) | 见卡 |
 | T49 | lockfile+workspace | W9 | ✅ | 2026-10-06 |
-| T50 | 闭源 S1/S2【条件】 | W9 | ✅ 主体完成+信任协议全通(1006-07:D8-2 L2+S1a-iii→L1 verify 命令面→L3 载体 ctron-verify→S3-α/β/γ 轨迹三层→**S4-① deps blob 第四形+源消费方 record 面**[210/0];余 S1b 加速挂账+S3-δ/加载期腿/S4 日志仓+命名空间) | — |
+| T50 | 闭源 S1/S2【条件】 | W9 | ✅ **关闭**(1008 用户裁决:S0–S4 全落库+设计闭环+发射面短板销账[fail-open 4ba1b37c+SB 臂 001ac06f];六触发件在册:S1b/加载期腿 B/C/命名空间/日志仓远端/ps1 conf/多文件 tar) | 2026-10-08 |
 | T51 | 异步 IO+Simd 向量化评估 | W9 | **已完成**(1003;①io_uring 后端落库[POLL_ADD 天然 one-shot 同构映射+G 内单生产者+免 tick+双 NOP 自检门响亮回退,6.10-linuxkit array 异常立案];②NUMA 选项位+拓扑探测[行为位=志向];③Simd 评估报告选 B 落 docs/simd-vectorization-analysis.md[clang -O2 width4 实证/gcc -O3;寄存器驻留=志向];IOCP 环境依赖登记;reactor 冒烟双臂挂 ci.sh;net 18/18+coro_det 101/101+w7+suite 100/100) | 见 git |
 | T52 | 插件沙箱(derive+lint) | W9 | **已完成**(2026-10-03;协议=清单 plugin 块+接口包 ctron.plugin+约定入口;沙箱=纯度门 E6020.sandbox+静态规模门[执行期预算列 v2];derive(Json)=自由 fn/UFCS 产物[trait impl 发射缺口在册];lint_toolong=W9001 清单 codes 先进表;阶梯六锚挂 ci.sh[5.5/9] 含确定性双跑; suite 100/100 双跑;烟主段 159/2 双红在册[T33 conc_parallel/Rust iter 清账]+ctron_smoke 25/25;债八项入 COVERAGE) | 见 git |
 | T53 | emit union 载荷 64 位化 | W9 | **已完成**(1002;五病灶全修[expect 型别/expect 位还原/语句形 match-Ok 硬编码 int32/Try 两语句位/json (h) 绕行],json JNum/JReal 回切摘除,芯=wrap+or 先行 a000a6ad;探针 14 项双臂绿+e_t53_payload64 双臂锚+json_fidelity 13/13+suite 99/99+web_todo 92 裸跑 rc=0) | 见 git |
@@ -672,7 +672,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 4. **展开实施计划:** 按本卡写该件详细实施计划(红锚先行/TDD 分步),再动码。
 5. **验收:** 卡内验收条逐条过;`bash ci.sh` 全绿;suite.py 双跑;红账不新增。
 6. **落库:** 全绿才 commit(pathspec 限定);回写本文件状态行 + 台账;COVERAGE/divergences 相应登记;规范触点(若动规范)挂修订注。
-7. **两件裁决门(T08/T27)与一件挂起件(T50):** 点名即先呈报裁决项/触发条件,用户拍板后才动工。
+7. ~~**两件裁决门(T08/T27)与一件挂起件(T50):** 点名即先呈报裁决项/触发条件,用户拍板后才动工。~~ **均已了结**(T27 2026-09-30 B 终态;T50 2026-10-08 关闭;T08 随 W1 销账)。
 
 ---
 
@@ -702,7 +702,7 @@ seed 深拷贝/native 浅拷贝分歧(registered)未修前 C 的"同任务按引
 - **T54 ✅(已销账,2026-09-30)参数化 List 码 + 装箱容器 ABI**: 容器 ABI 由 T14-② 落地(参数化 List 码 `Lu:<名>`/LI/L6+堆盒 push+索引解引用);收口件补 fn 值链(#fret 字段提取位 ct_fnfield_ret+裸 fn 蹦床/shim `u:` 解盒)——03l/03n 正本 emit 臂绿(03l:`HIT /app -> app:alice`+`SUM 42`),spec §9 P0-1/L6 销账。suite 96/96+96/96 零移动;遗留另录(不扩界):e.h 直呼形态、>8B struct fn 值返回、ct_cb_ref extern 回调
 - **T55(✅ 已销账 2026-09-30,按引用 v0 形=arena 格+P 码解引;创建时快照边界在册,外层帧创建后再赋值可见性已由 T27-B 终态判定 = 不可见,创建时快照即规范语义,10-02 收口)值位置闭包捕获**: 种子按设计非捕获(trans_expr.c:1587)+正本同族硬停——web 中间件/守卫原生臂前置(spec §9 L7);T27 裁 capture 语义,A(按引用)即通向本件实现口径,裁 T27 时一并裁本件
 - **T29-T32 GC 全件**: 等 S1 Val 迁移落库(在飞 /tmp/s1-val)
-- **T50 闭源 S1/S2**: ✅ 主体完成+信任协议全通(1006-07 用户连批点名;D8-2 L2→L1 命令面→L3 载体 ctron-verify[11ms/75KB]→S3-α/β/γ 轨迹[纯函数/复放腿 E5056/效果函数 MemFs]→S4-① blob 形+record 面;210/0;余 S1b 挂账/S3-δ/加载期腿/S4 日志仓+命名空间)
+- **T50 闭源 S1/S2**: ✅ **关闭(2026-10-08 用户裁决:主链完成)**——1006-08 十七批全程:D8-2 L2→L1 命令面→L3 载体 ctron-verify[11ms/75KB]→S3-α/β/γ/δ 轨迹四层→S4-①②③④(blob/attest E5057/透明日志仓/pkg seal)→设计闭环(§7.4 命名空间+§5.5 加载期腿)→发射面销账(std use fail-open 4ba1b37c+SB 发射臂 001ac06f,224/0);六触发件在册随触发即动(S1b/加载期腿 B/C/命名空间/日志仓远端同步/ps1 conformance/多文件 tar)
 - **T37-T40 wasm/bare**: T36 target 接口是前置
 
 ### 关键坑位速查(10 条血泪)
