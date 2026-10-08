@@ -100,13 +100,16 @@ static int64_t ct_err(void) { *ct_err_slot() = (int64_t)errno; return -1; }
  * 独立 TU 布局同型即 ABI 兼容 —— tests/ffi/repr_c 先例) */
 typedef struct { int64_t v; } Box64;
 
-/* I64 视图 lane 镜像:&I64[] 发射 ctron_view_6 { d, n } 按值(§9.6) */
-typedef struct { int64_t* d; int64_t n; } ct_view6;
-
-/* 视图 lane 缓冲一次搬运上限 4096(栈上暂存):TCP 写路径经分块循环,超限
- * 分次 send 不丢;UDP sendto 超 4096 即按 4096 截断为单报文(EMSGSIZE 守卫
- * 列 P2),recvfrom/read 同限单调用;当前所有 P1 消费面消息均 ≤2 字节,未触界。 */
-#define CT_CHUNK 4096
+/* U8 字节平面视图镜像:var U8[] 发射 ctron_view_w8u { uint8_t* d, n } 按值
+ * (M3C1 CW1a,2026-10-08:lib/net 缓冲面 I64 lane → 字节平面,发射臂
+ * ctron_view_w8u typedef+trans_ty 映射+视图传参全链已通——旧"I8/U8 视图
+ * 缺口"头注表述过时;loom 全仓 var buf: U8[] extern 为活证)。
+ * 缓冲四函数(read_t/write/udp_sendto/udp_recvfrom)迁此后:
+ *   - TCP read/write 直搬视图指针,**无 4096 单次上限**(旧 CT_CHUNK 随
+ *     逐字节 lane 中转一并退役;写全量循环经 ct_send_all 不变);
+ *   - UDP 单报文语义不变:sendto/recvfrom 以视图容量为报文上限,
+ *     EMSGSIZE 守卫仍列 P2。 */
+typedef struct { uint8_t* d; int64_t n; } ct_view_w8u;
 
 #ifdef _WIN32
 static int ct_wsa_once(void) {
@@ -403,17 +406,15 @@ int64_t ctron_net_tcp_connect(const char* host, int64_t port, Box64* out) {
  * 停车重试(deadline 收敛保 ETIMEDOUT 语义,worker 线程全程不滞留),省去
  * 每读一笔 poll(0) syscall;裸线程(未链 rt / current 为空)走下方 P1 poll
  * 门原路径,逐字节不变。 */
-int64_t ctron_net_read_t(int64_t fd, ct_view6 buf, int64_t cap, int64_t timeout_ms) {
+int64_t ctron_net_read_t(int64_t fd, ct_view_w8u buf, int64_t cap, int64_t timeout_ms) {
     if (cap > buf.n) cap = buf.n;
     if (cap <= 0) return 0;
     if (ct_rt_parkable()) {
-        unsigned char tmp[CT_CHUNK];
-        int64_t want = cap < (int64_t)sizeof(tmp) ? cap : (int64_t)sizeof(tmp);
         uint64_t deadline = timeout_ms > 0
             ? (uint64_t)ctron_net_now_ns() + (uint64_t)timeout_ms * 1000000ull : 0;
         for (;;) {
             ct_ssize_t n;
-            n = recv((ct_sock)fd, (char*)tmp, (size_t)want, MSG_DONTWAIT);
+            n = recv((ct_sock)fd, (char*)buf.d, (size_t)cap, MSG_DONTWAIT);
             if (n < 0) {
                 if (errno == EINTR) continue;
                 if ((errno == EAGAIN || errno == EWOULDBLOCK)) { /* 未就绪:停车等就绪/超时 */
@@ -425,7 +426,6 @@ int64_t ctron_net_read_t(int64_t fd, ct_view6 buf, int64_t cap, int64_t timeout_
                 }
                 return ct_err();
             }
-            for (int64_t i = 0; i < (int64_t)n; i++) buf.d[i] = (int64_t)tmp[i];
             return (int64_t)n;
         }
     }
@@ -451,10 +451,8 @@ int64_t ctron_net_read_t(int64_t fd, ct_view6 buf, int64_t cap, int64_t timeout_
             break;
         }
     }
-    unsigned char tmp[CT_CHUNK];
-    int64_t want = cap < (int64_t)sizeof(tmp) ? cap : (int64_t)sizeof(tmp);
     for (;;) {
-        ct_ssize_t n = recv((ct_sock)fd, (char*)tmp, (size_t)want, 0);
+        ct_ssize_t n = recv((ct_sock)fd, (char*)buf.d, (size_t)cap, 0);
         if (n < 0) {
 #ifdef _WIN32
             return ct_err();
@@ -463,7 +461,6 @@ int64_t ctron_net_read_t(int64_t fd, ct_view6 buf, int64_t cap, int64_t timeout_
             return ct_err();
 #endif
         }
-        for (int64_t i = 0; i < (int64_t)n; i++) buf.d[i] = (int64_t)tmp[i];
         return (int64_t)n;
     }
 }
@@ -498,20 +495,10 @@ static int64_t ct_send_all(int64_t fd, const unsigned char* src, int64_t n) {
     return n;
 }
 
-int64_t ctron_net_write(int64_t fd, ct_view6 buf, int64_t n) {
+int64_t ctron_net_write(int64_t fd, ct_view_w8u buf, int64_t n) {
     if (n > buf.n) n = buf.n;
     if (n <= 0) return 0;
-    unsigned char tmp[CT_CHUNK];
-    int64_t off = 0;
-    while (off < n) {
-        int64_t chunk = n - off;
-        if (chunk > (int64_t)sizeof(tmp)) chunk = (int64_t)sizeof(tmp);
-        for (int64_t i = 0; i < chunk; i++) tmp[i] = (unsigned char)buf.d[off + i];
-        int64_t r = ct_send_all(fd, tmp, chunk);
-        if (r < 0) return r;
-        off += chunk;
-    }
-    return n;
+    return ct_send_all(fd, buf.d, n);
 }
 
 int64_t ctron_net_write_str(int64_t fd, const char* s) {
@@ -577,7 +564,7 @@ int64_t ctron_net_udp_bind(int64_t fd, const char* host, int64_t port, Box64* ou
 }
 
 int64_t ctron_net_udp_sendto(int64_t fd, const char* host, int64_t port,
-                             ct_view6 buf, int64_t n) {
+                             ct_view_w8u buf, int64_t n) {
     if (n > buf.n) n = buf.n;
     if (n <= 0) return 0;
     struct sockaddr_in a;
@@ -588,11 +575,8 @@ int64_t ctron_net_udp_sendto(int64_t fd, const char* host, int64_t port,
         *ct_err_slot() = EINVAL;
         return -1;
     }
-    unsigned char tmp[CT_CHUNK];
-    int64_t want = n < (int64_t)sizeof(tmp) ? n : (int64_t)sizeof(tmp);
-    for (int64_t i = 0; i < want; i++) tmp[i] = (unsigned char)buf.d[i];
     for (;;) {
-        ct_ssize_t w = sendto((ct_sock)fd, (const char*)tmp, (size_t)want, 0,
+        ct_ssize_t w = sendto((ct_sock)fd, (const char*)buf.d, (size_t)n, 0,
                               (struct sockaddr*)&a, (ct_socklen)sizeof(a));
         if (w < 0) {
 #ifdef _WIN32
@@ -606,19 +590,17 @@ int64_t ctron_net_udp_sendto(int64_t fd, const char* host, int64_t port,
     }
 }
 
-int64_t ctron_net_udp_recvfrom(int64_t fd, ct_view6 buf, int64_t cap, int64_t timeout_ms) {
+int64_t ctron_net_udp_recvfrom(int64_t fd, ct_view_w8u buf, int64_t cap, int64_t timeout_ms) {
     if (cap > buf.n) cap = buf.n;
     if (cap <= 0) return 0;
     /* P2-C 停车点⑤;P3-A 探针消除:与 read_t 同形 —— MSG_DONTWAIT 直试 +
-     * EAGAIN 停车重试 + deadline 收敛;裸线程走下方 P1 原路径逐字节不变。 */
+     * EAGAIN 停车重试 + deadline 收敛;裸线程走下方 P1 原路径。 */
     if (ct_rt_parkable()) {
-        unsigned char tmp[CT_CHUNK];
-        int64_t want = cap < (int64_t)sizeof(tmp) ? cap : (int64_t)sizeof(tmp);
         uint64_t deadline = timeout_ms > 0
             ? (uint64_t)ctron_net_now_ns() + (uint64_t)timeout_ms * 1000000ull : 0;
         for (;;) {
             ct_ssize_t n;
-            n = recvfrom((ct_sock)fd, (char*)tmp, (size_t)want, MSG_DONTWAIT, NULL, NULL);
+            n = recvfrom((ct_sock)fd, (char*)buf.d, (size_t)cap, MSG_DONTWAIT, NULL, NULL);
             if (n < 0) {
                 if (errno == EINTR) continue;
                 if ((errno == EAGAIN || errno == EWOULDBLOCK)) {
@@ -630,7 +612,6 @@ int64_t ctron_net_udp_recvfrom(int64_t fd, ct_view6 buf, int64_t cap, int64_t ti
                 }
                 return ct_err();
             }
-            for (int64_t i = 0; i < (int64_t)n; i++) buf.d[i] = (int64_t)tmp[i];
             return (int64_t)n;
         }
     }
@@ -656,10 +637,8 @@ int64_t ctron_net_udp_recvfrom(int64_t fd, ct_view6 buf, int64_t cap, int64_t ti
             break;
         }
     }
-    unsigned char tmp[CT_CHUNK];
-    int64_t want = cap < (int64_t)sizeof(tmp) ? cap : (int64_t)sizeof(tmp);
     for (;;) {
-        ct_ssize_t n = recvfrom((ct_sock)fd, (char*)tmp, (size_t)want, 0, NULL, NULL);
+        ct_ssize_t n = recvfrom((ct_sock)fd, (char*)buf.d, (size_t)cap, 0, NULL, NULL);
         if (n < 0) {
 #ifdef _WIN32
             return ct_err();
@@ -668,7 +647,6 @@ int64_t ctron_net_udp_recvfrom(int64_t fd, ct_view6 buf, int64_t cap, int64_t ti
             return ct_err();
 #endif
         }
-        for (int64_t i = 0; i < (int64_t)n; i++) buf.d[i] = (int64_t)tmp[i];
         return (int64_t)n;
     }
 }

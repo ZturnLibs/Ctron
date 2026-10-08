@@ -11,10 +11,12 @@
 //      Result[struct, _] 的 Ok 绑定成员访问不可发射(ct_expr:Member panic,
 //      Task 6 微探针登记);Result[标量, _] 可用但句柄成员必经路,统一 rc。
 //   ④ 句柄 = 值 struct + I64 fd + impl Drop(fd>=0 才关);var fd 允许显式
-//      close 后置 -1 防作用域出口二次关。缓冲 = &I64[] 视图 lane(每字节
-//      一条 I64 lane,Task 4 登记的 I8/U8 视图缺口绕行)。
-//   ⑤ 单次读/收调用至多搬运 4096 字节(垫片 CT_CHUNK 上限,cap 更大也被截到
-//      该值);UDP 单报文超限截断,EMSGSIZE 守卫列 P2。
+//      close 后置 -1 防作用域出口二次关。缓冲 = var U8[] 字节平面视图
+//      (CW1a 2026-10-08 迁移;旧 &I64[] lane 形态系历史绕行,w8u 视图发射
+//      链已通,垫片直搬)。
+//   ⑤ TCP read/write 无单次上限(垫片直搬视图,写全量循环);UDP 单报文
+//      以视图容量为上限,EMSGSIZE 守卫列 P2(旧 4096 CT_CHUNK 随 lane
+//      中转退役)。
 // 时钟/睡眠经 bind.ct 外链 ctron_net.c 垫片;TCP/UDP/AF_UNIX/resolve 全量同文件。
 use net.bind.{Box64, ctron_net_now_ns, ctron_net_sleep_ms, ctron_net_sleep_ns, ctron_net_clock_jump, ctron_net_last_errno, ctron_net_strerror, str_from_c, ctron_net_tcp_listen, ctron_net_tcp_sockname, ctron_net_tcp_accept, ctron_net_tcp_connect, ctron_net_read_t, ctron_net_write, ctron_net_write_str, ctron_net_close, ctron_net_shutdown_write, ctron_net_set_nodelay, ctron_net_get_nodelay, ctron_net_udp_socket, ctron_net_udp_bind, ctron_net_udp_sendto, ctron_net_udp_recvfrom, ctron_net_resolve_first, ctron_net_resolve_all, ctron_net_unix_listen, ctron_net_unix_accept, ctron_net_unix_connect, ctron_net_unix_unlink}
 
@@ -217,12 +219,12 @@ pub fn net_tcp_connect(net: StdNet, host: Str, port: I64, out_fd: Box[Box64]) ->
 }
 
 // 带超时读:timeout_ms <= 0 永久阻塞;>0 到时置 ETIMEDOUT 返 -1。
-// >0 n / 0 eof / <0 err;字节逐条入 lane;单次调用至多搬运 4096 字节(头注⑤)。
-pub fn net_read_t(net: StdNet, fd: I64, buf: &I64[], cap: I64, timeout_ms: I64) -> I64 {
+// >0 n / 0 eof / <0 err;字节直入视图(无单次上限,头注⑤)。
+pub fn net_read_t(net: StdNet, fd: I64, var buf: U8[], cap: I64, timeout_ms: I64) -> I64 {
     return ctron_net_read_t(fd, buf, cap, timeout_ms)
 }
 
-pub fn net_write(net: StdNet, fd: I64, buf: &I64[], n: I64) -> I64 {
+pub fn net_write(net: StdNet, fd: I64, var buf: U8[], n: I64) -> I64 {
     return ctron_net_write(fd, buf, n)
 }
 
@@ -264,12 +266,12 @@ pub fn net_udp_bind(net: StdNet, fd: I64, host: Str, port: I64, out_port: Box[Bo
     return rc
 }
 
-pub fn net_udp_sendto(net: StdNet, fd: I64, host: Str, port: I64, buf: &I64[], n: I64) -> I64 {
+pub fn net_udp_sendto(net: StdNet, fd: I64, host: Str, port: I64, var buf: U8[], n: I64) -> I64 {
     return ctron_net_udp_sendto(fd, host, port, buf, n)
 }
 
-// 单次调用至多收回 4096 字节(单报文,超限截断;头注⑤ CT_CHUNK 上限)。
-pub fn net_udp_recvfrom(net: StdNet, fd: I64, buf: &I64[], cap: I64, timeout_ms: I64) -> I64 {
+// 单报文以视图容量为上限(头注⑤)。
+pub fn net_udp_recvfrom(net: StdNet, fd: I64, var buf: U8[], cap: I64, timeout_ms: I64) -> I64 {
     return ctron_net_udp_recvfrom(fd, buf, cap, timeout_ms)
 }
 

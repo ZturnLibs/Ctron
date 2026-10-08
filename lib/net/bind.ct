@@ -12,9 +12,10 @@
 //     旧 Box[Box64] 通道被 v0.9 E4046 拒收(所有权谎言收口,sem_main.ct),
 //     `use net` 整树 check 硬错,故全族出参迁 &T;消费侧经 net.ct 门面的
 //     Box[Box64] 堆胞中间层适配(门面签名不变)。
-//   - 缓冲 = &I64[] 视图 lane(每字节一条 int64 lane;发射器仅预发 i/6/b/s/f
-//     视图 typedef,I8/U8 视图为缺口)。read_t/recv 逐字节写 lane,write/sendto
-//     逐条取 (char)lane[i]。
+//   - 缓冲 = var U8[](前缀形参)字节平面视图(发射 ctron_view_w8u 按值;
+//     M3C1 CW1a 2026-10-08 迁移——旧 &I64[] lane 形态系"发射器仅预发 i/6/b/s/f
+//     typedef"时期的历史绕行,w8u/w8s typedef+trans_ty 映射+视图传参现全链在,
+//     垫片直搬视图指针,无 4096 单次上限,零逐字节中转)。
 //   - C-owned 串返回(ctron_net_resolve_first/strerror)为 thread-local 静态,
 //     Ctron 侧 str_from_c 深拷后用(§9.6 三约定)。
 //   - rc 约定:0 成功;<0 失败(错误详情经 ctron_net_last_errno/strerror);
@@ -37,8 +38,8 @@ pub extern "c" fn ctron_net_tcp_listen(host: Str, port: I64, out_fd: &Box64) -> 
 pub extern "c" fn ctron_net_tcp_sockname(fd: I64, out_port: &Box64) -> I64
 pub extern "c" fn ctron_net_tcp_accept(lfd: I64, out_fd: &Box64) -> I64
 pub extern "c" fn ctron_net_tcp_connect(host: Str, port: I64, out_fd: &Box64) -> I64
-pub extern "c" fn ctron_net_read_t(fd: I64, buf: &I64[], cap: I64, timeout_ms: I64) -> I64
-pub extern "c" fn ctron_net_write(fd: I64, buf: &I64[], n: I64) -> I64
+pub extern "c" fn ctron_net_read_t(fd: I64, var buf: U8[], cap: I64, timeout_ms: I64) -> I64
+pub extern "c" fn ctron_net_write(fd: I64, var buf: U8[], n: I64) -> I64
 pub extern "c" fn ctron_net_write_str(fd: I64, s: Str) -> I64
 pub extern "c" fn ctron_net_close(fd: I64) -> I64
 pub extern "c" fn ctron_net_shutdown_write(fd: I64) -> I64
@@ -46,8 +47,8 @@ pub extern "c" fn ctron_net_set_nodelay(fd: I64, on: I64) -> I64
 pub extern "c" fn ctron_net_get_nodelay(fd: I64) -> I64
 pub extern "c" fn ctron_net_udp_socket(out_fd: &Box64) -> I64
 pub extern "c" fn ctron_net_udp_bind(fd: I64, host: Str, port: I64, out_port: &Box64) -> I64
-pub extern "c" fn ctron_net_udp_sendto(fd: I64, host: Str, port: I64, buf: &I64[], n: I64) -> I64
-pub extern "c" fn ctron_net_udp_recvfrom(fd: I64, buf: &I64[], cap: I64, timeout_ms: I64) -> I64
+pub extern "c" fn ctron_net_udp_sendto(fd: I64, host: Str, port: I64, var buf: U8[], n: I64) -> I64
+pub extern "c" fn ctron_net_udp_recvfrom(fd: I64, var buf: U8[], cap: I64, timeout_ms: I64) -> I64
 pub extern "c" fn ctron_net_resolve_first(host: Str) -> Str
 pub extern "c" fn ctron_net_resolve_all(host: Str) -> Str
 pub extern "c" fn ctron_net_unix_listen(path: Str, out_fd: &Box64) -> I64
