@@ -1577,6 +1577,10 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if cal[1] == "byte_at" { return "i" }
             if cal[1] == "byte_slice" { return "s" }
             if cal[1] == "str_from_c" { return "s" }
+            // StringBuilder ctor(§3.8.2;T50 发射臂):二义动态型 N(ctron_len
+            // 魔数分派先例)——.len/.to_string 走 N 既有通道,发射臂
+            // ctron_len/ctron_sb_str 扩 SB 魔数即通;句柄=堆指针,值 I32 恒小不撞
+            if cal[1] == "StringBuilder" { return "N" }
             // ptr_as_view(v0.9·五 裁决甲):&T 裸指针 → 只读视图;结果码 =
             // v<元素码>(p<ec> 剥壳);非 p 码实参回落 "i"(发射臂另响亮失败)
             if cal[1] == "ptr_as_view" {

@@ -1693,7 +1693,7 @@ cargo/target)剩 12 红全为 **r 码臂**(compiler-rust 缺 tier/plugin/codes �
   `rm -rf .cache/emit` 后再以 env 直跑方能观测管线;③合并 file 顶层含
   非数组元素(P1b 戳),`[0]` 探针即崩「索引目标非数组」。
 
-### StringBuilder 发射臂实现地图(2026-10-07 调查定案;待实现批)
+### StringBuilder 发射臂实现地图(2026-10-07 调查定案;2026-10-08 落地)
 
 - **语义锚(interp)**:值 = cx 复合 ["SB", seg1, seg2...](eval_call:112 ctor;
   push_str = cx.push 段表原地变;to_string = 段连接;len = 段字节和
@@ -1703,16 +1703,25 @@ cargo/target)剩 12 红全为 **r 码臂**(compiler-rust 缺 tier/plugin/codes �
   `t_+m(ct_arg_cast(objt,p0,obj))`(≈行 1306);③成员 len → 型别分派
   ("L"→list->n / "N"→ctron_len 动态魔数 / 其余 strlen;≈行 417);④to_string
   → 按接收者码分派(ctron_i32_to_string 等;sb 句柄现错落 i 桥)。
-- **实现路径(定案)**:SB 构造调用的 ct_typeof 返回 **"N"**(二义动态型,
-  ctron_len 魔数分派先例)→ ③len 自动落 ctron_len(扩 SB magic 返字节和);
-  ②push_str 独名特臂(sb 专属方法,无歧义)→ ctron_sb_push 句柄形
-  (指针 int32 往返 = fn 值同款 idiom);④to_string 走 "N" 的既有 to_string
-  降位(若为静态 i 桥则扩魔数动态);①ctor 臂 → ctron_sb_new。
-- **runtime**:ctron_sb { magic, char* data }(魔数 "CtrNSB";推入=realloc
-  追加;str=arena 拷;len=strlen)——单缓冲形(段表语义在 interp,emit 单缓冲
-  等价,推入序一致)。
+- **实现路径(定案,2026-10-08 全通)**:SB 构造调用的 ct_typeof 返回 **"N"**
+  (trans_ty.ct Ident-call 臂;二义动态型,ctron_len 魔数分派先例)→ ③len
+  自动落 ctron_len(扩 SB magic 返 strlen(data));②push_str 独名特臂
+  (trans_expr `objt=="N"` 门 → ctron_sb_push 句柄形;struct 自定义方法接收者
+  u: 码不命中);④to_string 的 N 通道 → ctron_sb_str 魔数动态(真串透传不动,
+  SB 落 arena 拷);①ctor 臂 → ctron_sb_new。
+- **runtime(定案落地形)**:ctron_sb { magic, char* data } 单缓冲形(段表语义
+  在 interp,emit 单缓冲等价,推入序一致)。与地图原案三处实测修订:魔数 =
+  **"CtronSB1"→0x4374726F6E534231ULL**(原案 "CtrNSB" 六字节卡 ctron_len 的
+  strlen>=8 门——前 8 字节内含 0 则 strlen<8 直接落 strlen 臂返 6,必须八字节
+  全非零形);句柄 = **char\* 直伪装**(原案指针 int32 往返未用——N 槽 C 侧本就
+  指针宽,直传零成本);推入 = **arena 拷追加**(GC 堆无 realloc,镜像
+  ctron_str_concat 拷形)。
+- **验证**:03i 探针双臂逐字一致(seed interp vs 发射 cc_run:hello world/
+  len:11);03j 纯 test 块文件发射臂 rc=0(含空串 push/len==0 边角);smoke
+  224/0 基线维持。
 - **边界**:`.len`/`.to_string` 的 "N" 通道要求 SB 句柄永不与真 I32 撞
   (句柄=堆指针魔数,值 I32 恒小 → magic 不匹配即走原路 ✓);用户自定义
   push_str/to_string 方法(struct 方法)不受独名特臂影响(特臂仅
-  receiver=裸 StringBuilder 构造链——实现时以 ct_typeof=="N" 且 ctor 溯源
-  双验,或直接独名 + 登记撞名概率)。
+  receiver=裸 StringBuilder 构造链——落地取 ct_typeof=="N" 型别通道单验:
+  struct 方法接收者码为 "u:<名>",天然不命中;SB 与真串假性撞魔数需字符串
+  恰以八字节魔数开头,与 list 魔数同类已接受)。

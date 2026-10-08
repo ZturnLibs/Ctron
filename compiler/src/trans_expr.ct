@@ -1095,6 +1095,16 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 if ag.len > 1 { s0 = ct_expr(ag[1], env, file) }
                 return "__atomic_store_n(&((ctron_cell*)(" + obj + "))->v, (int32_t)(" + s0 + "), __ATOMIC_SEQ_CST)"
             }
+            if m == "push_str" {
+                // StringBuilder 独名特臂(§3.8.2;T50 发射臂):接收者 N=SB 句柄
+                // → ctron_sb_push(句柄原地变,镜像 interp cx.push 段表);struct
+                // 自定义 push_str 接收者 u: 码不命中,泛型兜底照旧
+                if objt == "N" {
+                    if ag.len < 2 { panic("emit:push_str arity") }
+                    var psa = ct_expr(ag[1], env, file)
+                    return "ctron_sb_push((const void*)(" + obj + "), " + psa + ")"
+                }
+            }
             if m == "to_string" {
                 if objt.len > 2 && byte_slice(objt, 0, 2) == "u:" {
                     panic("emit:struct to_string")
@@ -1104,9 +1114,10 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 // Str/String 升格(§3.3/§6.5):发射面此前透传(零拷贝别名)——
                 // 与 sem 面(所有 .to_string() 记分配,E3040)及解释臂(新值)分歧。
                 // 经 ctron_byte_slice 落真堆拷贝(与 concat 同 ctron_amalloc 源);
-                // N 为内部节点引用表示,保持透传不动
+                // N 通道魔数动态(T50 发射臂):SB 句柄 → ctron_sb_str 落 arena 拷,
+                // 真串 N 仍透传不动(ctron_sb_str 魔数不合即恒等)
                 if objt == "s" { return "ctron_byte_slice((const char*)(" + obj + "), 0, (int)strlen((const char*)(" + obj + ")))" }
-                if objt == "N" { return "(const char*)(" + obj + ")" }
+                if objt == "N" { return "ctron_sb_str((const void*)(" + obj + "))" }
                 if objt == "6" { return "ctron_i64_to_string(" + obj + ")" }
                 return "ctron_i32_to_string((int32_t)(" + obj + "))"
             }
@@ -1306,6 +1317,11 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             return "t_" + m + "(" + ct_arg_cast(objt, p0, obj) + ")"
         }
         var callee = cal[1]
+        if callee == "StringBuilder" {
+            // StringBuilder ctor(§3.8.2;T50 发射臂):句柄形 ctron_sb_new
+            if ag.len > 1 { panic("emit:StringBuilder arity") }
+            return "ctron_sb_new()"
+        }
         if callee == "println" {
             var at = ct_typeof(ag[1], env, file)
             if at.len > 2 && byte_slice(at, 0, 2) == "u:" {
