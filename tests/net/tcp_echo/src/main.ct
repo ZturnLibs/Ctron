@@ -6,7 +6,7 @@
 // (trait 方法不发射;&Net 引用形参发射即坏);错误面 = rc(0 成/<0 败)+
 // last_net_error();缓冲 = &I64[] 视图 lane(每字节一条 lane)。
 // CI 纪律:仅回环、:0、零外联(tests/net/run.sh 同口径)。
-use net.{Net_probe, addr_format, addr_host, addr_port, last_net_error, net_close, net_get_nodelay, net_read_t, net_resolve, net_resolve_all, net_set_nodelay, net_shutdown_write, net_tcp_accept, net_tcp_connect, net_tcp_listen, net_tcp_sockname, net_udp_bind, net_udp_recvfrom, net_udp_sendto, net_udp_socket, net_write, net_write_str, TcpListener, TcpStream, UdpSock}
+use net.{Net_probe, net_tcp_accept_t, addr_format, addr_host, addr_port, last_net_error, net_close, net_get_nodelay, net_read_t, net_resolve, net_resolve_all, net_set_nodelay, net_shutdown_write, net_tcp_accept, net_tcp_connect, net_tcp_listen, net_tcp_sockname, net_udp_bind, net_udp_recvfrom, net_udp_sendto, net_udp_socket, net_write, net_write_str, TcpListener, TcpStream, UdpSock}
 use net.bind.{ctron_net_last_errno, Box64}
 
 test "tcp echo roundtrip + udp self-talk" {
@@ -113,4 +113,23 @@ test "tcp echo roundtrip + udp self-talk" {
     ud.fd = -1
     assert(ud.fd == -1)
     // TCP 句柄(ln/st/srv)不显式关 —— 作用域出口 Drop RAII 统一回收
+}
+
+// 带超时 accept(内化批4):空队 80ms → -2 拍醒;连接在途 → poll 即醒受理
+test "accept_t timeout + readiness arms" {
+    let net = Net_probe()
+    let lb = Box[Box64](Box64 { v: 0 })
+    assert(net_tcp_listen(net, "127.0.0.1", 0, lb) == 0)
+    let pb = Box[Box64](Box64 { v: 0 })
+    assert(net_tcp_sockname(net, lb.v, pb) == 0)
+    let port = pb.v
+    let ab = Box[Box64](Box64 { v: 0 })
+    assert(net_tcp_accept_t(net, lb.v, 80, ab) == -2)
+    let cb = Box[Box64](Box64 { v: 0 })
+    assert(net_tcp_connect(net, "127.0.0.1", port, cb) == 0)
+    assert(net_tcp_accept_t(net, lb.v, 1000, ab) == 0)
+    assert(ab.v > 0)
+    net_close(net, cb.v)
+    net_close(net, ab.v)
+    net_close(net, lb.v)
 }

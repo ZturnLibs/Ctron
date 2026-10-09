@@ -380,6 +380,32 @@ int64_t ctron_net_tcp_accept(int64_t lfd, Box64* out) {
     }
 }
 
+/* 带超时 accept(net_read_t 超时先例的 accept 对偶;loom daemon 服务臂迁入配套,
+ * 内化战役批4):poll(listener 可读) → accept。阻塞 listener 上 poll 可读 ⇒ 队列
+ * 已有连接,accept 不再阻塞(loom 传承陷阱=非阻塞 listener 的 accept 产物继承
+ * O_NONBLOCK——本路径 listener 恒阻塞,陷阱面不存在)。
+ * rc:0 = 受理(fd 经 out);-2 = 超时无连接/被信号打断(daemon 拍醒语义);-1 = 失败。 */
+int64_t ctron_net_tcp_accept_t(int64_t lfd, int64_t timeout_ms, Box64* out) {
+    struct pollfd p;
+    p.fd = (ct_sock)lfd;
+    p.events = POLLIN;
+    p.revents = 0;
+    for (;;) {
+        int prc = ct_poll(&p, 1, (int)timeout_ms);
+        if (prc < 0) {
+#ifdef _WIN32
+            return ct_err();
+#else
+            if (errno == EINTR) { return -2; }
+            return ct_err();
+#endif
+        }
+        if (prc == 0) { return -2; }
+        break;
+    }
+    return ctron_net_tcp_accept(lfd, out);
+}
+
 int64_t ctron_net_tcp_connect(const char* host, int64_t port, Box64* out) {
     if (CT_WSA() != 0) return -1;
     int fd = (int)socket(AF_INET, SOCK_STREAM, 0);

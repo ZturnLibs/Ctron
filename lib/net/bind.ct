@@ -37,6 +37,7 @@ pub extern "c" fn str_from_c(s: Str) -> Str
 pub extern "c" fn ctron_net_tcp_listen(host: Str, port: I64, out_fd: &Box64) -> I64
 pub extern "c" fn ctron_net_tcp_sockname(fd: I64, out_port: &Box64) -> I64
 pub extern "c" fn ctron_net_tcp_accept(lfd: I64, out_fd: &Box64) -> I64
+pub extern "c" fn ctron_net_tcp_accept_t(lfd: I64, timeout_ms: I64, out_fd: &Box64) -> I64
 pub extern "c" fn ctron_net_tcp_connect(host: Str, port: I64, out_fd: &Box64) -> I64
 pub extern "c" fn ctron_net_read_t(fd: I64, var buf: U8[], cap: I64, timeout_ms: I64) -> I64
 pub extern "c" fn ctron_net_write(fd: I64, var buf: U8[], n: I64) -> I64

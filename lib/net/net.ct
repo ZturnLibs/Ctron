@@ -18,7 +18,7 @@
 //      以视图容量为上限,EMSGSIZE 守卫列 P2(旧 4096 CT_CHUNK 随 lane
 //      中转退役)。
 // 时钟/睡眠经 bind.ct 外链 ctron_net.c 垫片;TCP/UDP/AF_UNIX/resolve 全量同文件。
-use net.bind.{Box64, ctron_net_now_ns, ctron_net_sleep_ms, ctron_net_sleep_ns, ctron_net_clock_jump, ctron_net_last_errno, ctron_net_strerror, str_from_c, ctron_net_tcp_listen, ctron_net_tcp_sockname, ctron_net_tcp_accept, ctron_net_tcp_connect, ctron_net_read_t, ctron_net_write, ctron_net_write_str, ctron_net_close, ctron_net_shutdown_write, ctron_net_set_nodelay, ctron_net_get_nodelay, ctron_net_udp_socket, ctron_net_udp_bind, ctron_net_udp_sendto, ctron_net_udp_recvfrom, ctron_net_resolve_first, ctron_net_resolve_all, ctron_net_unix_listen, ctron_net_unix_accept, ctron_net_unix_connect, ctron_net_unix_unlink}
+use net.bind.{Box64, ctron_net_now_ns, ctron_net_sleep_ms, ctron_net_sleep_ns, ctron_net_clock_jump, ctron_net_last_errno, ctron_net_strerror, str_from_c, ctron_net_tcp_listen, ctron_net_tcp_sockname, ctron_net_tcp_accept, ctron_net_tcp_accept_t, ctron_net_tcp_connect, ctron_net_read_t, ctron_net_write, ctron_net_write_str, ctron_net_close, ctron_net_shutdown_write, ctron_net_set_nodelay, ctron_net_get_nodelay, ctron_net_udp_socket, ctron_net_udp_bind, ctron_net_udp_sendto, ctron_net_udp_recvfrom, ctron_net_resolve_first, ctron_net_resolve_all, ctron_net_unix_listen, ctron_net_unix_accept, ctron_net_unix_connect, ctron_net_unix_unlink}
 
 // ---- 能力 trait(stub 面原样保留;sem 审计锚:E4010 看 &Net 引用形参) ----
 
@@ -206,6 +206,15 @@ pub fn net_tcp_sockname(net: StdNet, fd: I64, out_port: Box[Box64]) -> I64 {
 pub fn net_tcp_accept(net: StdNet, lfd: I64, out_fd: Box[Box64]) -> I64 {
     var cell = Box64 { v: 0 }
     let rc = ctron_net_tcp_accept(lfd, cell)
+    out_fd.v = cell.v
+    return rc
+}
+
+// 带超时 accept(内化批4;daemon 服务臂拍醒语义):rc 0 = 受理(fd 经 out_fd);
+// -2 = 超时无连接/被信号打断(与 loom 传承 accept_wait 同值域);-1 = 失败。
+pub fn net_tcp_accept_t(net: StdNet, lfd: I64, timeout_ms: I64, out_fd: Box[Box64]) -> I64 {
+    var cell = Box64 { v: 0 }
+    let rc = ctron_net_tcp_accept_t(lfd, timeout_ms, cell)
     out_fd.v = cell.v
     return rc
 }
