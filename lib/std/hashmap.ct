@@ -1,0 +1,585 @@
+// std/hashmap.ct —— HMapS[V](Str 键)/HMapI[V](I64 键):可变哈希映射
+// (开放寻址,线性探查,Box 载体)
+//@ tier: alloc
+// since: std-0.9 stability: experimental
+// 口径:put 插入均摊 O(1)(负载 3/4 倍增重建);覆盖写 O(n) 重建(发射面经 Box
+// 泛型元素直写无装载语义,走重建+字段重赋值保双臂逐字一致,FMap 覆盖写同阶,
+// 文档化);del = 活词表重建 O(n)(v0.9 无墓碑,fdel 先例,不缩容);get O(1)。
+// 迭代序 = 插入序(keys 追加式,宪章 8 确定性)。
+// 设计修订(2026-10-09 实施 batch,R3 二次修订):注入形(hash/eq fn 形参)
+// 裁撤——具体型 fn 值传入泛型 fn 型形参的发射 trampoline 按 ct_i 裸传,
+// heap Darwin 4c known-red 同款在册债;改具体键双件,哈希/相等内联。
+// 泛型键 K:Hash+Eq bound 面仍为 W3 触发件(Hash trait + 发射面 trait 方法)。
+// 可变载体 = Box[HMapS[V]]/Box[HMapI[V]] 写穿别名共享(宪章 3a 附则;
+// fx_boxalias/gui_driver 先例)。哈希全程 < 2^31(C10 eval 乘法门,
+// fmap mod 100003 先例);I64 侧压域两步 mod + as[I32]() 方法形收窄
+// (pb.ct:280 先例);无比特算符(&/|/^ 解释面缺口)。
+// 发射面形状纪律(2026-10-09 探针 B1–B4 定):泛型元素读经形参 List 助手
+// (_at/_copy_skip,sort/fmap 同形);经 Box 泛型元素值位读写在册红(登记
+// COVERAGE);slots 具体型经 Box 直读直写。
+// 命名 hms_*/hmi_* 前缀:use 合并单一命名空间,与 map/set/heap/fmap 的
+// put/get/has 错开(同名 decl 静默首胜,FMap f* 先例)。T1 零 use(宪章 2)。
+struct HMapS[V] {
+    var slots: List[I32]
+    var keys: List[Str]
+    var vals: List[V]
+}
+
+struct HMapI[V] {
+    var slots: List[I32]
+    var keys: List[I64]
+    var vals: List[V]
+}
+
+// 泛型元素读助手(形参 List,sort/fmap 同形;i 越界或负返回 dft)
+fn _at[V](xs: List[V], i: I32, dft: V) -> V {
+    if i < 0 {
+        return dft
+    }
+    if i >= xs.len {
+        return dft
+    }
+    return xs[i]
+}
+
+// 泛型 List 拷贝助手(跳过 hit 位;供 del/keys/vals 重建)
+fn _copy_skip[V](xs: List[V], hit: I32) -> List[V] {
+    var out = List[V]()
+    var i: I32 = 0
+    while i < xs.len {
+        if i != hit {
+            out.push(xs[i])
+        }
+        i += 1
+    }
+    return out
+}
+
+// 具体键读/拷贝助手(非泛型):泛型宿主 fn 内对助手传具体型显式 TypeArgs
+// 在 seed 面结果型不绑定(E2010,2026-10-09 探针钉边界;发射臂同形绿,
+// seed/emit 宽严反向分歧在册),键侧一律走具体助手,仅 vals 位用 [V] 形
+fn _at_str(xs: List[Str], i: I32, dft: Str) -> Str {
+    if i < 0 {
+        return dft
+    }
+    if i >= xs.len {
+        return dft
+    }
+    return xs[i]
+}
+
+fn _at_i64(xs: List[I64], i: I32, dft: I64) -> I64 {
+    if i < 0 {
+        return dft
+    }
+    if i >= xs.len {
+        return dft
+    }
+    return xs[i]
+}
+
+fn _copy_str(xs: List[Str], hit: I32) -> List[Str] {
+    var out = List[Str]()
+    var i: I32 = 0
+    while i < xs.len {
+        if i != hit {
+            out.push(xs[i])
+        }
+        i += 1
+    }
+    return out
+}
+
+fn _copy_i64(xs: List[I64], hit: I32) -> List[I64] {
+    var out = List[I64]()
+    var i: I32 = 0
+    while i < xs.len {
+        if i != hit {
+            out.push(xs[i])
+        }
+        i += 1
+    }
+    return out
+}
+
+// ============ HMapS[V]:Str 键(djb2 mod 100003,fmap.fidx 同款,双面精确一致) ============
+
+// 空映射:初容 16 槽全 -1;keys/vals 追加式(规避泛型 V 零值构造,FMap 先例)
+pub fn hms_new[V]() -> Box[HMapS[V]] {
+    var s = List[I32]()
+    var i: I32 = 0
+    while i < 16 {
+        s.push(-1)
+        i += 1
+    }
+    return Box[HMapS[V]](HMapS { slots: s, keys: List[Str](), vals: List[V]() })
+}
+
+// Str 键哈希:全程 < 2^31(C10);fmap.fidx 拷贝
+fn hms_idx(s: Str) -> I32 {
+    var h: I32 = 5381
+    var i: I32 = 0
+    while i < s.len {
+        h = (h * 33 + byte_at(s, i)) % 100003
+        i += 1
+    }
+    return h
+}
+
+// 哈希 → 容量内槽位(负值归一,fmap:34 先例)
+fn hms_slot_of(h: I32, cap: I32) -> I32 {
+    var m = (h % cap + cap) % cap
+    return m
+}
+
+// 键 → keys 下标;不存在返回 -1(至多探查 slots.len 步)
+// _at 的 dft 借用探针键 k:s 来自 slots[s] ≥ 0,必 < keys.len,永不取 dft
+fn hms_find[V](b: Box[HMapS[V]], k: Str) -> I32 {
+    var cap = b.slots.len
+    var idx = hms_slot_of(hms_idx(k), cap)
+    var n: I32 = 0
+    while n < cap {
+        var s = b.slots[idx]
+        if s < 0 {
+            return -1
+        }
+        if _at_str(b.keys, s, k) == k {
+            return s
+        }
+        idx += 1
+        if idx == cap {
+            idx = 0
+        }
+        n += 1
+    }
+    return -1
+}
+
+// 倍增重建:slots 翻倍,活键按插入序重探查("" 作 _at dft,合法同 hms_find)
+fn hms_grow[V](b: Box[HMapS[V]]) {
+    var ncap = b.slots.len * 2
+    var ns = List[I32]()
+    var i: I32 = 0
+    while i < ncap {
+        ns.push(-1)
+        i += 1
+    }
+    var j: I32 = 0
+    while j < b.keys.len {
+        var idx = hms_slot_of(hms_idx(_at_str(b.keys, j, "")), ncap)
+        while ns[idx] >= 0 {
+            idx += 1
+            if idx == ncap {
+                idx = 0
+            }
+        }
+        ns[idx] = j
+        j += 1
+    }
+    b.slots = ns
+}
+
+// 就地写:存在则覆盖(O(n) 重建 vals);否则负载 > 3/4 先倍增再探空槽插入
+// (O(1) 均摊:push 经 Box + slots 具体型直写)
+pub fn hms_put[V](b: Box[HMapS[V]], k: Str, v: V) {
+    var hit = hms_find[V](b, k)
+    if hit >= 0 {
+        var nv = List[V]()
+        var j: I32 = 0
+        while j < b.vals.len {
+            if j == hit {
+                nv.push(v)
+            } else {
+                nv.push(_at[V](b.vals, j, v))
+            }
+            j += 1
+        }
+        b.vals = nv
+        return
+    }
+    if b.keys.len * 4 > b.slots.len * 3 {
+        hms_grow[V](b)
+    }
+    var cap = b.slots.len
+    var idx = hms_slot_of(hms_idx(k), cap)
+    var n: I32 = 0
+    while n < cap {
+        if b.slots[idx] < 0 {
+            b.slots[idx] = b.keys.len
+            b.keys.push(k)
+            b.vals.push(v)
+            return
+        }
+        idx += 1
+        if idx == cap {
+            idx = 0
+        }
+        n += 1
+    }
+}
+
+// 取值:缺键返回 dft(FMap fget 先例,避 Option 泛型面)
+pub fn hms_get[V](b: Box[HMapS[V]], k: Str, dft: V) -> V {
+    var s = hms_find[V](b, k)
+    if s < 0 {
+        return dft
+    }
+    return _at[V](b.vals, s, dft)
+}
+
+pub fn hms_has[V](b: Box[HMapS[V]], k: Str) -> Bool {
+    if hms_find[V](b, k) < 0 {
+        return false
+    }
+    return true
+}
+
+// 删除键:活词表原序重建 O(n)(v0.9 无墓碑;不缩容);不存在原样返回
+pub fn hms_del[V](b: Box[HMapS[V]], k: Str) {
+    var hit = hms_find[V](b, k)
+    if hit < 0 {
+        return
+    }
+    var nk = _copy_str(b.keys, hit)
+    var nv = _copy_skip[V](b.vals, hit)
+    var cap = b.slots.len
+    var ns = List[I32]()
+    var i: I32 = 0
+    while i < cap {
+        ns.push(-1)
+        i += 1
+    }
+    var j: I32 = 0
+    while j < nk.len {
+        var idx = hms_slot_of(hms_idx(_at_str(nk, j, "")), cap)
+        while ns[idx] >= 0 {
+            idx += 1
+            if idx == cap {
+                idx = 0
+            }
+        }
+        ns[idx] = j
+        j += 1
+    }
+    b.keys = nk
+    b.vals = nv
+    b.slots = ns
+}
+
+// 键数
+pub fn hms_len[V](b: Box[HMapS[V]]) -> I32 {
+    return b.keys.len
+}
+
+// 键表拷贝(插入序;拷贝非别名,保 keys 追加式不变量)
+pub fn hms_keys[V](b: Box[HMapS[V]]) -> List[Str] {
+    return _copy_str(b.keys, -1)
+}
+
+// 值表拷贝(与 hms_keys 一一对应)
+pub fn hms_vals[V](b: Box[HMapS[V]]) -> List[V] {
+    return _copy_skip[V](b.vals, -1)
+}
+
+// ============ HMapI[V]:I64 键(两步 mod 压域,中间值 < 2^31;as[I32]() 收窄,pb 先例) ============
+
+// 空映射:同 hms_new
+pub fn hmi_new[V]() -> Box[HMapI[V]] {
+    var s = List[I32]()
+    var i: I32 = 0
+    while i < 16 {
+        s.push(-1)
+        i += 1
+    }
+    return Box[HMapI[V]](HMapI { slots: s, keys: List[I64](), vals: List[V]() })
+}
+
+// I64 键哈希:负值归一 + 压域,收窄安全(被收窄值 < 2^31,截断无损伤)
+fn hmi_idx(k: I64) -> I32 {
+    var h = k % 1000003
+    if h < 0 {
+        h += 1000003
+    }
+    var r = (h * 31 + 11) % 1000003
+    return r.as[I32]()
+}
+
+// 哈希 → 容量内槽位(负值归一)
+fn hmi_slot_of(h: I32, cap: I32) -> I32 {
+    var m = (h % cap + cap) % cap
+    return m
+}
+
+// 键 → keys 下标;不存在返回 -1(至多探查 slots.len 步)
+fn hmi_find[V](b: Box[HMapI[V]], k: I64) -> I32 {
+    var cap = b.slots.len
+    var idx = hmi_slot_of(hmi_idx(k), cap)
+    var n: I32 = 0
+    while n < cap {
+        var s = b.slots[idx]
+        if s < 0 {
+            return -1
+        }
+        if _at_i64(b.keys, s, k) == k {
+            return s
+        }
+        idx += 1
+        if idx == cap {
+            idx = 0
+        }
+        n += 1
+    }
+    return -1
+}
+
+// 倍增重建:slots 翻倍,活键按插入序重探查(0 作 _at dft,合法同 hmi_find)
+fn hmi_grow[V](b: Box[HMapI[V]]) {
+    var ncap = b.slots.len * 2
+    var ns = List[I32]()
+    var i: I32 = 0
+    while i < ncap {
+        ns.push(-1)
+        i += 1
+    }
+    var j: I32 = 0
+    while j < b.keys.len {
+        var idx = hmi_slot_of(hmi_idx(_at_i64(b.keys, j, 0)), ncap)
+        while ns[idx] >= 0 {
+            idx += 1
+            if idx == ncap {
+                idx = 0
+            }
+        }
+        ns[idx] = j
+        j += 1
+    }
+    b.slots = ns
+}
+
+// 就地写:同 hms_put 口径
+pub fn hmi_put[V](b: Box[HMapI[V]], k: I64, v: V) {
+    var hit = hmi_find[V](b, k)
+    if hit >= 0 {
+        var nv = List[V]()
+        var j: I32 = 0
+        while j < b.vals.len {
+            if j == hit {
+                nv.push(v)
+            } else {
+                nv.push(_at[V](b.vals, j, v))
+            }
+            j += 1
+        }
+        b.vals = nv
+        return
+    }
+    if b.keys.len * 4 > b.slots.len * 3 {
+        hmi_grow[V](b)
+    }
+    var cap = b.slots.len
+    var idx = hmi_slot_of(hmi_idx(k), cap)
+    var n: I32 = 0
+    while n < cap {
+        if b.slots[idx] < 0 {
+            b.slots[idx] = b.keys.len
+            b.keys.push(k)
+            b.vals.push(v)
+            return
+        }
+        idx += 1
+        if idx == cap {
+            idx = 0
+        }
+        n += 1
+    }
+}
+
+// 取值:缺键返回 dft
+pub fn hmi_get[V](b: Box[HMapI[V]], k: I64, dft: V) -> V {
+    var s = hmi_find[V](b, k)
+    if s < 0 {
+        return dft
+    }
+    return _at[V](b.vals, s, dft)
+}
+
+pub fn hmi_has[V](b: Box[HMapI[V]], k: I64) -> Bool {
+    if hmi_find[V](b, k) < 0 {
+        return false
+    }
+    return true
+}
+
+// 删除键:活词表原序重建 O(n);不存在原样返回
+pub fn hmi_del[V](b: Box[HMapI[V]], k: I64) {
+    var hit = hmi_find[V](b, k)
+    if hit < 0 {
+        return
+    }
+    var nk = _copy_i64(b.keys, hit)
+    var nv = _copy_skip[V](b.vals, hit)
+    var cap = b.slots.len
+    var ns = List[I32]()
+    var i: I32 = 0
+    while i < cap {
+        ns.push(-1)
+        i += 1
+    }
+    var j: I32 = 0
+    while j < nk.len {
+        var idx = hmi_slot_of(hmi_idx(_at_i64(nk, j, 0)), cap)
+        while ns[idx] >= 0 {
+            idx += 1
+            if idx == cap {
+                idx = 0
+            }
+        }
+        ns[idx] = j
+        j += 1
+    }
+    b.keys = nk
+    b.vals = nv
+    b.slots = ns
+}
+
+// 键数
+pub fn hmi_len[V](b: Box[HMapI[V]]) -> I32 {
+    return b.keys.len
+}
+
+// 键表拷贝(插入序)
+pub fn hmi_keys[V](b: Box[HMapI[V]]) -> List[I64] {
+    return _copy_i64(b.keys, -1)
+}
+
+// 值表拷贝(与 hmi_keys 一一对应)
+pub fn hmi_vals[V](b: Box[HMapI[V]]) -> List[V] {
+    return _copy_skip[V](b.vals, -1)
+}
+
+test "hms basics" {
+    var m = hms_new[I64]()
+    assert_eq(hms_len[I64](m), 0)
+    assert(!hms_has[I64](m, "a"))
+    hms_put[I64](m, "a", 1)
+    hms_put[I64](m, "b", 2)
+    assert_eq(hms_len[I64](m), 2)
+    assert_eq(hms_get[I64](m, "a", -1), 1)
+    assert_eq(hms_get[I64](m, "b", -1), 2)
+    assert_eq(hms_get[I64](m, "c", -1), -1)
+    assert(hms_has[I64](m, "a"))
+    assert(!hms_has[I64](m, "c"))
+}
+
+test "hms overwrite same key" {
+    var m = hms_new[I64]()
+    hms_put[I64](m, "k", 1)
+    hms_put[I64](m, "k", 7)
+    assert_eq(hms_len[I64](m), 1)
+    assert_eq(hms_get[I64](m, "k", 0), 7)
+}
+
+test "hms str vals" {
+    var m = hms_new[Str]()
+    hms_put[Str](m, "alpha", "one")
+    hms_put[Str](m, "beta", "two")
+    assert_eq(hms_get[Str](m, "alpha", "?"), "one")
+    assert_eq(hms_get[Str](m, "beta", "?"), "two")
+    assert_eq(hms_get[Str](m, "gamma", "?"), "?")
+}
+
+test "hm alias write-through" {
+    var m = hms_new[I64]()
+    var alias = m
+    hms_put[I64](m, "x", 10)
+    assert_eq(hms_len[I64](alias), 1)
+    assert_eq(hms_get[I64](alias, "x", 0), 10)
+    hms_put[I64](alias, "x", 20)
+    assert_eq(hms_get[I64](m, "x", 0), 20)
+}
+
+test "hmi basics incl negative" {
+    var m = hmi_new[Str]()
+    hmi_put[Str](m, 1001, "zou")
+    hmi_put[Str](m, -42, "neg")
+    assert_eq(hmi_len[Str](m), 2)
+    assert_eq(hmi_get[Str](m, 1001, "?"), "zou")
+    assert_eq(hmi_get[Str](m, -42, "?"), "neg")
+    assert_eq(hmi_get[Str](m, 7, "?"), "?")
+    assert(hmi_has[Str](m, -42))
+    assert(!hmi_has[Str](m, 0))
+}
+
+test "hm growth to 200 keys" {
+    var m = hmi_new[I64]()
+    var i: I64 = 0
+    while i < 200 {
+        hmi_put[I64](m, i * 7, i)
+        i += 1
+    }
+    assert_eq(hmi_len[I64](m), 200)
+    i = 0
+    while i < 200 {
+        assert_eq(hmi_get[I64](m, i * 7, -1), i)
+        i += 1
+    }
+    assert_eq(hmi_get[I64](m, 1401, -1), -1)
+}
+
+test "hm insertion order keys vals" {
+    var m = hms_new[I32]()
+    hms_put[I32](m, "b", 2)
+    hms_put[I32](m, "a", 1)
+    hms_put[I32](m, "c", 3)
+    hms_put[I32](m, "a", 9)
+    var ks = hms_keys[I32](m)
+    assert_eq(ks.len, 3)
+    assert_eq(ks[0], "b")
+    assert_eq(ks[1], "a")
+    assert_eq(ks[2], "c")
+    var vs = hms_vals[I32](m)
+    assert_eq(vs[0], 2)
+    assert_eq(vs[1], 9)
+    assert_eq(vs[2], 3)
+}
+
+test "hm del removes and keeps order" {
+    var m = hms_new[I32]()
+    hms_put[I32](m, "a", 1)
+    hms_put[I32](m, "b", 2)
+    hms_put[I32](m, "c", 3)
+    hms_del[I32](m, "b")
+    assert_eq(hms_len[I32](m), 2)
+    assert(!hms_has[I32](m, "b"))
+    assert(hms_has[I32](m, "a"))
+    assert(hms_has[I32](m, "c"))
+    var ks = hms_keys[I32](m)
+    assert_eq(ks[0], "a")
+    assert_eq(ks[1], "c")
+    hms_del[I32](m, "zz")
+    assert_eq(hms_len[I32](m), 2)
+}
+
+test "hm re-put after del" {
+    var m = hmi_new[Str]()
+    hmi_put[Str](m, 1, "a")
+    hmi_put[Str](m, 2, "b")
+    hmi_del[Str](m, 1)
+    hmi_put[Str](m, 3, "c")
+    assert_eq(hmi_len[Str](m), 2)
+    assert_eq(hmi_get[Str](m, 3, "?"), "c")
+    assert_eq(hmi_get[Str](m, 2, "?"), "b")
+}
+
+test "hm empty map edges" {
+    var m = hms_new[I64]()
+    assert_eq(hms_len[I64](m), 0)
+    assert_eq(hms_get[I64](m, "nope", 7), 7)
+    assert_eq(hms_keys[I64](m).len, 0)
+    assert_eq(hms_vals[I64](m).len, 0)
+    hms_del[I64](m, "nope")
+    assert_eq(hms_len[I64](m), 0)
+    var e2 = hmi_new[I64]()
+    assert_eq(hmi_len[I64](e2), 0)
+    assert_eq(hmi_get[I64](e2, 5, -1), -1)
+}

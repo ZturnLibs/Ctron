@@ -329,6 +329,7 @@ pub fn to_lower(s: Str) -> Str {
     return out
 }
 
+// ASCII 大写转换(A-Z 外字节原样透传,UTF-8 序列不破坏)
 pub fn to_upper(s: Str) -> Str {
     var upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     var out = ""
@@ -352,6 +353,7 @@ pub fn to_upper(s: Str) -> Str {
     return out
 }
 
+// 左垫 pad 至 width 字节(len 口径;已达宽度原样返回,不截断)
 pub fn pad_left(s: Str, width: I32, pad: Str) -> Str {
     var out = s
     while out.len < width {
@@ -360,6 +362,7 @@ pub fn pad_left(s: Str, width: I32, pad: Str) -> Str {
     return out
 }
 
+// 右垫 pad 至 width 字节(口径同 pad_left)
 pub fn pad_right(s: Str, width: I32, pad: Str) -> Str {
     var out = s
     while out.len < width {
@@ -368,6 +371,7 @@ pub fn pad_right(s: Str, width: I32, pad: Str) -> Str {
     return out
 }
 
+// 第 i 字节的单字节串(字节级口径,非码点;越界行为同 byte_slice)
 pub fn char_at(s: Str, i: I32) -> Str {
     return byte_slice(s, i, i + 1)
 }
@@ -467,6 +471,7 @@ pub fn is_ascii_digit(b: I32) -> Bool {
     return b >= 48 && b <= 57
 }
 
+// ASCII 字母(A-Z/a-z)
 pub fn is_ascii_alpha(b: I32) -> Bool {
     if b >= 65 && b <= 90 {
         return true
@@ -474,6 +479,7 @@ pub fn is_ascii_alpha(b: I32) -> Bool {
     return b >= 97 && b <= 122
 }
 
+// ASCII 空白(空格/\t/\n/\r 四种)
 pub fn is_ascii_space(b: I32) -> Bool {
     if b == 32 {
         return true
@@ -495,6 +501,7 @@ pub fn strip_prefix(s: Str, pre: Str) -> Option[Str] {
     return Some(byte_slice(s, pre.len, s.len))
 }
 
+// 后缀剥离;不匹配 None(与 strip_prefix 对偶)
 pub fn strip_suffix(s: Str, suf: Str) -> Option[Str] {
     if !ends_with(s, suf) {
         return None
@@ -604,6 +611,7 @@ pub fn str_get(o: Option[Str], dft: Str) -> Str {
     }
 }
 
+// Option[Str] 是否 Some(发射面 C13 判别形助手)
 pub fn str_some(o: Option[Str]) -> Bool {
     match o {
         Some(v) => {
@@ -780,14 +788,17 @@ pub fn split_n(s: Str, sep: Str, max: I32) -> List[Str] {
     return out
 }
 
+// ASCII 大写字母(A-Z)
 pub fn is_ascii_upper(b: I32) -> Bool {
     return b >= 65 && b <= 90
 }
 
+// ASCII 小写字母(a-z)
 pub fn is_ascii_lower(b: I32) -> Bool {
     return b >= 97 && b <= 122
 }
 
+// ASCII 十六进制数字位(0-9/A-F/a-f)
 pub fn is_ascii_xdigit(b: I32) -> Bool {
     if b >= 48 && b <= 57 {
         return true

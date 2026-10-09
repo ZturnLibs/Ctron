@@ -53,6 +53,7 @@ nav:
       - fmap: std/fmap.md
       - fs: std/fs.md
       - hash: std/hash.md
+      - hashmap: std/hashmap.md
       - heap: std/heap.md
       - iter: std/iter.md
       - json: std/json.md

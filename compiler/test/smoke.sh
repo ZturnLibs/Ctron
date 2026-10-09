@@ -457,7 +457,7 @@ fi
 echo "== 3j3) std 全模块 Rust 臂 parity(内建面欠账清单驱动;清账即翻绿提醒) =="
 RUSTBIN="$ROOT/compiler-rust/target/release/ctronr"
 if [ -x "$RUSTBIN" ]; then
-    known="json sort fs unicode gui time log ndjson pb"  # log/ndjson/pb=0929 归因预存欠账(R check 宽松度);iter=1006 清账移除(对端 ctronr 重建翻绿,3j3 门处方)
+    known="json sort fs unicode gui time log ndjson pb hashmap"  # log/ndjson/pb=0929 归因预存欠账(R check 宽松度);iter=1006 清账移除(对端 ctronr 重建翻绿,3j3 门处方);hashmap=1009 Box 载体可变容器新面(ctronr 待 interp 线补 Box×泛型 struct 写穿,seed/emit 双臂已绿)
     newred=0
     knownred=0
     flipped=""

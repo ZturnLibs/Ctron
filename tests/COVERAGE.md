@@ -1,4 +1,21 @@
-> **W2 批已落地(2026-10-09,headless 装配合成 + Driver 持 bind)。**
+> **std/hashmap W1 批已落地(2026-10-09,spec dd65d9b3/plan 84a79ce9;HMapS[V]/HMapI[V] 可变哈希映射入册)。**
+> 开放寻址+线性探查+Box 载体写穿别名共享(宪章 3a 附则随批入 README:可变容器
+> 与函数式族并存,tier:alloc 申报)。put 插入均摊 O(1)(负载 3/4 倍增)/覆盖写 O(n)
+> 重建/del O(n) 活词表重建(v0.9 无墓碑)/get O(1)/插入序迭代。设计 R3 二次修订=
+> **注入形(hash/eq fn 形参)裁撤改具体键双件**(Str/I64 键,哈希相等内联)——发射
+> 探针 B1–B4 实证:具体型 fn 值传入泛型 fn 型形参的发射 trampoline 按 ct_i 裸传
+> (heap Darwin 4c known-red「比较器形参」同款在册债);泛型键 K:Hash+Eq bound 面
+> 维持 W3 触发件。门:模块 seed+发射双臂逐字一致(11 tests)/stdpkg 消费面两臂
+> 逐字/smoke 236/0(基线 224→236;3j3 登记 ctronr Box 载体欠账共 9 模块;4c emit
+> 23 模块绿)/suite 112×112/std_doc --check 27 页绿/decls 锁 521 不变。
+> **发射面形状债四条(B1–B4 探针钉边)**:①经 Box 泛型元素值位读/写无装载语义
+> (items[t_i] 裸传:读返回 char*、写不装箱)——绕行=形参 List 助手(_at/_copy_skip,
+> sort/fmap 同形)+重建+字段重赋值;②Box 字段→局部 var 泛型 List 丢 ty;③泛型
+> 宿主 fn 内对助手传具体型显式 TypeArgs:seed 面结果型不绑定 E2010、发射臂同形
+> 绿(seed/emit 宽严反向分歧;B4 初版病态 dft 型 seed 放行附证);④无中缀 as——
+> 收窄用 as[T]() 方法形(pb.ct:280 先例)。顺手销账:vendored examples 四对同步
+> (187ea6aa 文档批尾巴)+3j3 known= 登记 hashmap。
+>
 > `test_view(ViewCall, w, h, body)`:desugar 合成形(marker/ordn/rew 三分支 + __gui_test_V
 > 恒随合成[src=ctron_embedded,bind/act 闭包与 run 同构,key 空体]);改写面**多站点化**
 > (rew_block/rew_file 首中即返改累积——main 的 run + tests 的 test_view 共存实证 s94;
