@@ -20,11 +20,11 @@ tar xzf ctron-<版本>-src.tar.gz && cd ctron-src-<版本>
 make && make install PREFIX="$HOME/.ctron"
 ```
 
-> 首个 Release(v0.0.1)发布前,上面的下载路尚不可用;此阶段请克隆仓库、按 `compiler/BOOTSTRAP.md` 自举构建。装好后用 `ctron --version` 验证:装机形态输出 `ctron <版本> <git-sha>`,仓库 dev 形态输出 `ctron dev`。
+> 装好后用 `ctron --version` 验证:装机形态输出 `ctron <版本> <git-sha>`,仓库 dev 形态输出 `ctron dev`。
 
 ## Hello, Ctron
 
-`ctron new` 生成项目骨架:`Ctron.toml`(目前只有 `name` 一个字段)+ `Ctron.ctcl`(能力声明清单)+ `src/main.ct`(hello 程序)。`ctron run` 是纯解释执行——解析、语义检查、直接求值一条龙,零外部依赖,也是最快的上手路径:
+`ctron new` 生成项目骨架:`Ctron.ctcl`(CTCL 清单:name / version / 能力声明等)+ `src/main.ct`(hello 程序)。`ctron run` 是纯解释执行——解析、语义检查、直接求值一条龙,零外部依赖,也是最快的上手路径:
 
 ```bash
 $ ctron new hello && cd hello
@@ -60,7 +60,7 @@ hello, ctron
 
 ## 项目模式
 
-`ctron build` 不带参数即项目模式:读 `Ctron.toml` 的 `name`,入口固定 `src/main.ct`,产出 `build/<name>`;`c_src/*.c` 若存在则一并链接(FFI 场景):
+`ctron build` 不带参数即项目模式:读 `Ctron.ctcl` 的 `name`,入口固定 `src/main.ct`,产出 `build/<name>`;`c_src/*.c` 若存在则一并链接(FFI 场景):
 
 ```bash
 $ ctron build
@@ -76,5 +76,7 @@ hello, ctron
 - 退出码:`0` 成功,`1` 程序诊断失败,`2` ctron 环境或用法错误。
 - Windows:`run` / `check` / `new` 零前提;`build` 需 mingw-w64(MSYS2 `pacman -S mingw-w64-x86_64-gcc`,或免安装的 w64devkit),产物带 `.exe`。
 - `build` 与 Windows 整体处于 β:能力边界见根 `README.md` 与工具链分发设计(`docs/superpowers/specs/`)。
+
+语言十分钟速览:[十分钟上手](tour.md)。
 
 下一步:[示例](examples.md)——三个完整 CLI 工具的注解源码。

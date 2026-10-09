@@ -20,11 +20,11 @@ tar xzf ctron-<version>-src.tar.gz && cd ctron-src-<version>
 make && make install PREFIX="$HOME/.ctron"
 ```
 
-> Before the first release (v0.0.1) the download routes above are not live yet; until then, clone the repository and follow the bootstrap in `compiler/BOOTSTRAP.md`. Verify with `ctron --version`: an installed toolchain prints `ctron <version> <git-sha>`, a dev checkout prints `ctron dev`.
+> Verify the install with `ctron --version`: an installed toolchain prints `ctron <version> <git-sha>`, a dev checkout prints `ctron dev`.
 
 ## Hello, Ctron
 
-`ctron new` scaffolds a project: `Ctron.toml` (currently just the project `name` field), `Ctron.ctcl` (the capability-declaration manifest), and `src/main.ct` (a hello program). `ctron run` is pure interpretation — parse, check, evaluate in one pass with zero external dependencies, and the fastest way in. (Driver messages are Chinese in v0.0.x; the checker's summary line is English.)
+`ctron new` scaffolds a project: `Ctron.ctcl` (the CTCL manifest: name / version / capability declarations) and `src/main.ct` (a hello program). `ctron run` is pure interpretation — parse, check, evaluate in one pass with zero external dependencies, and the fastest way in. (Driver messages are Chinese in v0.0.x; the checker's summary line is English.)
 
 ```bash
 $ ctron new hello && cd hello
@@ -60,7 +60,7 @@ hello, ctron
 
 ## Project mode
 
-`ctron build` without arguments is project mode: it reads `name` from `Ctron.toml`, uses `src/main.ct` as the entry, and produces `build/<name>`. Any `c_src/*.c` files are linked in (the FFI path):
+`ctron build` without arguments is project mode: it reads `name` from `Ctron.ctcl`, uses `src/main.ct` as the entry, and produces `build/<name>`. Any `c_src/*.c` files are linked in (the FFI path):
 
 ```bash
 $ ctron build
@@ -75,5 +75,7 @@ hello, ctron
 - Subcommands: `run` / `check` / `build` / `test` / `new`; `ctron --help` for the overview, `ctron help <cmd>` for details. Exit codes: `0` success, `1` program diagnostics, `2` ctron environment or usage error.
 - Windows: `run` / `check` / `new` have no prerequisites; `build` needs mingw-w64 (MSYS2 `pacman -S mingw-w64-x86_64-gcc`, or the single-file w64devkit) and produces `.exe` binaries.
 - `build` and Windows are beta overall: capability boundaries are documented in the root `README.md` and the toolchain distribution design under `docs/superpowers/specs/`.
+
+For a rapid language tour, see [The Ten-Minute Tour](tour.md).
 
 Next: [Examples](examples.md) — three complete CLI tools with annotated sources.

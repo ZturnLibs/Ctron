@@ -29,7 +29,9 @@ plugins:
           build: true
 nav:
   - Home: index.md
-  - Getting Started: getting-started.md
+  - Getting Started:
+      - Setup & First Build: getting-started.md
+      - Ten-Minute Tour: tour.md
   - Language Spec:
       - Overview: spec/README.md
       - 1 词法与语法: spec/01-lexical-grammar.md
