@@ -27,6 +27,7 @@ use http.frm.metrics.{ mx_meta, mx_line }
 use http.frm.auth.{ auth_jwt_sign, auth_jwt_verify, auth_jwt_claim, at_ok, at_tok, jwt_rc }
 use http.frm.body.{ body_json, bj_rc, bj_str, bs_v }
 use std.strconv.{ parse_i64, sc_get_l }
+use std.hashmap.{ hmi_new, hmi_put, hmi_get, hmi_has, hmi_del, hmi_len, hmi_keys }
 
 // —— 同源路由表(OpenAPI 导出与分发共用此常量)——
 const ROUTES: Str = "GET /health|GET /todos|POST /todos|DELETE /todos/:id|GET /openapi.json|GET /|POST /__shutdown|POST /login|GET /metrics"
@@ -178,10 +179,11 @@ fn main() {
     }
     println("todo-api listening on 127.0.0.1:" + port_box.v.to_string())
 
-    // 内存存储(可插拔缺省形:平行 List)
-    var ids: List[Str] = List[Str]()     // id 以十进制 Str 存(同 dones,发射面数值列表元素读在册债)
-    var titles: List[Str] = List[Str]()
-    var dones: List[Str] = List[Str]()   // done 位以 "0"/"1" 存(List[I64] 元素读为已登记发射债,Str 列表原生)
+    // 内存存储(W2 换装:hmi 双 Map,id(I64) → title / → done;平行 List 退役——
+    // 其注释自认绕"数值列表元素读发射债"。V=struct 组合发射面未通(泛型 struct 值
+    // 经 Box push 强转指针,2026-10-09 探针登记),故双 Map 非 Todo 值 Map。)
+    var titles = hmi_new[Str]()
+    var dones = hmi_new[I64]()
     var next_id: I64 = 1
     var served: I64 = 0
     var stop = 0
@@ -380,18 +382,18 @@ fn main() {
         // —— CRUD ——
         if target == "/todos" && method == "GET" {
             var body = "["
+            var idl = hmi_keys[Str](titles)
             var i: I32 = 0
-            while i < ids.len {
+            while i < idl.len {
                 if i > 0 {
                     body = body + ","
                 }
-                let idv = ids[i]
-                let dn = dones[i]
+                let idv = idl[i]
                 var dv = "false"
-                if dn == "1" {
+                if hmi_get[I64](dones, idv, 0) == 1 {
                     dv = "true"
                 }
-                body = body + "\{\"id\":" + idv + ",\"title\":\"" + oa_json_escape(titles[i]) + "\",\"done\":" + dv + "}"
+                body = body + "\{\"id\":" + idv.to_string() + ",\"title\":\"" + oa_json_escape(hmi_get[Str](titles, idv, "")) + "\",\"done\":" + dv + "}"
                 i += 1
             }
             body = body + "]"
@@ -419,9 +421,8 @@ fn main() {
                 net_close(net, fd)
                 continue
             }
-            ids.push(dstr(next_id))
-            titles.push(title)
-            dones.push("0")
+            hmi_put[Str](titles, next_id, title)
+            hmi_put[I64](dones, next_id, 0)
             let out = "\{\"id\":" + dstr(next_id) + ",\"title\":\"" + oa_json_escape(title) + "\",\"done\":false}"
             next_id += 1
             respond(cnt, net, fd, buf, "201 Created", "application/json", out)
@@ -431,41 +432,15 @@ fn main() {
         }
         // DELETE /todos/:id
         if target.len >= 8 && eqs(byte_slice(target, 0, 7), "/todos/") && method == "DELETE" {
-            let idv = byte_slice(target, 7, target.len)
-            var hit: I32 = 0 - 1
-            var i: I32 = 0
-            while i < ids.len {
-                let cur = ids[i]
-                if eqs(cur, idv) {
-                    hit = i
-                    break
-                }
-                i += 1
-            }
-            if hit < 0 {
+            let idv = parse_i64(byte_slice(target, 7, target.len)).or(0 - 1)
+            if (idv < 0) || (!hmi_has[Str](titles, idv)) {
                 respond(cnt, net, fd, buf, "404 Not Found", "application/json", "\{\"error\":\"no such todo\"}")
                 cnt[cslot("404")] = cnt[cslot("404")] + 1
                 net_close(net, fd)
                 continue
             }
-            var nids: List[I64] = List[I64]()
-            var ntitles: List[Str] = List[Str]()
-            var ndones: List[I64] = List[I64]()
-            var j: I32 = 0
-            while j < ids.len {
-                if j != hit {
-                    let pj = ids[j]
-                    let tj = titles[j]
-                    let dj = dones[j]
-                    nids.push(pj)
-                    ntitles.push(tj)
-                    ndones.push(dj)
-                }
-                j += 1
-            }
-            ids = nids
-            titles = ntitles
-            dones = ndones
+            hmi_del[Str](titles, idv)
+            hmi_del[I64](dones, idv)
             respond(cnt, net, fd, buf, "204 No Content", "text/plain", "")
             cnt[cslot("204")] = cnt[cslot("204")] + 1
             net_close(net, fd)
