@@ -18,12 +18,24 @@ rewrite_repo_links() {
         -e 's#](\.\./superpowers/specs/#](https://github.com/ZturnLibs/Ctron/blob/main/docs/superpowers/specs/#g'
 }
 
+# 对外发布面消毒(用户裁决 2026-10-09):站点不暴露内部规划/设计文档——
+# 指向 docs/superpowers/** 的链接与路径一律替换为中性的"仓库内部设计文档",
+# 只保留正文的规范性内容,不带内部文档坐标。
+sanitize_internal_refs() {
+    sed \
+        -e 's#\[[^]]*\](https://github\.com/ZturnLibs/Ctron/blob/main/docs/superpowers/[^)]*)#仓库内部设计文档#g' \
+        -e 's#`docs/superpowers/[^`]*`#仓库内部设计文档#g' \
+        -e 's#docs/superpowers/[^)[:space:]`)]*#仓库内部设计文档#g' \
+        -e 's#`[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}-[a-z0-9-]*\.md`#仓库内部设计文档#g' \
+        -e 's#仓库内部设计文档 + 仓库内部设计文档#仓库内部设计文档#g'
+}
+
 if [ "${1:-}" = "--check" ]; then
     TMP=$(mktemp -d /tmp/sitespec.XXXXXX) && trap 'rm -rf "$TMP"' EXIT
     RC=0
     for F in "$SRC"/*.md; do
         B="$(basename "$F" .md).zh.md"
-        { printf '%s\n' "$FM"; cat "$F"; } | rewrite_repo_links > "$TMP/$B"
+        { printf '%s\n' "$FM"; cat "$F"; } | rewrite_repo_links | sanitize_internal_refs > "$TMP/$B"
         if [ -f "$DST/$B" ]; then
             diff -u "$DST/$B" "$TMP/$B" || RC=1
         else
@@ -41,7 +53,7 @@ fi
 
 mkdir -p "$DST"
 for F in "$SRC"/*.md; do
-    { printf '%s\n' "$FM"; cat "$F"; } | rewrite_repo_links > "$DST/$(basename "$F" .md).zh.md"
+    { printf '%s\n' "$FM"; cat "$F"; } | rewrite_repo_links | sanitize_internal_refs > "$DST/$(basename "$F" .md).zh.md"
 done
 # 陈旧件清理:源已删除的同步件一并移除(只清 .zh.md,英文手维护译件不动)
 for OLD in "$DST"/*.zh.md; do

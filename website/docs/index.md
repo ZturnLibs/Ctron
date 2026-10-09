@@ -39,7 +39,7 @@ Tasks run under `scope` / `spawn` / `join` — block-scoped, with cancellation p
 | [Getting Started](getting-started.md) | Three ways to install, hello ctron, your first executable, project mode |
 | [Examples](examples.md) | Annotated sources of ctgrep / ctwc / ctwf |
 | [Download](download.md) | Five-platform asset matrix, checksums, Windows notes |
-| [Language Spec](spec/README.md) | v0.7 frozen draft; diagnostics carry stable error codes |
+| [Language Spec](spec/README.md) | v0.8 frozen draft; diagnostics carry stable error codes |
 | [Std Reference](std/README.md) | Per-module signature tables |
 
-Repository: [ZturnLibs/Ctron](https://github.com/ZturnLibs/Ctron) · Design and implementation notes live in `docs/superpowers/specs/` and `compiler/BOOTSTRAP.md`.
+Repository: [ZturnLibs/Ctron](https://github.com/ZturnLibs/Ctron) · Source build guide: `compiler/BOOTSTRAP.md`.

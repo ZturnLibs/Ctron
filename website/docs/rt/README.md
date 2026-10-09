@@ -13,7 +13,7 @@ API。逐项文档见源内 README:
 - `--profile=bare` 将有效档钳到 core(use 点档位越界 = E3040,一次诊断);
   档位轴(core/alloc/std)见 [std/README.md](../std/README.md) 档位轴章。
 - 裸档体检:`tier_real_pos`(core 五模块全量消费零诊断)。
-- GC/分配语义差异与 ISR parity 见 docs/superpowers/plans/ 各 T40–T42 批次记录。
+- GC/分配语义差异与 ISR parity 以 `tests/bare`/`tests/ffi` 套件实测为准。
 
 注:本页为指针页;rt 面的「API」即 C 垫片符号,以 `lib/rt/*/include` 与
 `lib/rt/*/src` 源为单一真源。

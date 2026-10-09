@@ -39,7 +39,7 @@ ctron build main.ct    # 发射 C → 本机 cc → 原生可执行
 | [入门](getting-started.md) | 安装三法、hello ctron、第一个可执行、项目模式 |
 | [示例](examples.md) | ctgrep / ctwc / ctwf 注解源码与复现命令 |
 | [下载](download.md) | 五平台产物矩阵、校验、Windows 说明 |
-| [语言规范](spec/README.md) | v0.7 冻结草案，诊断一律带稳定错误码 |
+| [语言规范](spec/README.md) | v0.8 冻结草案，诊断一律带稳定错误码 |
 | [标准库参考](std/README.md) | 模块签名表 |
 
-仓库:[ZturnLibs/Ctron](https://github.com/ZturnLibs/Ctron) · 设计与实现细节见 `docs/superpowers/specs/` 与 `compiler/BOOTSTRAP.md`。
+仓库:[ZturnLibs/Ctron](https://github.com/ZturnLibs/Ctron) · 源码构建:`compiler/BOOTSTRAP.md`。

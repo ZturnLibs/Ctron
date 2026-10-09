@@ -13,5 +13,5 @@ registry v1 + CTCL 子集解析的**库半面**;CLI 落点 = 仓库 `tools/pkg.c
 lockfile v1 = `ctron-lock.ndjson` 管道行(`name|ver|hash16` 每包一行;
 NDJSON 对象形随字符串转义基建)。
 
-相关:T49 lockfile/workspace/add/publish 已落;闭源包分发的信任协议四层
-与发布契约见 docs/superpowers/plans/ T50 系列(verify/attest/透明日志仓)。
+相关:lockfile/workspace/add/publish 已落;闭源包分发的信任协议与
+发布契约由 `ctron pkg verify`/`ctron publish` 工具面承载。

@@ -75,7 +75,7 @@ hello, ctron
 - 子命令:`run` / `check` / `build` / `test` / `new`;`ctron --help` 总览,`ctron help <cmd>` 子命令详助。
 - 退出码:`0` 成功,`1` 程序诊断失败,`2` ctron 环境或用法错误。
 - Windows:`run` / `check` / `new` 零前提;`build` 需 mingw-w64(MSYS2 `pacman -S mingw-w64-x86_64-gcc`,或免安装的 w64devkit),产物带 `.exe`。
-- `build` 与 Windows 整体处于 β:能力边界见根 `README.md` 与工具链分发设计(`docs/superpowers/specs/`)。
+- `build` 与 Windows 整体处于 β:能力边界见根 `README.md`。
 
 语言十分钟速览:[十分钟上手](tour.md)。
 

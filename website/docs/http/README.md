@@ -1,8 +1,7 @@
-# http 域包 —— HTTP/1.1 严格子集(T2;P4-C 面)
+# http 域包 —— HTTP/1.1 严格子集
 
 解析/报文/客户端/SSE/WebSocket/form/日期/编码 + 中间件框架(frm)的单域集合。
-**消费形态 = 顶层命名空间 `use http.<子模块>.{...}`**;规范面 = [语言规范
-§11 网络](../spec/11-net.md),服务端全形见 [Server 指南](../server-guide.md)。
+**消费形态 = 顶层命名空间 `use http.<子模块>.{...}`**;规范面 = [语言规范·网络](../spec/11-net.md),服务端全形见 [Server 指南](../server-guide.md)。
 
 ## 布局
 
@@ -40,12 +39,12 @@ http/c_src/          C 胶水
 ## 口径与坑位
 
 1. parse 面为**严格子集**(RFC 9112 收窄),语料驱动:`tests/http/corpus/`;
-   `parse.ct` 的 `http_head_end` = 体起点语义(勿 +4,在册坑)。
-2. 服务循环必须**显式读体再切片**(分片竞态 ~30% Heisenberg,在册)。
+   `parse.ct` 的 `http_head_end` = 体起点语义(勿 +4)。
+2. 服务循环必须**显式读体再切片**(否则存在分片竞态)。
 3. frm 中间件零 use 叶优先(router/cors/sechdr/limit/timeout);csrf/auth→
    std.crypto、body→std.json;`middleware.ct → http.frm.router` 经
    `use http.frm.router.{...}`(域内下行,禁环)。
-4. 中间件/fn 值派发 = 返回 wire,勿包裹(在册坑)。
+4. 中间件/fn 值派发 = 返回 wire,勿包裹。
 
 验收:`tests/http/run.sh`(主环解释器 + corpus 断言夹具 + emit 对拍副臂);
 行为端到端 = `tests/http/frm_serve`(IO 粘合在 serve.ct)。

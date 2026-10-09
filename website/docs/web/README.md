@@ -3,13 +3,11 @@
 应用框架层:Req/Resp/Router/中间件/视图微 builder,坐于
 [http](../http/README.md)(net 之上协议半层)与 [net](../net/README.md)
 (TCP 门面)两域包之上;应用代码(handler + views + store)零 HTTP 底座。
-设计全案 = 仓库 `docs/superpowers/specs/2026-09-27-web-framework-design.md`
-(API 定稿面 §4,语义条款 §7,范围边界 §8);包内速览与 API 表以仓库
-`pkgs/web/README.md` 为单一真源。
+包内速览与 API 表以仓库 `pkgs/web/README.md` 为单一真源。
 
 **消费形态 = `use web.<子模块>.{...}`**(包清单 `pkgs/web/Ctron.ctcl`)。
 
-## 门面契约(spec §4.4 流式演进条款)
+## 门面契约
 
 应用与中间件只经构造器与 `.with()` 族触 Resp,禁直构 `Resp` 字面量、不依赖
 字段布局;Resp 序列化咽喉收敛于 serve.ct `render` 一处(全仓唯一状态行/头区/

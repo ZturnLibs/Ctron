@@ -11,7 +11,7 @@
 | 查域包/registry 包的 API | 同上,路径 `lib/<域>/<file>.ct` / `pkgs/<包>/<file>.ct` |
 | 人读参考页(同源渲染) | [Std Reference](std/README.md) · [Domain Packages](net/README.md) · [Registry Packages](gui/README.md) |
 | 语言语义/文法/诊断码 | [Language Spec](spec/README.md)(docs/spec 12 章) |
-| std 组织宪章/分层/准入 | 仓库 `lib/std/README.md` |
+| std 组织与分层说明 | 仓库 `lib/std/README.md` |
 | 发射面缺口清单 | 仓库 `tests/COVERAGE.md` |
 
 ## ctron-doc JSON 面

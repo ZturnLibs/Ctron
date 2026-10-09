@@ -74,7 +74,7 @@ hello, ctron
 
 - Subcommands: `run` / `check` / `build` / `test` / `new`; `ctron --help` for the overview, `ctron help <cmd>` for details. Exit codes: `0` success, `1` program diagnostics, `2` ctron environment or usage error.
 - Windows: `run` / `check` / `new` have no prerequisites; `build` needs mingw-w64 (MSYS2 `pacman -S mingw-w64-x86_64-gcc`, or the single-file w64devkit) and produces `.exe` binaries.
-- `build` and Windows are beta overall: capability boundaries are documented in the root `README.md` and the toolchain distribution design under `docs/superpowers/specs/`.
+- `build` and Windows are beta overall: capability boundaries are documented in the root `README.md`.
 
 For a rapid language tour, see [The Ten-Minute Tour](tour.md).
 

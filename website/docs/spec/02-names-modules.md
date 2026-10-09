@@ -15,7 +15,7 @@
 - Group imports: `use net.{TcpListener, Request}` (a trailing comma is allowed).
 - Paths always start **from the package root** (Go-style fully qualified); there are no relative imports and no `super/self` path modules. `self` is used only for type reference inside impl (§1.7).
 - **Namespaces (2026-09-23; physical lib-root layout 2026-09-30)**: `std.*` = standard library core; **domain packages hang off the top-level namespace** — `net` / `http` / `tls` / `db` / `ffi` (shipped domains; physical `lib/<domain>`, installed at `~/.ctron/lib/<domain>`) plus `web` / `gui` / `s3` / `pkg` (registry upstream; physical `pkgs/<domain>`, installed at `~/.ctron/pkgs/<domain>`). `use net.{...}` resolves the lib-root facade `lib/net.ct`, and `use net.bind.{...}` resolves `lib/net/bind.ct` — the segment mapping mirrors the `std.*` branch segment by segment.
-- **Non-std first-segment resolution chain**: ① directory-relative (project-local packages, existing semantics) → ② lib root (the `lib/` directory that parents the std root) → ③ site root (derived from ① `CTRON_SITEPATH` and ② the `pkgs/` directory next to the lib root; registry-installed user packages) → ④ `deps/<pkg>.ctart` artifact fallback (closed-source distribution, S2a). If the whole chain misses, collection stays silent and the driver layer adds W8902 as the installation remedy; E2020 is the final fallback. Normative anchors: `docs/superpowers/specs/2026-09-23-domain-namespace-design.md` + `2026-09-30-libroot-layout-design.md`.
+- **Non-std first-segment resolution chain**: ① directory-relative (project-local packages, existing semantics) → ② lib root (the `lib/` directory that parents the std root) → ③ site root (derived from ① `CTRON_SITEPATH` and ② the `pkgs/` directory next to the lib root; registry-installed user packages) → ④ `deps/<pkg>.ctart` artifact fallback (closed-source distribution, S2a). If the whole chain misses, collection stays silent and the driver layer adds W8902 as the installation remedy; E2020 is the final fallback. Normative anchors: internal design documents in the repository.
 
 ## 2.3 Visibility
 
@@ -45,7 +45,7 @@
 
 ## 2.7 Package Metadata (`Ctron.ctcl`)
 
-> **Revision note (proposed 2026-09-16; hard-cut landed 2026-10-02 via T48)**: the manifest format has completed its migration from the TOML dialect (`Ctron.toml`) to **CTCL (Ctron Config Language, `Ctron.ctcl`)**. The normative definition is [`docs/superpowers/specs/2026-09-16-config-language-v1.md`](https://github.com/ZturnLibs/Ctron/blob/main/docs/superpowers/specs/2026-09-16-config-language-v1.md) (the block-style grammar, the fail-closed registry, the `caps = ["fs"]` list form, the three mutually exclusive deps forms, the three-line parser contract). The TOML surface has been removed: when any of the three lines reads a legacy `Ctron.toml`, it always emits the E5040 migration diagnostic (verbatim identical), and the installer's `ctron build` project mode refuses to build fail-closed; in-repo manifests are 100% migrated (104 files) and `ctron new` emits only `.ctcl`. The TOML example below is kept as historical record only.
+> **Revision note (proposed 2026-09-16; hard-cut landed 2026-10-02 via T48)**: the manifest format has completed its migration from the TOML dialect (`Ctron.toml`) to **CTCL (Ctron Config Language, `Ctron.ctcl`)**. The normative definition lives in internal design documents in the repository (the block-style grammar, the fail-closed registry, the `caps = ["fs"]` list form, the three mutually exclusive deps forms, the three-line parser contract). The TOML surface has been removed: when any of the three lines reads a legacy `Ctron.toml`, it always emits the E5040 migration diagnostic (verbatim identical), and the installer's `ctron build` project mode refuses to build fail-closed; in-repo manifests are 100% migrated (104 files) and `ctron new` emits only `.ctcl`. The TOML example below is kept as historical record only.
 
 ```toml
 [package]
@@ -76,7 +76,7 @@ default = "full"
 > `ctron publish/add/lock` with a local registry surface (the pure directory protocol `CTRON_REGPATH`/`~/.ctron/registry`,
 > zero network; publish for single-file packages + versions are immutable); resolution chain ② = the deps-table probe (after §2.2 chain step ① directory-relative),
 > and ⑤ = the `deps/<pkg>.ctart` fallback slot, reserved pending S2a. Design:
-> docs/superpowers/plans/2026-10-06-t49-lockfile-workspace-add-publish.md
+> internal design documents in the repository
 
 ## 2.8 Correspondence with the Test Suite
 

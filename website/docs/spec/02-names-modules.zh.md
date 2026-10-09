@@ -14,7 +14,7 @@
 - 组导入:`use net.{TcpListener, Request}`(可尾逗号)。
 - 路径一律**从包根起**(Go 式全限定),无相对导入、无 `super/self` 路径模块。`self` 仅用于 impl 内类型指代(§1.7)。
 - **命名空间(2026-09-23;物理 2026-09-30 库根布局)**:`std.*` = 标准库核心;**域包挂顶层命名空间**——`net` / `http` / `tls` / `db` / `ffi`(随发域,物理 `lib/<域>`,装机 `~/.ctron/lib/<域>`)+ `web` / `gui` / `s3` / `pkg`(registry 上游,物理 `pkgs/<域>`,装机 `~/.ctron/pkgs/<域>`)。`use net.{...}` 解析库根门面 `lib/net.ct`,`use net.bind.{...}` 解析 `lib/net/bind.ct`——段映射与 `std.*` 分支逐段镜像。
-- **非 std 首段解析链**:①目录相对(项目本地包,既有语义)→ ②库根(= std 根父目录 `lib/`)→ ③site root(①`CTRON_SITEPATH` ②库根同级 `pkgs/` 推导;registry 用户装包)→ ④`deps/<包>.ctart` 工件回落(闭源分发,S2a)。全链未命中保持静默收集,驱动层附加 W8902 安装出路;最终 E2020 兜底。规范锚:`docs/superpowers/specs/2026-09-23-domain-namespace-design.md` + `2026-09-30-libroot-layout-design.md`。
+- **非 std 首段解析链**:①目录相对(项目本地包,既有语义)→ ②库根(= std 根父目录 `lib/`)→ ③site root(①`CTRON_SITEPATH` ②库根同级 `pkgs/` 推导;registry 用户装包)→ ④`deps/<包>.ctart` 工件回落(闭源分发,S2a)。全链未命中保持静默收集,驱动层附加 W8902 安装出路;最终 E2020 兜底。规范锚:仓库内部设计文档。
 
 ## 2.3 可见性
 
@@ -44,7 +44,7 @@
 
 ## 2.7 包元数据(`Ctron.ctcl`)
 
-> **修订注(2026-09-16 提案;2026-10-02 T48 硬切落地)**:清单格式已由 TOML 方言(`Ctron.toml`)完成向 **CTCL(Ctron Config Language,`Ctron.ctcl`)** 的迁移。规范性定义以 [`docs/superpowers/specs/2026-09-16-config-language-v1.md`](https://github.com/ZturnLibs/Ctron/blob/main/docs/superpowers/specs/2026-09-16-config-language-v1.md) 为准(块式文法、fail-closed 注册表、`caps = ["fs"]` 列表形、deps 三互斥形、三线解析器契约)。TOML 面已移除:三线读到遗留 `Ctron.toml` 一律给 E5040 迁移诊断(逐字一致),安装器 `ctron build` 项目模式 fail-closed 拒构;在库清单已 100% 迁移(104 份),`ctron new` 仅产 `.ctcl`。下方 TOML 示例仅作历史记录。
+> **修订注(2026-09-16 提案;2026-10-02 T48 硬切落地)**:清单格式已由 TOML 方言(`Ctron.toml`)完成向 **CTCL(Ctron Config Language,`Ctron.ctcl`)** 的迁移。规范性定义以 仓库内部设计文档 为准(块式文法、fail-closed 注册表、`caps = ["fs"]` 列表形、deps 三互斥形、三线解析器契约)。TOML 面已移除:三线读到遗留 `Ctron.toml` 一律给 E5040 迁移诊断(逐字一致),安装器 `ctron build` 项目模式 fail-closed 拒构;在库清单已 100% 迁移(104 份),`ctron new` 仅产 `.ctcl`。下方 TOML 示例仅作历史记录。
 
 ```toml
 [package]
@@ -75,7 +75,7 @@ default = "full"
 > `ctron publish/add/lock` 本地 registry 面(纯目录协议 `CTRON_REGPATH`/`~/.ctron/registry`,
 > 零网络;publish 单文件包 + 版本不可覆盖);解析链② = dep 表探针(§2.2 链序①目录相对
 > 之后),⑤ = `deps/<pkg>.ctart` 回落位保留待 S2a。设计:
-> docs/superpowers/plans/2026-10-06-t49-lockfile-workspace-add-publish.md
+> 仓库内部设计文档
 
 ## 2.8 与测试集的对应
 

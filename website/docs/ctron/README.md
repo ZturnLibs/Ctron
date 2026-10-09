@@ -1,4 +1,4 @@
-# ctron 包 —— 编译器插件接口包(T52;§8.3/§10.6 插件扩展点)
+# ctron 包 —— 编译器插件接口包
 
 插件 = 普通 Ctron 包,两类约定入口:
 
@@ -13,5 +13,4 @@
 参考页:[plugin.md](plugin.md)(DeriveInput/LintUnit/LintDiag 全字段,
 签名面自动生成)。
 
-沙箱三层与协议细节见 T52 落库记录
-(docs/superpowers/plans/2026-10-03-t52-plugin-sandbox.md)。
+沙箱三层与协议细节以本包 `pkgs/ctron/README.md` 与插件示例(`tests/plugins/`)为准。
