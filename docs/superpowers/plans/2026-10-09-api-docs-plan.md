@@ -33,14 +33,18 @@
 
 ## 波次
 
-- **W1(本批)** std 26 模块页全量:std_doc.py v2 + 重生成 + nav 挂接 + ci 门
-  + pages 触发路径修 + mkdocs strict 绿。
-- **W1b** 说明列回填:源码无注释的 pub decl **回源码补注释**(真源原则,不写页面),
-  以 iter.ct(12 impl 全无注)为首;随泳道顺带,不单开战场。
-- **W2** 域包参考:net/http/tls/db/ffi/rt 各 README(人工)+ 参考页
-  (签名面 ctron-doc 直出);依赖域包门禁/headless 验收随泳道。
-- **W3** pkgs 参考:gui(README 已有,补逐 API 页)/web/s3/pkg。
-- **W4** 打磨:examples 交叉链接、中英双语页(i18n `.zh.md`)、agent 消费指南页。
+- **W1(已落库 187ea6aa)** std 26 模块页全量:std_doc.py v2 + 重生成 + nav 挂接
+  + ci 门 + pages 触发路径修 + mkdocs strict 绿。
+- **W1b(已落库 5e19effe)** 说明列回填:20 模块 66 处 pub decl 回源码补注释
+  (fn/struct 面;trait/impl 面驱动器 S0 设计恒传空串、页面该二节本无说明列,
+  豁免);stdpkg 字节级副本同步;说明列空缺清零。
+- **W2(已落库 4455a002)** 域包参考:net/http/tls/db/ffi 33 张页 + 六域概览
+  README;生成器域模式;rt 指针页(无 .ct 门面)。
+- **W3(已落库 b2f49ad7)** pkgs 参考:八包 21 张页 + 概览 README
+  (gui.ct / web/view.ct 因驱动 E5030 分歧跳过,登记)。
+- **W4(本批)** agent 消费指南页(agent.md:通道速查/JSON schema/五坑/
+  再生成与门禁)+ nav;双语页(i18n `.zh.md`)维持缓发——生成内容本就以
+  中文注释为主体,翻译 Pass 待专批。
 
 ## W1 执行细节
 
@@ -61,3 +65,11 @@
   否则 `json.load` 假红(v1 时代同坑)。
 - `bin/ctron-doc`(native)无 CLI 输入通道锚(ANCHORINPUT 字面量待 sed 换靶),
   脚本化调用一律走 `ctc.sh doc`,勿走 native 二进制。
+- **ctc.sh doc 未注入库根**(W2 实证):`use <域>.<mod>` 在包子目录
+  (http/frm/* 等)解析 W8902 未命中——emit 的 S4-⑤ STDPATH 注入同型缺口;
+  生成器以 `CTRON_SITEPATH=<root>/lib` 显式指路,ctc.sh 侧补注随编译器泳道。
+- **doc 驱动 E5030 与真链分歧**(W3 实证):gui.ct、web/view.ct 在 doc 驱动
+  use 合并报同名 decl 拦截,真链(check/消费面)放行——PKG_SKIP_PAGES 登记
+  跳过,语义以真链为准;修复归编译器泳道。
+- **源注释假链接**(W2 实证):泛型形 `[I32](x` 撞 markdown 链接语法
+  (mkdocs strict 红)——生成器 split_meta 统一转义 `](`。

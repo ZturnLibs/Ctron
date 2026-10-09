@@ -158,4 +158,5 @@ nav:
           - plugin: ctron/plugin.md
   - Examples: examples.md
   - Server: server-guide.md
+  - Agent Guide: agent.md
   - Download: download.md
