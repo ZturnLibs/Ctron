@@ -4979,7 +4979,26 @@ fn gui_ds_gen(file: List[Str], vname: Str, pnames: List[Str], ptyps: List[Str], 
     r = r + "        " + bindcl + ",\n"
     r = r + "        " + actcl + ")\n"
     r = r + "}\n"
-    var src: Str = objsrc + g + a2 + r
+    // W2:headless 装配合成——test_view(ViewCall, w, h, body) 改写靶。
+    // src=ctron_embedded()(内嵌块重建);bind/act 闭包与 run 同构;key 闭包
+    // 空体(headless 键面由 body 的 k 参承接)。恒随 __gui_run 合成(未用=
+    // emit dead-strip,零成本)
+    var tp: Str = params
+    if tp.len > 0 {
+        tp = tp + ", "
+    }
+    tp = tp + "w: I32, h: I32, body: fn(Box[Driver], fn(Str, List[Str]) -> Void, fn(I32) -> Void) -> Void"
+    var t2: Str = "fn __gui_test_" + vname + "(" + tp + ") -> I32 \{\n"
+    k = 0
+    while k < boxes.len {
+        t2 = t2 + boxes[k] + "\n"
+        k += 1
+    }
+    t2 = t2 + "    return test(ctron_embedded(), w, h,\n"
+    t2 = t2 + "        " + bindcl + ",\n"
+    t2 = t2 + "        " + actcl + ", |k| \{ }, body)\n"
+    t2 = t2 + "}\n"
+    var src: Str = objsrc + g + a2 + r + t2
     fs_write("/tmp/ds_gen_dump.ct", src)
     var toks = List[Str]()
     var lns = List[Str]()
@@ -5013,6 +5032,22 @@ fn gui_ds_marker_expr(e: List[Str]) -> Str {
                                 if a[1][0] == "Ident" {
                                     if a[2].len > 1 {
                                         return a[1][1]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                // W2:test_view(ViewCall, w, h, body) 同标记——headless 装配
+                // 合成形,视图名提取同 run
+                if e[1][1] == "test_view" {
+                    if e[2].len == 5 {
+                        var a2 = e[2][1]
+                        if a2[0] == "Call" {
+                            if a2[1].len > 1 {
+                                if a2[1][0] == "Ident" {
+                                    if a2[2].len > 1 {
+                                        return a2[1][1]
                                     }
                                 }
                             }
@@ -5150,6 +5185,28 @@ fn gui_ds_ordn_expr(e: List[Str], vname: Str, names: List[Str]) -> I32 {
                                             while k < a[2].len {
                                                 names.push(a[2][k][1])
                                                 k += 1
+                                            }
+                                            return 1
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                // W2:test_view 命名实参序同收(__ordn__ 头与 run 同源)
+                if e[1][1] == "test_view" {
+                    if e[2].len == 5 {
+                        var a2 = e[2][1]
+                        if a2[0] == "Call" {
+                            if a2[1].len > 1 {
+                                if a2[1][0] == "Ident" {
+                                    if a2[1][1] == vname {
+                                        if a2[2].len > 1 {
+                                            var k2: I32 = 1
+                                            while k2 < a2[2].len {
+                                                names.push(a2[2][k2][1])
+                                                k2 += 1
                                             }
                                             return 1
                                         }
@@ -5300,6 +5357,52 @@ fn gui_ds_rew_expr(e: List[Str], vname: Str) -> I32 {
                         }
                     }
                 }
+                // W2:test_view 改写——被调换 __gui_test_<V>,实参 = ViewCall
+                // 值表达式按序 + w/h/body 原值。实参形态二态:命名 = NParg
+                // ([2]=值),位置 = 裸表达式节点(本体即值)——按形态取
+                if e[1][1] == "test_view" {
+                    if e[2].len == 5 {
+                        var a2 = e[2][1]
+                        if a2[0] == "Call" {
+                            if a2[1].len > 1 {
+                                if a2[1][0] == "Ident" {
+                                    if a2[1][1] == vname {
+                                        var nn2 = mk("Ident")
+                                        nn2.push("__gui_test_" + vname)
+                                        e[1] = nn2
+                                        var na2 = mk("Args")
+                                        var i2: I32 = 1
+                                        while i2 < a2[2].len {
+                                            var av = a2[2][i2]
+                                            if av[0] == "NParg" {
+                                                av = av[2]
+                                            }
+                                            na2.push(av)
+                                            i2 += 1
+                                        }
+                                        var wv = e[2][2]
+                                        if wv[0] == "NParg" {
+                                            wv = wv[2]
+                                        }
+                                        na2.push(wv)
+                                        var hv = e[2][3]
+                                        if hv[0] == "NParg" {
+                                            hv = hv[2]
+                                        }
+                                        na2.push(hv)
+                                        var bv = e[2][4]
+                                        if bv[0] == "NParg" {
+                                            bv = bv[2]
+                                        }
+                                        na2.push(bv)
+                                        e[2] = na2
+                                        return 1
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
         if gui_ds_rew_expr(e[1], vname) > 0 {
@@ -5337,6 +5440,7 @@ fn gui_ds_rew_expr(e: List[Str], vname: Str) -> I32 {
 
 fn gui_ds_rew_block(b: List[Str], vname: Str) -> I32 {
     var i: I32 = 1
+    var any = Atomic[I32](0)
     while i < b.len {
         var st: Str = b[i][0]
         var got: I32 = 0
@@ -5387,25 +5491,26 @@ fn gui_ds_rew_block(b: List[Str], vname: Str) -> I32 {
             }
         }
         if got > 0 {
-            return 1
+            any.store(1)
         }
         i += 1
     }
-    return 0
+    return any.load()
 }
 
 fn gui_ds_rew_file(file: List[Str], vname: Str) -> I32 {
     var i: I32 = 1
+    var any = Atomic[I32](0)
     while i < file.len {
         var d = file[i]
         if d[0] == "Fn" {
             if gui_ds_rew_block(d[5], vname) > 0 {
-                return 1
+                any.store(1)
             }
         }
         i += 1
     }
-    return 0
+    return any.load()
 }
 
 fn gui_ds_premerge(file: List[Str], unit: List[Str]) -> List[Str] {
@@ -5458,6 +5563,11 @@ fn gui_ds_premerge(file: List[Str], unit: List[Str]) -> List[Str] {
     nsyms.push("ev_arg_i")
     nsyms.push("ev_arg_b")
     nsyms.push("ev_arg_b")
+    // W2:test_view 合成面(__gui_test_V 调 test + 签名引 Box[Driver])
+    nsyms.push("test")
+    nsyms.push("test")
+    nsyms.push("Driver")
+    nsyms.push("Driver")
     nu.push(nsegs)
     nu.push(nsyms)
     file.push(nu)

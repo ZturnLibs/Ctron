@@ -1,3 +1,14 @@
+> **W2 批已落地(2026-10-09,headless 装配合成 + Driver 持 bind)。**
+> `test_view(ViewCall, w, h, body)`:desugar 合成形(marker/ordn/rew 三分支 + __gui_test_V
+> 恒随合成[src=ctron_embedded,bind/act 闭包与 run 同构,key 空体]);改写面**多站点化**
+> (rew_block/rew_file 首中即返改累积——main 的 run + tests 的 test_view 共存实证 s94;
+> 实参形态二态=命名 NParg 取 [2] 槽/位置取节点本体,segfault 实证修正);premerge 注入
+> 扩 test/Driver 两符。`d_render(t)`:Driver 持 bind(test/test_sk 构造时存 bnd 槽)零闭包
+> 重绘——设计文书的 `d_frame(t)` 零参形因语言无重载改名为 **d_render**,d_frame 两参形
+> 保留兼容(README 驱动面不动)。夹具 s94 迁移为 test_view+d_render 验收载体;decls 锁
+> 521 不变(编译面零新 fn,域包 +1=d_render 不入锁)。
+>
+
 > **W1 批已落地(2026-10-09,GUI 无胶水装配 W1a+W1b;设计 docs/superpowers/specs/2026-10-09-gui-glueless-assembly-design.md)。
 > W1a:组件实例属性分隔符 `:`/`=` 双收(运行时 gt_node 显式双收;编译骨架/检查/折叠三面位置性
 > 放行经 s93_attreq 双口径实证,显式校验留 W4 冒号退役翻转)。W1b:合成事件表改**实例化根可达

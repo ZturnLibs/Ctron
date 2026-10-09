@@ -475,6 +475,7 @@ pub struct Driver {
     var brects: List[I32]
     var bhits: List[I32]
     var bhinst: List[I32]
+    var bnd: fn(List[Str]) -> Void
 }
 
 fn d_btn_index(t: GuiTree, name: Str) -> I32 {
@@ -1080,6 +1081,13 @@ pub fn d_frame(t: Box[Driver], bind: fn(List[Str]) -> Void) -> I32 {
     return n
 }
 
+// W2:零闭包重绘——Driver 持 bind(test/test_sk 构造时存),消 body 内
+// 每帧转发闭包(|buf| __gui_bind_X(buf, m) 实现细节不再泄漏到用户面);
+// d_frame 两参形保留兼容(存量夹具/README 驱动面不动)
+pub fn d_render(t: Box[Driver]) -> I32 {
+    return d_frame(t, t.bnd)
+}
+
 // 注入字符事件(type 3),返回字符码(应用键钩子自行编辑模型)
 // SL-8c-4④:实例分发按压——each 行按钮的驱动面(rt_hit_name "名:下标"
 // 契约的镜像;按名+实例定矩形,补 d_click 单实例几何缺口)
@@ -1294,7 +1302,7 @@ pub fn test(src: Str, w: I32, h: I32,
     theme_auto_apply()
     var t: GuiTree = gt_parse(src)
     gui_clay_init(w, h)
-    var d = Box[Driver](Driver { t: t, rects: List[I32](), hits: List[I32](), hinst: List[I32](), hov: -1, actn: 0, w: w, h: h, bt: t, brects: List[I32](), bhits: List[I32](), bhinst: List[I32]() })
+    var d = Box[Driver](Driver { t: t, rects: List[I32](), hits: List[I32](), hinst: List[I32](), hov: -1, actn: 0, w: w, h: h, bt: t, brects: List[I32](), bhits: List[I32](), bhinst: List[I32](), bnd: bind })
     var n: I32 = rt_draw_frame(d.t, bind, w, h, d.hits, d.hinst, d.hov, d.actn)
     rt_collect_rects(n, d.rects)
     rt_feed_input_w(d.t, d.rects, d.hits)
@@ -1310,7 +1318,7 @@ pub fn test_sk(t: GuiTree, w: I32, h: I32,
                script: fn(Box[Driver], fn(Str, List[Str]) -> Void, fn(I32) -> Void) -> Void) -> I32 {
     theme_auto_apply()
     gui_clay_init(w, h)
-    var d = Box[Driver](Driver { t: t, rects: List[I32](), hits: List[I32](), hinst: List[I32](), hov: -1, actn: 0, w: w, h: h, bt: t, brects: List[I32](), bhits: List[I32](), bhinst: List[I32]() })
+    var d = Box[Driver](Driver { t: t, rects: List[I32](), hits: List[I32](), hinst: List[I32](), hov: -1, actn: 0, w: w, h: h, bt: t, brects: List[I32](), bhits: List[I32](), bhinst: List[I32](), bnd: bind })
     var n: I32 = rt_draw_frame(d.t, bind, w, h, d.hits, d.hinst, d.hov, d.actn)
     rt_collect_rects(n, d.rects)
     rt_feed_input_w(d.t, d.rects, d.hits)

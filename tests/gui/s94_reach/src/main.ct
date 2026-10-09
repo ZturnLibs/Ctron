@@ -2,7 +2,7 @@
 // VUsed 被根实例化(其事件头须备处理器=E8121 合约面);VUnused 未实例化
 // (其事件头不进合成臂=处理器免备,桩裁剪核心断言)。
 // 实现前:VUnused 的事件臂照生成→cc 面 implicit-declaration 烂错(失败态)。
-use gui.{test, d_click, d_frame, d_expect_text}
+use gui.{d_click, d_render, d_expect_text}
 
 struct Model {
     var hits: I32
@@ -49,23 +49,17 @@ style vxb { bg: SURFACE fg: TEXT w: 80 h: 28 }
 style done { fg: ACCENT size: 14 h: 22 }
 
 fn headless_suite() -> I32 {
-    var src: Str = ctron_embedded()
-    var m = Box[Model](make())
-    var rc: I32 = test(src, 320, 240,
-        |buf| __gui_bind_Root(buf, m),
-        |name, ar| __gui_act_Root(name, ar, m),
-        |k| {
-        },
-        |t, actc2, k2| {
-            d_frame(t, |buf| __gui_bind_Root(buf, m))
-            d_expect_text(t, "初始")
-            d_expect_text(t, "DONE94")
-            // 事件:VUsed 点击 → 合成 act → vused_hit(状态回流)
-            actc2(d_click(t, "vused_hit"), List[Str]())
-            d_frame(t, |buf| __gui_bind_Root(buf, m))
-            d_expect_text(t, "命中1")
-            println("S94-REACH-GREEN")
-        })
+    // W2:test_view 合成装配(src/bind/act 三件编译器自备)+ d_render 零闭包重绘
+    var rc: I32 = test_view(Root(m: make()), 320, 240, |t, actc2, k2| {
+        d_render(t)
+        d_expect_text(t, "初始")
+        d_expect_text(t, "DONE94")
+        // 事件:VUsed 点击 → 合成 act → vused_hit(状态回流)
+        actc2(d_click(t, "vused_hit"), List[Str]())
+        d_render(t)
+        d_expect_text(t, "命中1")
+        println("S94-REACH-GREEN")
+    })
     return rc
 }
 
