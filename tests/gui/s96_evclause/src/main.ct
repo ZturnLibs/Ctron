@@ -1,0 +1,61 @@
+// tests/gui/s96_evclause —— W2.5b Step A 验收:ev 子句 + 实例 on: 接线槽
+// 全链容忍(编译折叠/检查/骨架三面 + 运行时 gt_parse;接线语义随 Step B/C)。
+// 本态:ev 声明惰性,宿主按名字合约备处理器(fold)——行为与既有全同。
+use gui.{d_click, d_expect_absent, d_render}
+
+struct Model {
+    var open: Bool
+}
+
+fn make() -> Model {
+    return Model { open: true }
+}
+
+fn fold(m: Box[Model]) {
+    card_fold(m)
+}
+
+view Card (label: Str, open: Bool) ev fold() {
+  <vbox class="cd">
+    <label class="cl">{label}</label>
+    <when cond={open}>
+      <label class="cb">展开中</label>
+    </when>
+    <button class="cf" on:click={fold()}>折叠</button>
+  </vbox>
+}
+
+view Root (m: Model) {
+  <vbox class="root">
+    <Card label="C96" open={m.open} on:fold={card_fold(m)}/>
+    <label class="done">DONE96</label>
+  </vbox>
+}
+
+style root { direction: column gap: 8 padding: 16 }
+style cd { direction: column gap: 4 bg: SURFACE padding: 8 }
+style cl { fg: TEXT size: 15 h: 22 }
+style cb { fg: TEXT_MUTED size: 13 h: 20 }
+style cf { bg: ACCENT fg: TEXT w: 80 h: 28 }
+style done { fg: ACCENT size: 14 h: 22 }
+
+fn card_fold(m: Box[Model]) {
+    if m.open {
+        m.open = false
+    } else {
+        m.open = true
+    }
+}
+
+fn main() -> I32 {
+    return test_view(Root(m: make()), 320, 240, |t, actc2, k| {
+        d_render(t)
+        d_expect_text(t, "C96")
+        d_expect_text(t, "展开中")
+        d_expect_text(t, "DONE96")
+        actc2(d_click(t, "fold"), List[Str]())
+        d_render(t)
+        d_expect_absent(t, "展开中")
+        println("S96-EVCLAUSE-GREEN")
+    })
+}

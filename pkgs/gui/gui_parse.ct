@@ -524,6 +524,68 @@ fn gt_node(src: Str, cur: Atomic[I32], t: GuiTree, conds: List[Str], binds: List
                     break
                 }
                 var pn: Str = gword(src, cur)
+                // W2.5b:实例 on:名= 接线槽容忍消费(接线记录随合成臂批)
+                gws(src, cur)
+                if pn == "on" {
+                    // 接线判别:冒号后非 {/" 词起 +=;{/" = 名为 on 的 prop(s53)
+                    var isw: Bool = false
+                    if byte_at(src, cur.load()) == 58 {
+                        var q: I32 = cur.load() + 1
+                        while q < src.len {
+                            var qb: I32 = byte_at(src, q)
+                            if qb == 32 || qb == 9 {
+                                q += 1
+                            } else {
+                                break
+                            }
+                        }
+                        if q < src.len {
+                            var qb2: I32 = byte_at(src, q)
+                            if qb2 != 123 {
+                                if qb2 != 34 {
+                                    var q2: I32 = q
+                                    while q2 < src.len {
+                                        var qb3: I32 = byte_at(src, q2)
+                                        if qb3 == 61 {
+                                            isw = true
+                                            q2 = src.len
+                                        }
+                                        if qb3 == 44 || qb3 == 62 || qb3 == 47 {
+                                            q2 = src.len
+                                        }
+                                        q2 += 1
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if isw {
+                        if byte_at(src, cur.load()) == 58 {
+                            cur.store(cur.load() + 1)
+                            gws(src, cur)
+                            var onn2: Str = gword(src, cur)
+                            onn2 = onn2
+                        gws(src, cur)
+                        var onsep: I32 = byte_at(src, cur.load())
+                        if onsep != 61 {
+                            panic("gui: on: 期待 = @byte " + cur.load().to_string())
+                        }
+                        cur.store(cur.load() + 1)
+                        gws(src, cur)
+                        if byte_at(src, cur.load()) == 34 {
+                            gstr(src, cur)
+                        } else {
+                            if byte_at(src, cur.load()) == 123 {
+                                cur.store(cur.load() + 1)
+                                gt_bx_expr(src, cur)
+                            } else {
+                                gword(src, cur)
+                            }
+                        }
+                        continue
+                    }
+                    }
+                }
                 // W1a:分隔符 :/= 双收(冒号形 legacy;值三形不变)
                 gws(src, cur)
                 var sep: I32 = byte_at(src, cur.load())
@@ -1254,6 +1316,23 @@ pub fn gt_parse(src: Str) -> GuiTree {
                         cur.store(cur.load() + 1)
                     }
                     gws(src, cur)
+                }
+            }
+            gws(src, cur)
+            // W2.5b:ev 事件声明子句跳读(view N (props) ev 名(载荷), … opt {;
+            // 语义面随文件档接线批;此处容忍不破)
+            if cur.load() < n {
+                if byte_at(src, cur.load()) == 101 {
+                    var ew: Str = gword(src, cur)
+                    if ew != "ev" {
+                        panic("gui: view 期待 ev 或 块开,得 " + ew)
+                    }
+                    while cur.load() < n {
+                        if byte_at(src, cur.load()) == 123 {
+                            break
+                        }
+                        cur.store(cur.load() + 1)
+                    }
                 }
             }
             glit(src, cur, 123)

@@ -55,6 +55,25 @@ fn gui_block(toks: List[Str], cur: Atomic[I32], kind: Str, lns: List[Str], cols:
             }
         }
     }
+    // W2.5b:ev 事件声明子句捕获——尾随 \x02EV\x02 分节入 d[5](props 三
+    // 解析器经 gui_props_pc 剥;语义面随合成/检查接线)
+    if cur.load() < toks.len {
+        if tok(toks, cur) == "ev" {
+            adv(cur)
+            var evs: Str = ""
+            while cur.load() < toks.len {
+                var et: Str = tok(toks, cur)
+                if et.len == 1 {
+                    if byte_at(et, 0) == 123 {
+                        break
+                    }
+                }
+                evs = evs + et + " "
+                adv(cur)
+            }
+            props = props + utf8_enc(2) + "EV" + utf8_enc(2) + evs
+        }
+    }
     var joined: Str = name
     // GUI-12 内嵌重建保真:块体原文切片面。rawok=false 时 d[6] 留空=消费侧
     // 回退 token 重建;style extends 的头经 token 流承载(切片会丢 extends 对),
@@ -271,7 +290,51 @@ fn gui_lower_element(tks: List[Str], cur: Atomic[I32], ind: Str, out: List[Str])
                         break
                     }
                 }
-                eat_tok(tks, cur)
+                // W2.5b:实例 on:名= 接线槽容忍消费(eat 名后分支;接线记录随合成批)
+                var pnf: Str = eat_tok(tks, cur)
+                var okf: Bool = false
+                if pnf == "on" {
+                    if cur.load() + 2 < tks.len {
+                        if tks[cur.load()] == ":" {
+                            var nm4: Str = tks[cur.load() + 1]
+                            if nm4.len != 1 {
+                                if tks[cur.load() + 2] == "=" {
+                                    okf = true
+                                }
+                            } else {
+                                var nb4: I32 = byte_at(nm4, 0)
+                                if nb4 != 123 {
+                                    if nb4 != 34 {
+                                        if tks[cur.load() + 2] == "=" {
+                                            okf = true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if okf {
+                    if pnf == "on" {
+                        if tks[cur.load()] == ":" {
+                            eat_tok(tks, cur)
+                            eat_tok(tks, cur)
+                            eat_tok(tks, cur)
+                            var ovf: Str = tks[cur.load()]
+                            if ovf.len == 1 {
+                                if byte_at(ovf, 0) == 123 {
+                                    cur.store(cur.load() + 1)
+                                    gui_bx_expr(tks, cur)
+                                } else {
+                                    eat_tok(tks, cur)
+                                }
+                            } else {
+                                eat_tok(tks, cur)
+                            }
+                            continue
+                        }
+                    }
+                }
                 eat_tok(tks, cur)
                 var vw5: Str = tks[cur.load()]
                 if vw5.len == 1 {
@@ -572,7 +635,7 @@ fn gui_blocks_src_raw(file: List[Str], src: Str) -> Str {
                             // 8c-2:props 形参表(d[5])随重建——否则内嵌兜底源丢 props,
                             // 域包 gt_parse 捕获空表,求值切换/链解析静默失效
                             got = true
-                            out = out + d[1] + " " + d[2] + d[5] + " \{" + body + "} "
+                            out = out + d[1] + " " + d[2] + gui_props_pc(d[5]) + " \{" + body + "} "
                         }
                     }
                 }
@@ -590,8 +653,9 @@ fn gui_blocks_src_raw(file: List[Str], src: Str) -> Str {
 // 标点叶失真;保留作无位置面/探针不过的回退)
 fn gui_blocks_rejoin(d: List[Str]) -> Str {
     var out: Str = ""
-    // 8c-2:props 形参表(d[5])随重建(同上)
-    out = out + d[1] + " " + d[2] + d[5] + " \{"
+    // 8c-2:props 形参表(d[5])随重建(同上);W2.5a/2.5b:剥默认段(\x02 分节)
+    // 与 ev 尾段(\x02EV\x02 分节)——重建面只还原签名裸形
+    out = out + d[1] + " " + d[2] + gui_props_pc(d[5]) + " \{"
     var tks = List[Str]()
     gui_split(d[4], tks)
     var k: I32 = 1
@@ -1732,7 +1796,8 @@ fn gui_bx_dotted(e: Str, out: List[Str], subs: List[Str]) {
 // 否则合成签名被默认文本污染)
 fn gui_props_typed(d5: Str, names: List[Str], types: List[Str]) -> I32 {
     if d5.len > 2 {
-        var seg: Str = byte_slice(d5, 2, d5.len - 2)
+        var d5c: Str = gui_props_pc(d5)
+        var seg: Str = byte_slice(d5c, 2, d5c.len - 2)
         var pi: I32 = 0
         while pi < seg.len {
             var ps: I32 = pi
@@ -1772,7 +1837,8 @@ fn gui_props_typed(d5: Str, names: List[Str], types: List[Str]) -> I32 {
 // 之后 gui_trim 原文(引号串保留引号,垫值侧剥);无 `=` = 空串
 fn gui_props_dflts(d5: Str, out: List[Str]) -> I32 {
     if d5.len > 2 {
-        var seg: Str = byte_slice(d5, 2, d5.len - 2)
+        var d5c: Str = gui_props_pc(d5)
+        var seg: Str = byte_slice(d5c, 2, d5c.len - 2)
         var pi: I32 = 0
         while pi < seg.len {
             var ps: I32 = pi
@@ -2227,6 +2293,52 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
                     }
                 }
                 var pn2: Str = eat_tok(tks, cur)
+                // W2.5b:on: 接线判别(冒号后 词+=;{/" 起头 = 名为 on 的 prop 冒号形)
+                var okc: Bool = false
+                if pn2 == "on" {
+                    if cur.load() + 2 < tks.len {
+                        if tks[cur.load()] == ":" {
+                            var nm3: Str = tks[cur.load() + 1]
+                            if nm3.len != 1 {
+                                if tks[cur.load() + 2] == "=" {
+                                    okc = true
+                                }
+                            } else {
+                                var nb3: I32 = byte_at(nm3, 0)
+                                if nb3 != 123 {
+                                    if nb3 != 34 {
+                                        if tks[cur.load() + 2] == "=" {
+                                            okc = true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if okc {
+                    if pn2 == "on" {
+                        if cur.load() < tks.len {
+                            if tks[cur.load()] == ":" {
+                                eat_tok(tks, cur)
+                                eat_tok(tks, cur)
+                                eat_tok(tks, cur)
+                                var ovk: Str = tks[cur.load()]
+                                if ovk.len == 1 {
+                                    if byte_at(ovk, 0) == 123 {
+                                        cur.store(cur.load() + 1)
+                                        gui_bx_expr(tks, cur)
+                                    } else {
+                                        eat_tok(tks, cur)
+                                    }
+                                } else {
+                                    eat_tok(tks, cur)
+                                }
+                                continue
+                            }
+                        }
+                    }
+                }
                 eat_tok(tks, cur)
                 var brf: Bool = false
                 if cur.load() < tks.len {
@@ -2786,11 +2898,49 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
     return bad
 }
 
+// W2.5b:d[5] props 串剥 ev 尾段(\x02EV\x02 分节;无 = 原样)
+fn gui_props_pc(d5: Str) -> Str {
+    var i: I32 = 0
+    while i + 3 < d5.len {
+        if byte_at(d5, i) == 2 {
+            if byte_at(d5, i + 1) == 69 {
+                if byte_at(d5, i + 2) == 86 {
+                    if byte_at(d5, i + 3) == 2 {
+                        return byte_slice(d5, 0, i)
+                    }
+                }
+            }
+        }
+        i += 1
+    }
+    return d5
+}
+
+// W2.5b:ev 事件声明子段(\x02EV\x02 后原文 trim;无 = 空串)
+fn gui_props_evseg(d5: Str) -> Str {
+    var i: I32 = 0
+    while i + 3 < d5.len {
+        if byte_at(d5, i) == 2 {
+            if byte_at(d5, i + 1) == 69 {
+                if byte_at(d5, i + 2) == 86 {
+                    if byte_at(d5, i + 3) == 2 {
+                        var t: Str = byte_slice(d5, i + 4, d5.len)
+                        return gui_trim(t)
+                    }
+                }
+            }
+        }
+        i += 1
+    }
+    return ""
+}
+
 // 8c-1/8c-2:view props 形参名表——"( a: T, b: U )" 形态拆名(类型段弃,
 // 字段段类型门登记待 props 类型面)。check 面引用门与骨架表(s22 双端同形)共用。
 fn gui_props_names(d5: Str, out: List[Str]) -> I32 {
     if d5.len > 2 {
-        var seg: Str = byte_slice(d5, 2, d5.len - 2)
+        var d5c: Str = gui_props_pc(d5)
+        var seg: Str = byte_slice(d5c, 2, d5c.len - 2)
         var pi: I32 = 0
         while pi < seg.len {
             var ps: I32 = pi
@@ -3356,12 +3506,49 @@ fn gui_sk_node(tks: List[Str], cur: Atomic[I32], ntag: List[Str], nflag: List[St
                         break
                     }
                 }
-                gui_sk_word(tks, cur)
-                gui_sk_word(tks, cur)
-                if cur.load() >= tks.len {
-                    break
+                var pkw: Str = tks[cur.load()]
+                // W2.5b:实例 on:名= 接线槽容忍消费。接线判别:冒号后须 词+=;
+                // { 或 " 开头 = 名为 on 的 prop 冒号形(s53 实证)
+                var okw: Bool = false
+                if pkw == "on" {
+                    if cur.load() + 3 < tks.len {
+                        if tks[cur.load() + 1] == ":" {
+                            var nm2: Str = tks[cur.load() + 2]
+                            if nm2.len != 1 {
+                                if tks[cur.load() + 3] == "=" {
+                                    okw = true
+                                }
+                            } else {
+                                var nb2: I32 = byte_at(nm2, 0)
+                                if nb2 != 123 {
+                                    if nb2 != 34 {
+                                        if tks[cur.load() + 3] == "=" {
+                                            okw = true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
-                var vw: Str = tks[cur.load()]
+                if okw {
+                    gui_sk_word(tks, cur)
+                    gui_sk_word(tks, cur)
+                    gui_sk_word(tks, cur)
+                    var ovw: Str = tks[cur.load()]
+                    if ovw.len == 1 {
+                        if byte_at(ovw, 0) == 123 {
+                            cur.store(cur.load() + 1)
+                            gui_bx_expr(tks, cur)
+                        } else {
+                            gui_sk_word(tks, cur)
+                        }
+                    } else {
+                        gui_sk_word(tks, cur)
+                    }
+                    continue
+                }
+                                var vw: Str = tks[cur.load()]
                 var is_br: Bool = false
                 var is_q: Bool = false
                 if vw.len == 1 {

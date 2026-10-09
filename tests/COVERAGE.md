@@ -1,3 +1,13 @@
+> **W2.5b StepA 已落地(2026-10-09,ev 声明 + 实例 on: 槽全链容忍;规格 §5.2 地基)。**
+> 签名行 `view N (props) ev 名(载荷), 名2() opt`——编译 gui_block 捕获 ev 子句入 d[5] 尾随
+> \x02EV\x02 分节(props 三解析器经 gui_props_pc 剥除;gui_props_evseg 提取备 StepB/C 合成),
+> 运行时 gt_parse 子句跳读;实例 `on:名={处理器}` 接线槽四解析面容忍消费(编译折叠/检查/骨架
+> +运行时)。**接线判别 = 冒号后 词+=**(`{`/`"` 起头 = 名为 on 的 prop 冒号形——s53_nested
+> `on: Bool` 实证误吞)。内嵌重建面(src_raw+rejoin)同步剥分节(签名裸形还原)。本态接线
+> 惰性(名字合约行为不变,语义臂随 StepB/C);夹具 s96_evclause(声明+接线槽+点击断言);
+> decls 锁 522→524(+2)。
+>
+
 > **std/hashmap W2 批已落地(2026-10-09,http keep 多槽 60ffdc6b + todo_api hmi 换装 a453f30a;spec §9 W2 行回写)。**
 > 范围重估:web headers **不做**(HTTP 头有序且可重名,List[Pair] 语义正确;路由=
 > 模式匹配非精确键)。A 面:http client keep-alive 单槽四标量胞退役 → HttpKeep
