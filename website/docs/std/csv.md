@@ -15,7 +15,7 @@ CSV(RFC 4180 子集;引号转义;CRLF/LF 行界;确定性行序)
 |---|---|---|
 | `csv_parse(text: Str)` | `Option[List[List[Str]]]` | 解析 CSV 文本 → 行×字段网格;引号不闭合 None |
 | `csv_field(row: List[Str], i: I32)` | `Str` | 取行内第 i 列;越界返回空串(便利取列) |
-| `csv_write(rows: List[List[Str]])` | `Str` | — |
+| `csv_write(rows: List[List[Str]])` | `Str` | rows → CSV 文本(逗号分隔,\n 行尾;含引号/逗号/引号字段经 RFC 4180 转义;与 csv_parse 互逆) |
 | `csv_get(o: Option[List[List[Str]]], dft: List[List[Str]])` | `List[List[Str]]` | 发射面安全 Option 助手(match 形;C13a) |
-| `csv_some(o: Option[List[List[Str]]])` | `Bool` | — |
+| `csv_some(o: Option[List[List[Str]]])` | `Bool` | Option 判别形:List[List[Str]] 是否 Some(发射面 C13 助手) |
 

@@ -82,6 +82,7 @@ pub fn enc_get(o: Option[Str], dft: Str) -> Str {
     }
 }
 
+// Option[Str] 是否 Some(发射面 C13 判别形助手)
 pub fn enc_some(o: Option[Str]) -> Bool {
     match o {
         Some(v) => {
@@ -93,6 +94,7 @@ pub fn enc_some(o: Option[Str]) -> Bool {
     }
 }
 
+// 字节 → 小写 hex 串(每字节 2 字符)
 pub fn hex_encode(s: Str) -> Str {
     var h = ehex()
     var out = ""
@@ -105,6 +107,7 @@ pub fn hex_encode(s: Str) -> Str {
     return out
 }
 
+// hex 串 → 字节;奇数长/非 hex 位 None(大小写均收)
 pub fn hex_decode(s: Str) -> Option[Str] {
     if s.len % 2 != 0 {
         return None
@@ -136,6 +139,7 @@ pub fn hex_decode(s: Str) -> Option[Str] {
     return Some(out)
 }
 
+// RFC 4648 标准 base64(+ / 与 = 垫)
 pub fn b64_encode(s: Str) -> Str {
     var out = ""
     var i: I32 = 0
@@ -174,6 +178,7 @@ pub fn b64_encode(s: Str) -> Str {
     return out
 }
 
+// base64 → 字节;非法字符 None(解码输出限可打印 ASCII,C8)
 pub fn b64_decode(s: Str) -> Option[Str] {
     if s.len % 4 != 0 {
         return None
@@ -282,6 +287,7 @@ pub fn b64_decode(s: Str) -> Option[Str] {
     return Some(out)
 }
 
+// percent 编码:URL 保留集外字节按 %XX 大写转义(未保留集 = 字母数字 - . _ ~)
 pub fn pct_encode(s: Str) -> Str {
     var h = ehexup()
     var out = ""
@@ -320,6 +326,7 @@ pub fn pct_encode(s: Str) -> Str {
     return out
 }
 
+// %XX 与字面字节还原;非法 % 序列 None(输出限可打印 ASCII,C8)
 pub fn pct_decode(s: Str) -> Option[Str] {
     var bytes = List[I32]()
     var i: I32 = 0

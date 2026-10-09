@@ -18,12 +18,12 @@ v0:无删除;满表(256 键)fput 原样返回。迭代序 = 插入序(fwords),�
 
 | Signature | Returns | Description |
 |---|---|---|
-| `fnew[V]()` | `FMap[V]` | — |
+| `fnew[V]()` | `FMap[V]` | 空映射(256 槽全 -1 空;vals 空 List 规避泛型零值构造) |
 | `fidx(s: Str)` | `I32` | djb2 mod 100003 → 槽位 0..255 |
 | `fslot[V](m: FMap[V], k: Str)` | `I32` | 键 → vals 索引;不存在返回 -1(至多探查 256 步) |
 | `fput[V](m: FMap[V], k: Str, v: V)` | `FMap[V]` | 覆盖写:键存在则替换值;否则探测空槽插入;满表原样返回 |
 | `fget[V](m: FMap[V], k: Str, dft: V)` | `V` | 取值:键不存在返回 dft |
-| `fhas[V](m: FMap[V], k: Str)` | `Bool` | — |
+| `fhas[V](m: FMap[V], k: Str)` | `Bool` | 键存在判定(经 fslot;O(1) 探查) |
 | `flen[V](m: FMap[V])` | `I32` | 键数(替换不增长,即 keys.len) |
 | `fwords[V](m: FMap[V])` | `List[Str]` | 词表(插入序;供迭代:配合 fget 逐键取值) |
 | `fvals[V](m: FMap[V])` | `List[V]` | 值表(插入序,与 fwords 一一对应) |

@@ -12,12 +12,12 @@ V 需可 ==(add 去重 bound Eq);add 体内嵌套调用 mem[V](单态化嵌套�
 
 | Signature | Returns | Description |
 |---|---|---|
-| `set_new[V]()` | `Set[V]` | — |
-| `mem[V](s: Set[V], v: V)` | `Bool` | — |
-| `add[V](s: Set[V], v: V)` | `Set[V]` | — |
-| `len[V](s: Set[V])` | `I32` | — |
+| `set_new[V]()` | `Set[V]` | 空集合(单空 List 槽) |
+| `mem[V](s: Set[V], v: V)` | `Bool` | 成员判定(线性扫描;O(n)) |
+| `add[V](s: Set[V], v: V)` | `Set[V]` | 函数式添加:已存在原样返回;否则返回含 v 的新集合(原 s 不变) |
+| `len[V](s: Set[V])` | `I32` | 元素数 |
 | `tolist[V](s: Set[V])` | `List[V]` | 集合 → List(插入序);List → 集合(依序 add 去重) |
-| `fromlist[V](xs: List[V])` | `Set[V]` | — |
+| `fromlist[V](xs: List[V])` | `Set[V]` | List → 集合(依序 add 去重;首现位次即插入序) |
 | `set_del[T](s: Set[T], v: T)` | `Set[T]` | 删除元素:不存在时原样返回 |
 | `set_union[T](a: Set[T], b: Set[T])` | `Set[T]` | 并集:a ∪ b |
 | `set_inter[T](a: Set[T], b: Set[T])` | `Set[T]` | 交集:a ∩ b(结果保持 a 的元素序) |

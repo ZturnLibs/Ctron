@@ -24,8 +24,8 @@ JSON parsing per RFC 8259: `parse` flattens a document into `[path, tag, value]`
 | `jv_f64(entries: List[List[Str]], path: Str, dft: F64)` | `F64` | 带默认读取:F64 |
 | `jv_bool(entries: List[List[Str]], path: Str, dft: Bool)` | `Bool` | 带默认读取:Bool |
 | `jk_i64(entries: List[List[Str]], path: Str)` | `Str` | kind 查询:"ok" 或 noent/null/type/frac/range/syn(载荷原文经 jget_* Err) |
-| `jk_f64(entries: List[List[Str]], path: Str)` | `Str` | — |
-| `jk_bool(entries: List[List[Str]], path: Str)` | `Str` | — |
+| `jk_f64(entries: List[List[Str]], path: Str)` | `Str` | kind 查询(jget_f64 同径不取值):"ok" 或 noent/null/type/frac/range/syn |
+| `jk_bool(entries: List[List[Str]], path: Str)` | `Str` | kind 查询(jget_bool 同径不取值):"ok" 或 noent/null/type/syn |
 | `wesc(s: Str)` | `Str` | ============ 写出半边(2026-09-23 自 json_write.ct 并入;助手先于调用者) ============<br>路径展平 DOM(wesc 转义逆操作 + jw_keys)按条目 DFS 重放为 JSON 文本<br>since: std-0.3(并入面)stability: experimental<br>口径:输入为 json.ct parse 产物(父先子后 DFS 条目,路径以 "." 分段,<br>根为 "$");键与字符串值写出时经 wesc 重转义;数字/布尔/null 按原文 |
 | `jw_depth(path: Str)` | `I32` | 路径深度 = '.' 计数(根 "$" 为 0) |
 | `jw_keys(entries: List[List[Str]], path: Str)` | `List[Str]` | 枚举 path 的直接成员名(对象=键序列,数组=下标序列"0","1",…) |

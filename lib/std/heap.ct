@@ -109,6 +109,7 @@ pub fn heap_get_i(xs: List[I32], dft: I32) -> I32 {
     }
 }
 
+// 堆空判定(peek Some/None 的布尔形;发射面判别助手)
 pub fn heap_has_i(xs: List[I32]) -> Bool {
     match heap_peek[I32](xs) {
         Some(v) => {

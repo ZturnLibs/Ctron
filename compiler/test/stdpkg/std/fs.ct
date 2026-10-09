@@ -5,10 +5,13 @@
 // ---- 能力 trait(§8.1;R-P2b 锚迁主套件 07a)----
 // I/O 是 Fs 能力对象上的方法:依赖出现在参数里(&Fs),测试注入 fake 实现
 // (MemFs 先例),无需 mock 框架。错误经 Result[String, FsError]。
+// 文件系统错误(能力 trait 的 Err 载荷;message 人读)
 pub struct FsError {
     let message: Str
 }
 
+// Fs 能力 trait:依赖出现在参数里(&Fs),测试注入 fake 实现(MemFs 先例),
+// 无需 mock 框架;错误经 Result[String, FsError]
 trait Fs: Cap {
     fn read_to_string(&self, path: Str) -> Result[String, FsError]
     fn write(&self, path: Str, data: Str) -> Result[Void, FsError]

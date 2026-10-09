@@ -16,5 +16,5 @@ API:config_diags(src) -> List[Str](逐条 "E504x 消息全文";合法清单 = �
 
 | Signature | Returns | Description |
 |---|---|---|
-| `config_diags(src: Str)` | `List[Str]` | — |
+| `config_diags(src: Str)` | `List[Str]` | CTCL 清单全文校验 → 诊断串表(空表 = 合法;与 selfhosted/ctcl_chk.ct 驱动镜像同源,两处须同步修改) |
 

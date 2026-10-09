@@ -115,28 +115,28 @@ impl Seq[T, ChainSeq[T, S]] for ChainSeq[T, S]
 
 | Signature | Returns | Description |
 |---|---|---|
-| `map(xs: [I32], f: fn(I32) -> I32)` | `MapSeq[I32, RawSeq[[I32], I32]]` | — |
-| `filter(xs: [I32], p: fn(I32) -> Bool)` | `FilterSeq[I32, RawSeq[[I32], I32]]` | — |
-| `take(xs: [I32], k: I64)` | `TakeSeq[I32, RawSeq[[I32], I32]]` | — |
-| `skip(xs: [I32], n: I64)` | `SkipSeq[I32, RawSeq[[I32], I32]]` | — |
-| `take_while(xs: [I32], p: fn(I32) -> Bool)` | `TakeWhileSeq[I32, RawSeq[[I32], I32]]` | — |
-| `rev(xs: [I32])` | `RevSeq[I32, RawSeq[[I32], I32]]` | — |
-| `enumerate(xs: [I32])` | `EnumSeq[I32, RawSeq[[I32], I32]]` | — |
-| `zip(xs: [I32], ys: [I32])` | `ZipSeq[I32, RawSeq[[I32], I32]]` | — |
-| `chain(xs: [I32], ys: [I32])` | `ChainSeq[I32, RawSeq[[I32], I32]]` | — |
-| `from_list(xs: List[I32])` | `ListSeq[I32]` | — |
-| `sum(xs: [I32])` | `I64` | — |
-| `count(xs: [I32])` | `I64` | — |
-| `collect(xs: [I32])` | `List[I32]` | — |
-| `any(xs: [I32], p: fn(I32) -> Bool)` | `Bool` | — |
-| `all(xs: [I32], p: fn(I32) -> Bool)` | `Bool` | — |
-| `fold(xs: [I32], init: I64, f: fn(I64, I32) -> I64)` | `I64` | — |
-| `reduce(xs: [I32], f: fn(I32, I32) -> I32)` | `I32?` | — |
-| `foreach(xs: [I32], f: fn(I32))` | `I64` | — |
-| `min(xs: [I32])` | `I32?` | — |
-| `max(xs: [I32])` | `I32?` | — |
-| `last(xs: [I32])` | `I32?` | — |
-| `position(xs: [I32], p: fn(I32) -> Bool)` | `I64?` | — |
-| `parallel_map(xs: List[I32], f: fn(I32) -> I32)` | `List[I32]` | — |
-| `parallel_reduce(xs: List[I32], init: I32, f: fn(I32, I32) -> I32)` | `I32` | — |
+| `map(xs: [I32], f: fn(I32) -> I32)` | `MapSeq[I32, RawSeq[[I32], I32]]` | 数组入口:xs.map(f)(UFCS 接收者填首参;包 RawSeq 成 MapSeq) |
+| `filter(xs: [I32], p: fn(I32) -> Bool)` | `FilterSeq[I32, RawSeq[[I32], I32]]` | 数组入口:xs.filter(p) |
+| `take(xs: [I32], k: I64)` | `TakeSeq[I32, RawSeq[[I32], I32]]` | 数组入口:xs.take(k) 截前 k 个 |
+| `skip(xs: [I32], n: I64)` | `SkipSeq[I32, RawSeq[[I32], I32]]` | 数组入口:xs.skip(n) 跳前 n 个 |
+| `take_while(xs: [I32], p: fn(I32) -> Bool)` | `TakeWhileSeq[I32, RawSeq[[I32], I32]]` | 数组入口:xs.take_while(p) 取前缀直遇首败 |
+| `rev(xs: [I32])` | `RevSeq[I32, RawSeq[[I32], I32]]` | 数组入口:xs.rev() 反转视图(无状态重扫) |
+| `enumerate(xs: [I32])` | `EnumSeq[I32, RawSeq[[I32], I32]]` | 数组入口:xs.enumerate() → Pair[I64, T] 序列 |
+| `zip(xs: [I32], ys: [I32])` | `ZipSeq[I32, RawSeq[[I32], I32]]` | 数组入口:xs.zip(ys) 同型拉链(短者截断) |
+| `chain(xs: [I32], ys: [I32])` | `ChainSeq[I32, RawSeq[[I32], I32]]` | 数组入口:xs.chain(ys) 同型串接 |
+| `from_list(xs: List[I32])` | `ListSeq[I32]` | List 入口:iter.from_list(xs)(前奏 class 直 impl 派发不挂,包装 struct 接入) |
+| `sum(xs: [I32])` | `I64` | 数组直终结快路径:I64 累加(零包装索引循环) |
+| `count(xs: [I32])` | `I64` | 数组直终结:len 直返 |
+| `collect(xs: [I32])` | `List[I32]` | 数组直终结:转 List[I32] |
+| `any(xs: [I32], p: fn(I32) -> Bool)` | `Bool` | 数组直终结:短路存在判定 |
+| `all(xs: [I32], p: fn(I32) -> Bool)` | `Bool` | 数组直终结:短路全称判定 |
+| `fold(xs: [I32], init: I64, f: fn(I64, I32) -> I64)` | `I64` | 数组直终结:I64 折叠(init 起,逐元素左折叠) |
+| `reduce(xs: [I32], f: fn(I32, I32) -> I32)` | `I32?` | 数组直终结:同型归并;空数组 None |
+| `foreach(xs: [I32], f: fn(I32))` | `I64` | 数组直终结:逐元素执行 f,返回处理数 |
+| `min(xs: [I32])` | `I32?` | 数组直终结:最小值;空数组 None |
+| `max(xs: [I32])` | `I32?` | 数组直终结:最大值;空数组 None |
+| `last(xs: [I32])` | `I32?` | 数组直终结:末元素;空数组 None |
+| `position(xs: [I32], p: fn(I32) -> Bool)` | `I64?` | 数组直终结:首个满足 p 的下标;无则 None |
+| `parallel_map(xs: List[I32], f: fn(I32) -> I32)` | `List[I32]` | 前奏 parallel.map 薄包装(§7.7 归位;前奏直用 parallel 过渡兼容) |
+| `parallel_reduce(xs: List[I32], init: I32, f: fn(I32, I32) -> I32)` | `I32` | 前奏 parallel.reduce 薄包装(init 起 I32 归并;过渡兼容同上) |
 

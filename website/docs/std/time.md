@@ -19,9 +19,9 @@
 | `civil_from_days(z: I32)` | `CivilDate` | days → 公历日期(逆变换;z 域见年份域) |
 | `weekday(z: I32)` | `I32` | 星期:0=星期日 … 6=星期六;1970-01-01 = 4(星期四) |
 | `date_format(z: I32)` | `Str` | "YYYY-MM-DD"(4 位零填充;年份域外返回空串) |
-| `date_parse(s: Str)` | `Option[I32]` | — |
+| `date_parse(s: Str)` | `Option[I32]` | 文本 "yyyy-mm-dd" → days(1970-01-01 = 0 基;形不合规 None) |
 | `time_get(o: Option[I32], dft: I32)` | `I32` | 发射面安全 Option 助手(match 形;C13a) |
-| `time_some(o: Option[I32])` | `Bool` | — |
+| `time_some(o: Option[I32])` | `Bool` | Option[I32] 判别形助手(发射面 C13) |
 | `time_to_epoch_s(y: I32, m: I32, d: I32)` | `I64` | 公历日期 → Unix epoch 秒(I64;年域 [1,9999]) |
 | `iso_utc(ms: I64)` | `Str` | epoch 毫秒 → ISO 8601 UTC(YYYY-MM-DDTHH:MM:SSZ) |
 | `now_iso_utc()` | `Str` | 当前墙钟的 ISO 8601 UTC 串 |

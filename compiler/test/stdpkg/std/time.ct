@@ -188,6 +188,7 @@ fn t_digits4(s: Str) -> I32 {
     return v
 }
 
+// 文本 "yyyy-mm-dd" → days(1970-01-01 = 0 基;形不合规 None)
 pub fn date_parse(s: Str) -> Option[I32] {
     if s.len != 10 {
         return None
@@ -234,6 +235,7 @@ pub fn time_get(o: Option[I32], dft: I32) -> I32 {
     }
 }
 
+// Option[I32] 判别形助手(发射面 C13)
 pub fn time_some(o: Option[I32]) -> Bool {
     match o {
         Some(v) => {

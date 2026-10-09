@@ -5,10 +5,12 @@ struct Set[V] {
     let items: List[V]
 }
 
+// 空集合(单空 List 槽)
 pub fn set_new[V]() -> Set[V] {
     return Set { items: List[V]() }
 }
 
+// 成员判定(线性扫描;O(n))
 pub fn mem[V](s: Set[V], v: V) -> Bool {
     var i: I32 = 0
     while i < s.items.len {
@@ -20,6 +22,7 @@ pub fn mem[V](s: Set[V], v: V) -> Bool {
     return false
 }
 
+// 函数式添加:已存在原样返回;否则返回含 v 的新集合(原 s 不变)
 pub fn add[V: Eq](s: Set[V], v: V) -> Set[V] {
     if mem[V](s, v) {
         return s
@@ -34,6 +37,7 @@ pub fn add[V: Eq](s: Set[V], v: V) -> Set[V] {
     return Set { items: nitems }
 }
 
+// 元素数
 pub fn len[V](s: Set[V]) -> I32 {
     return s.items.len
 }
@@ -43,6 +47,7 @@ pub fn tolist[V](s: Set[V]) -> List[V] {
     return s.items
 }
 
+// List → 集合(依序 add 去重;首现位次即插入序)
 pub fn fromlist[V: Eq](xs: List[V]) -> Set[V] {
     var out = set_new[V]()
     var i: I32 = 0

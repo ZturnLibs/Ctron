@@ -5,6 +5,7 @@
 // format_hex/format_bin v0.2 仅收非负输入(负数补码面待 P1-B,C10 死区);
 // 实现约束(C10):累加器宽域零播种;溢出阈值比较法;format 族待 P1-B 升版
 
+// 十进制文本 → I64;空串/非数字/溢出 None(阈值比较法无除法;前导 +/0 允许)
 pub fn parse_i64(s: Str) -> Option[I64] {
     if s.len == 0 {
         return None
@@ -64,6 +65,7 @@ pub fn parse_i64(s: Str) -> Option[I64] {
     return Some(acc)
 }
 
+// "true"/"false" 精确匹配(大小写敏感,余者 None)
 pub fn parse_bool(s: Str) -> Option[Bool] {
     if s == "true" {
         return Some(true)
@@ -86,6 +88,7 @@ pub fn sc_get_l(o: Option[I64], dft: I64) -> I64 {
     }
 }
 
+// Option[Bool] 取值(None 返 dft;发射面 C13a 判别形)
 pub fn sc_get_b(o: Option[Bool], dft: Bool) -> Bool {
     match o {
         Some(v) => {
@@ -97,6 +100,7 @@ pub fn sc_get_b(o: Option[Bool], dft: Bool) -> Bool {
     }
 }
 
+// Option[I64] 是否 Some
 pub fn sc_some_l(o: Option[I64]) -> Bool {
     match o {
         Some(v) => {
@@ -108,6 +112,7 @@ pub fn sc_some_l(o: Option[I64]) -> Bool {
     }
 }
 
+// Option[Bool] 是否 Some
 pub fn sc_some_b(o: Option[Bool]) -> Bool {
     match o {
         Some(v) => {

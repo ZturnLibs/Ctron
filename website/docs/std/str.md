@@ -23,30 +23,30 @@ Pure helpers over `Str`: search, split, join, trim/pad, case conversion, and ASC
 | `reverse(s: Str)` | `Str` | 反转 Str |
 | `replace(s: Str, from: Str, to: Str)` | `Str` | 子串替换(全部替换;新串与旧串等长不限) |
 | `to_lower(s: Str)` | `Str` | ASCII 大小写转换(查找表方案;非 ASCII 字节透传) |
-| `to_upper(s: Str)` | `Str` | — |
-| `pad_left(s: Str, width: I32, pad: Str)` | `Str` | — |
-| `pad_right(s: Str, width: I32, pad: Str)` | `Str` | — |
-| `char_at(s: Str, i: I32)` | `Str` | — |
+| `to_upper(s: Str)` | `Str` | ASCII 大写转换(A-Z 外字节原样透传,UTF-8 序列不破坏) |
+| `pad_left(s: Str, width: I32, pad: Str)` | `Str` | 左垫 pad 至 width 字节(len 口径;已达宽度原样返回,不截断) |
+| `pad_right(s: Str, width: I32, pad: Str)` | `Str` | 右垫 pad 至 width 字节(口径同 pad_left) |
+| `char_at(s: Str, i: I32)` | `Str` | 第 i 字节的单字节串(字节级口径,非码点;越界行为同 byte_slice) |
 | `index_of(s: Str, sub: Str)` | `I32` | 首次出现 sub 的字节下标;无 -1;空 sub = 0 |
 | `index_of_from(s: Str, sub: Str, from: I32)` | `I32` | 从 from 起找;from 越界 -1 |
 | `split_str(s: Str, sep: Str)` | `List[Str]` | 串分隔(始终 ≥1 段;sep 空返回原串单段) |
 | `repeat(s: Str, n: I32)` | `Str` | 重复 n 次;n ≤ 0 返回空串 |
 | `is_ascii_digit(b: I32)` | `Bool` | 字节类判定(ASCII) |
-| `is_ascii_alpha(b: I32)` | `Bool` | — |
-| `is_ascii_space(b: I32)` | `Bool` | — |
+| `is_ascii_alpha(b: I32)` | `Bool` | ASCII 字母(A-Z/a-z) |
+| `is_ascii_space(b: I32)` | `Bool` | ASCII 空白(空格/\t/\n/\r 四种) |
 | `strip_prefix(s: Str, pre: Str)` | `Option[Str]` | 前缀/后缀剥离;不匹配 None |
-| `strip_suffix(s: Str, suf: Str)` | `Option[Str]` | — |
+| `strip_suffix(s: Str, suf: Str)` | `Option[Str]` | 后缀剥离;不匹配 None(与 strip_prefix 对偶) |
 | `count_sub(s: Str, sub: Str)` | `I32` | 非重叠出现计数;空 sub = 0 |
 | `eq_ignore_ascii_case(a: Str, b: Str)` | `Bool` | ASCII 大小写不敏感相等;长度不等 false |
 | `str_get(o: Option[Str], dft: Str)` | `Str` | 发射面安全 Option 助手(match 形;成员调用 .or/.is_some 发射有缺陷 C13a) |
-| `str_some(o: Option[Str])` | `Bool` | — |
+| `str_some(o: Option[Str])` | `Bool` | Option[Str] 是否 Some(发射面 C13 判别形助手) |
 | `trim_left(s: Str)` | `Str` | 去左端空白(空格/制表/换行/回车) |
 | `trim_right(s: Str)` | `Str` | 去右端空白 |
 | `partition(s: Str, sep: Str)` | `List[Str]` | 三段切分:首次出现 sep 处切为 [前, sep, 后];无 sep 返回 [s, "", ""] |
 | `rindex(s: Str, sub: Str)` | `I32` | 反向查找:最后一次出现 sub 的下标;无 -1;空 sub = s.len |
 | `replace_n(s: Str, from: Str, to: Str, n: I32)` | `Str` | 限段替换:最多 n 次(从左到右);n ≤ 0 不替换 |
 | `split_n(s: Str, sep: Str, max: I32)` | `List[Str]` | 限段切分:最多 max 段(余下归末段);max ≤ 0 返回空表 |
-| `is_ascii_upper(b: I32)` | `Bool` | — |
-| `is_ascii_lower(b: I32)` | `Bool` | — |
-| `is_ascii_xdigit(b: I32)` | `Bool` | — |
+| `is_ascii_upper(b: I32)` | `Bool` | ASCII 大写字母(A-Z) |
+| `is_ascii_lower(b: I32)` | `Bool` | ASCII 小写字母(a-z) |
+| `is_ascii_xdigit(b: I32)` | `Bool` | ASCII 十六进制数字位(0-9/A-F/a-f) |
 

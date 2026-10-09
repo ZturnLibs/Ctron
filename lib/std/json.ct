@@ -792,6 +792,7 @@ pub fn jk_i64(entries: List[List[Str]], path: Str) -> Str {
     }
 }
 
+// kind 查询(jget_f64 同径不取值):"ok" 或 noent/null/type/frac/range/syn
 pub fn jk_f64(entries: List[List[Str]], path: Str) -> Str {
     let r = jget_f64(entries, path)
     match r {
@@ -804,6 +805,7 @@ pub fn jk_f64(entries: List[List[Str]], path: Str) -> Str {
     }
 }
 
+// kind 查询(jget_bool 同径不取值):"ok" 或 noent/null/type/syn
 pub fn jk_bool(entries: List[List[Str]], path: Str) -> Str {
     let r = jget_bool(entries, path)
     match r {

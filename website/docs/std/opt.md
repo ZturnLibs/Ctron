@@ -17,5 +17,5 @@ Option/Result 组合子补齐(前奏 map/or/expect 之外的链式缺口)
 | `opt_map2[T, U, V](a: Option[T], b: Option[U], f: fn(T, U) -> V)` | `Option[V]` | 双 lift:任一 None → None |
 | `opt_to_result[T](o: Option[T], msg: Str)` | `Result[T, Str]` | Option → Result(None 附消息) |
 | `opt_get_i(o: Option[I32], dft: I32)` | `I32` | 发射面安全 Option 助手(match 形;C13a) |
-| `opt_some_i(o: Option[I32])` | `Bool` | — |
+| `opt_some_i(o: Option[I32])` | `Bool` | Option[I32] 是否 Some(发射面 C13 判别形助手) |
 

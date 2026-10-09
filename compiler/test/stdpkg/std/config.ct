@@ -444,6 +444,7 @@ fn cfg_classify(v: Str, ds: List[Str], ln: I32, items: List[Str]) -> I32 {
     return -1
 }
 
+// CTCL 清单全文校验 → 诊断串表(空表 = 合法;与 selfhosted/ctcl_chk.ct 驱动镜像同源,两处须同步修改)
 pub fn config_diags(src: Str) -> List[Str] {
     var t = src
     var ds = List[Str]()

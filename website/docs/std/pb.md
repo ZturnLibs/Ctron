@@ -31,6 +31,8 @@ varint:每字节低 7 位,最高位续行;≤10 字节。负 int64 = 10 字节�
 
 **struct PbField**
 
+读面字段结果:rc(1/0/-1)+ 字段号/wire/值 + 载荷窗口 [start, ln) + 推进后 pos
+
 | Field | Type |
 |---|---|
 | `rc` | `I64` |
@@ -43,6 +45,8 @@ varint:每字节低 7 位,最高位续行;≤10 字节。负 int64 = 10 字节�
 
 **struct PbRd**
 
+varint 单值读结果:rc + 值 + 推进后位置
+
 | Field | Type |
 |---|---|
 | `rc` | `I64` |
@@ -53,13 +57,13 @@ varint:每字节低 7 位,最高位续行;≤10 字节。负 int64 = 10 字节�
 
 | Signature | Returns | Description |
 |---|---|---|
-| `pb_w_varint()` | `I64` | — |
-| `pb_w_64bit()` | `I64` | — |
-| `pb_w_ld()` | `I64` | — |
-| `pb_w_32bit()` | `I64` | — |
-| `pb_rc_field()` | `I64` | — |
-| `pb_rc_eof()` | `I64` | — |
-| `pb_rc_bad()` | `I64` | — |
+| `pb_w_varint()` | `I64` | wire 类型码 0(varint 族) |
+| `pb_w_64bit()` | `I64` | wire 类型码 1(64-bit fixed 族;v1 写面不做,志向登记) |
+| `pb_w_ld()` | `I64` | wire 类型码 2(length-delimited:string/bytes/嵌套 message) |
+| `pb_w_32bit()` | `I64` | wire 类型码 5(32-bit fixed 族;v1 写面不做,志向登记) |
+| `pb_rc_field()` | `I64` | 读面 rc:读到字段 |
+| `pb_rc_eof()` | `I64` | 读面 rc:输入耗尽 |
+| `pb_rc_bad()` | `I64` | 读面 rc:线格式坏(group 废弃形/wire 未知/varint 越界) |
 | `pb_put_varint(buf: &[I64], cap: I64, pos: I64, v: I64)` | `I64` | varint 写(负数委 varneg 10 字节规范形;正数 9 组直排 + 地板除链) |
 | `pb_put_varneg(buf: &[I64], cap: I64, pos: I64, v: I64)` | `I64` | 负数规范形:10 字节(地板 7 位链;组 0..8 恒续行,组 9 恒 1) |
 | `pb_put_tag(buf: &[I64], cap: I64, pos: I64, field: I64, wire: I64)` | `I64` | tag = field*8 + wire(varint 写) |

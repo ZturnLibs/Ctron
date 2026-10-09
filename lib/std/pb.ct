@@ -26,11 +26,16 @@ fn zseed() -> I64 {
     return w - w
 }
 
+// wire 类型码 0(varint 族)
 pub fn pb_w_varint() -> I64 { return zseed() + 0 }
+// wire 类型码 1(64-bit fixed 族;v1 写面不做,志向登记)
 pub fn pb_w_64bit() -> I64 { return zseed() + 1 }
+// wire 类型码 2(length-delimited:string/bytes/嵌套 message)
 pub fn pb_w_ld() -> I64 { return zseed() + 2 }
+// wire 类型码 5(32-bit fixed 族;v1 写面不做,志向登记)
 pub fn pb_w_32bit() -> I64 { return zseed() + 5 }
 
+// 读面字段结果:rc(1/0/-1)+ 字段号/wire/值 + 载荷窗口 [start, ln) + 推进后 pos
 pub struct PbField {
     let rc: I64
     let field: I64
@@ -41,14 +46,18 @@ pub struct PbField {
     let pos: I64
 }
 
+// varint 单值读结果:rc + 值 + 推进后位置
 pub struct PbRd {
     let rc: I64
     let v: I64
     let np: I64
 }
 
+// 读面 rc:读到字段
 pub fn pb_rc_field() -> I64 { return zseed() + 1 }
+// 读面 rc:输入耗尽
 pub fn pb_rc_eof() -> I64 { return zseed() + 0 }
+// 读面 rc:线格式坏(group 废弃形/wire 未知/varint 越界)
 pub fn pb_rc_bad() -> I64 { return zseed() - 1 }
 
 // 地板 7 位取模(负数安全:((v % 128) + 128) % 128)

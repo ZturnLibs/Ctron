@@ -6,10 +6,12 @@ struct Map[K, V] {
     let vs: List[V]
 }
 
+// 空映射(双空 List 槽)
 pub fn map_new[K, V]() -> Map[K, V] {
     return Map { ks: List[K](), vs: List[V]() }
 }
 
+// 函数式覆盖写:键存在则原位替换值,否则尾插;返回新映射,原 m 不变(O(n))
 pub fn put[K: Eq, V](m: Map[K, V], k: K, v: V) -> Map[K, V] {
     var nks = List[K]()
     var nvs = List[V]()
@@ -33,6 +35,7 @@ pub fn put[K: Eq, V](m: Map[K, V], k: K, v: V) -> Map[K, V] {
     return Map { ks: nks, vs: nvs }
 }
 
+// 取值:键不存在返回 dft
 pub fn get[K: Eq, V](m: Map[K, V], k: K, dft: V) -> V {
     var i: I32 = 0
     while i < m.ks.len {
@@ -44,6 +47,7 @@ pub fn get[K: Eq, V](m: Map[K, V], k: K, dft: V) -> V {
     return dft
 }
 
+// 键存在判定
 pub fn has[K: Eq, V](m: Map[K, V], k: K) -> Bool {
     var i: I32 = 0
     while i < m.ks.len {
@@ -60,6 +64,7 @@ pub fn keys[K, V](m: Map[K, V]) -> List[K] {
     return m.ks
 }
 
+// 值表(首插序;与 keys 一一对应;克隆语义同 keys)
 pub fn values[K, V](m: Map[K, V]) -> List[V] {
     return m.vs
 }

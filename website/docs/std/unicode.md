@@ -15,7 +15,7 @@ UTF-8 解码面(码点读取/合法性/计数;字节级纪律的码点侧补充)
 |---|---|---|
 | `cp_at(s: Str, i: I32)` | `I32` | i 处码点(须为序列首字节);非法/越界 -1 |
 | `cp_is_start(b: I32)` | `Bool` | 字节是否序列首字节(非 10xxxxxx 续字节) |
-| `cp_valid_utf8(s: Str)` | `Bool` | — |
+| `cp_valid_utf8(s: Str)` | `Bool` | 整串 UTF-8 有效性(逐序列校验;非法字节序即 false) |
 | `cp_iter(s: Str)` | `List[I32]` | 逐码点表(按首字节推进;非法序列以 -1 占一位) |
 | `cp_count(s: Str)` | `I32` | 码点数(首字节计数;与前奏 char_len 同口径) |
 

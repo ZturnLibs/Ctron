@@ -12,7 +12,7 @@
 
 | Signature | Returns | Description |
 |---|---|---|
-| `sorted[K](xs: List[K])` | `List[K]` | — |
+| `sorted[K](xs: List[K])` | `List[K]` | 稳定升序(返回新 List,原列不变) |
 | `sorted_desc[K](xs: List[K])` | `List[K]` | 降序(等值不越过 → 稳定;非 reverse(asc) 的平局序) |
 | `reversed[K](xs: List[K])` | `List[K]` | 原序反转(新表) |
 | `sorted_by[K](xs: List[K], less: fn(K, K) -> Bool)` | `List[K]` | 稳定排序,比较走 less 谓词(less(a, b) = a 应排在 b 之前)。<br>K 为 I32/Str(闭包经 ct_i 包装;结构体 K 挂账:ct_wrap_i 不收 struct 值)。 |

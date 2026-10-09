@@ -19,6 +19,8 @@ NDJSON 逐行游标(P8-C;T1 档:零 use 纯函数,无 IO 无时钟)
 
 **struct NdLine**
 
+行游标结果:rc(1=行/0=EOF/-1=坏窗口)+ 行文本窗口 [start, ln)
+
 | Field | Type |
 |---|---|
 | `rc` | `I64` |
@@ -29,9 +31,9 @@ NDJSON 逐行游标(P8-C;T1 档:零 use 纯函数,无 IO 无时钟)
 
 | Signature | Returns | Description |
 |---|---|---|
-| `nd_rc_line()` | `I64` | — |
-| `nd_rc_eof()` | `I64` | — |
-| `nd_rc_bad()` | `I64` | — |
+| `nd_rc_line()` | `I64` | 游标 rc:读到非空行 |
+| `nd_rc_eof()` | `I64` | 游标 rc:输入耗尽 |
+| `nd_rc_bad()` | `I64` | 游标 rc:窗口参数坏(负位/越界) |
 | `nd_next(buf: &[I64], n: I64, pos: I64)` | `NdLine` | 游标:自 pos 起跳过空白行,返回下一非空行窗口(行尾 \r 剥离)。<br>rc 1=行 / 0=EOF。npos = 下一游标(消费方直传回)。 |
 | `nd_line_str(buf: &[I64], f: NdLine)` | `Str` | 行窗口 → Str(可印透传;JSON 文本可印口径) |
 

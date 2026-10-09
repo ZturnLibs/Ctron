@@ -12,12 +12,12 @@ K 需可 ==(bound Eq:标量原生可等/派生结构体逐字段);调用点经�
 
 | Signature | Returns | Description |
 |---|---|---|
-| `map_new[K, V]()` | `Map[K, V]` | — |
-| `put[K, V](m: Map[K, V], k: K, v: V)` | `Map[K, V]` | — |
-| `get[K, V](m: Map[K, V], k: K, dft: V)` | `V` | — |
-| `has[K, V](m: Map[K, V], k: K)` | `Bool` | — |
+| `map_new[K, V]()` | `Map[K, V]` | 空映射(双空 List 槽) |
+| `put[K, V](m: Map[K, V], k: K, v: V)` | `Map[K, V]` | 函数式覆盖写:键存在则原位替换值,否则尾插;返回新映射,原 m 不变(O(n)) |
+| `get[K, V](m: Map[K, V], k: K, dft: V)` | `V` | 取值:键不存在返回 dft |
+| `has[K, V](m: Map[K, V], k: K)` | `Bool` | 键存在判定 |
 | `keys[K, V](m: Map[K, V])` | `List[K]` | 键表/值表(首插序;覆盖写不移位)。返回内部 List 的克隆(读即深克隆语义锚)。 |
-| `values[K, V](m: Map[K, V])` | `List[V]` | — |
+| `values[K, V](m: Map[K, V])` | `List[V]` | 值表(首插序;与 keys 一一对应;克隆语义同 keys) |
 | `map_len[K, V](m: Map[K, V])` | `I32` | 键值对数 |
 | `map_del[K, V](m: Map[K, V], k: K)` | `Map[K, V]` | 删除键:不存在时原样返回(函数式,原映射不变) |
 

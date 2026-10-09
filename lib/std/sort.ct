@@ -1,6 +1,8 @@
 // std/sort.ct —— 排序工具(泛型 K:I32/Str;稳定插入排序,确定性)
 //@ tier: alloc
 // 依赖 K 可比较(< >):单态化后按具体类型派发(I32 标量比较,Str strcmp 字节序)。
+
+// 稳定升序(返回新 List,原列不变)
 pub fn sorted[K](xs: List[K]) -> List[K] {
     var out = List[K]()
     var i: I32 = 0

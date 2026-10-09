@@ -13,6 +13,7 @@ struct FMap[V] {
     let vals: List[V]
 }
 
+// 空映射(256 槽全 -1 空;vals 空 List 规避泛型零值构造)
 pub fn fnew[V]() -> FMap[V] {
     var s = List[I32]()
     var i: I32 = 0
@@ -122,6 +123,7 @@ pub fn fget[V](m: FMap[V], k: Str, dft: V) -> V {
     return m.vals[s]
 }
 
+// 键存在判定(经 fslot;O(1) 探查)
 pub fn fhas[V](m: FMap[V], k: Str) -> Bool {
     if fslot[V](m, k) < 0 {
         return false

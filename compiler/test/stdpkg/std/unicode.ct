@@ -126,6 +126,7 @@ fn uclen(b0: I32) -> I32 {
     return 4
 }
 
+// 整串 UTF-8 有效性(逐序列校验;非法字节序即 false)
 pub fn cp_valid_utf8(s: Str) -> Bool {
     var i: I32 = 0
     while i < s.len {

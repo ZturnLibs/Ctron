@@ -15,11 +15,11 @@ String/字节构建面落地后升版放宽到全 UTF-8);解码长度/字符集�
 | Signature | Returns | Description |
 |---|---|---|
 | `enc_get(o: Option[Str], dft: Str)` | `Str` | 发射面安全的 Option 解包/判定助手(match 形;.or/.is_some 成员调用在发射面<br>会产出悬逗号/未声明符号——C13a,见 v0.2 API 规范 §0) |
-| `enc_some(o: Option[Str])` | `Bool` | — |
-| `hex_encode(s: Str)` | `Str` | — |
-| `hex_decode(s: Str)` | `Option[Str]` | — |
-| `b64_encode(s: Str)` | `Str` | — |
-| `b64_decode(s: Str)` | `Option[Str]` | — |
-| `pct_encode(s: Str)` | `Str` | — |
-| `pct_decode(s: Str)` | `Option[Str]` | — |
+| `enc_some(o: Option[Str])` | `Bool` | Option[Str] 是否 Some(发射面 C13 判别形助手) |
+| `hex_encode(s: Str)` | `Str` | 字节 → 小写 hex 串(每字节 2 字符) |
+| `hex_decode(s: Str)` | `Option[Str]` | hex 串 → 字节;奇数长/非 hex 位 None(大小写均收) |
+| `b64_encode(s: Str)` | `Str` | RFC 4648 标准 base64(+ / 与 = 垫) |
+| `b64_decode(s: Str)` | `Option[Str]` | base64 → 字节;非法字符 None(解码输出限可打印 ASCII,C8) |
+| `pct_encode(s: Str)` | `Str` | percent 编码:URL 保留集外字节按 %XX 大写转义(未保留集 = 字母数字 - . _ ~) |
+| `pct_decode(s: Str)` | `Option[Str]` | %XX 与字面字节还原;非法 % 序列 None(输出限可打印 ASCII,C8) |
 

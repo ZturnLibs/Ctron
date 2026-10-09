@@ -27,10 +27,10 @@
 
 | Signature | Returns | Description |
 |---|---|---|
-| `lg_debug()` | `I64` | — |
-| `lg_info()` | `I64` | — |
-| `lg_warn()` | `I64` | — |
-| `lg_error()` | `I64` | — |
+| `lg_debug()` | `I64` | 级别码 0 |
+| `lg_info()` | `I64` | 级别码 1 |
+| `lg_warn()` | `I64` | 级别码 2 |
+| `lg_error()` | `I64` | 级别码 3 |
 | `lg_level_parse(v: Str)` | `I64` | 阈值解析:CTRON_LOG 值 → 级别码;空/未知 → info(1) |
 | `lg_enabled(thresh: I64, level: I64)` | `Bool` | 门控:level 达阈值才出 |
 | `lg_level_name(level: I64)` | `Str` | 级别名(4/5 字母大写;越界码 → INFO 诚实降档,不 panic) |

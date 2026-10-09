@@ -19,9 +19,13 @@
 
 // ---- 级别码(稳定;阈值比较用) ----
 
+// 级别码 0
 pub fn lg_debug() -> I64 { return 0 }
+// 级别码 1
 pub fn lg_info() -> I64 { return 1 }
+// 级别码 2
 pub fn lg_warn() -> I64 { return 2 }
+// 级别码 3
 pub fn lg_error() -> I64 { return 3 }
 
 // 长度感知等值(发射面债:==/strcmp 对非 NUL 结尾串读越界,router.eqs 同款)

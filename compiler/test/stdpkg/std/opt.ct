@@ -94,6 +94,7 @@ pub fn opt_get_i(o: Option[I32], dft: I32) -> I32 {
     }
 }
 
+// Option[I32] 是否 Some(发射面 C13 判别形助手)
 pub fn opt_some_i(o: Option[I32]) -> Bool {
     match o {
         Some(v) => {

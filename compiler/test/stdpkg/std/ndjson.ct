@@ -9,14 +9,18 @@
 //   跳过或报错 = 消费方策略;本层只保证窗口切分正确。
 // 分层准入(宪章 v2 四问):零依赖/纯函数/无平台面/与 json·csv 同类 —— T1。
 
+// 行游标结果:rc(1=行/0=EOF/-1=坏窗口)+ 行文本窗口 [start, ln)
 pub struct NdLine {
     let rc: I64
     let start: I64
     let ln: I64
 }
 
+// 游标 rc:读到非空行
 pub fn nd_rc_line() -> I64 { return 1 }
+// 游标 rc:输入耗尽
 pub fn nd_rc_eof() -> I64 { return 0 }
+// 游标 rc:窗口参数坏(负位/越界)
 pub fn nd_rc_bad() -> I64 { return 0 - 1 }
 
 // 游标:自 pos 起跳过空白行,返回下一非空行窗口(行尾 \r 剥离)。

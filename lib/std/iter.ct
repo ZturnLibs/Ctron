@@ -22,6 +22,9 @@
 
 // ---- 链面 trait:S = 接收者自身型(适配器持上游而设);T = 元素型 ----
 
+// Seq —— 惰性序列 trait:S = 接收者自身型(适配器持上游),T = 元素型
+// get(i) 纯位置读取、无状态推进,链任意深度可组合;适配器方法带缺省实现,
+// 终结器索引驱动逐元素拉取零中间集合
 trait Seq[T, S] {
     fn get(var self, i: I64) -> T?
     fn map(var self, f: fn(T) -> T) -> MapSeq[T, S] {
@@ -262,57 +265,70 @@ struct Pair[F, G] {
     let snd: G
 }
 
+// RawSeq —— 数组原始序列包装(src 直接索引;数组入口的接收者型)
 struct RawSeq[S, T] {
     let src: S
 }
 
+// ListSeq —— List 包装序列(from_list 入口;前奏 class 直 impl trait 派发不挂,
+// 探针实证,包装 struct 同 RawSeq 形接入)
 struct ListSeq[T] {
     let src: List[T]
 }
 
+// MapSeq —— 映射适配器:逐位置应用 f
 struct MapSeq[T, S] {
     let it: S
     let f: fn(T) -> T
 }
 
+// FilterSeq —— 过滤适配器:get 重扫上游取第 i 个过 p 的元素
 struct FilterSeq[T, S] {
     let it: S
     let p: fn(T) -> Bool
 }
 
+// TakeSeq —— 截前 k 个适配器
 struct TakeSeq[T, S] {
     let it: S
     let k: I64
 }
 
+// SkipSeq —— 跳前 n 个适配器(位置平移)
 struct SkipSeq[T, S] {
     let it: S
     let n: I64
 }
 
+// TakeWhileSeq —— 取前缀适配器(遇首个不满足即断,与 filter 的逐点保留有别)
 struct TakeWhileSeq[T, S] {
     let it: S
     let p: fn(T) -> Bool
 }
 
+// RevSeq —— 反转适配器(无状态重扫:每次 get O(n),总量 O(n·m))
 struct RevSeq[T, S] {
     let it: S
 }
 
+// EnumSeq —— 索引配对适配器:get → Pair[I64, T]
 struct EnumSeq[T, S] {
     let it: S
 }
 
+// ZipSeq —— 同型双序列拉链适配器(短者截断)
 struct ZipSeq[T, S] {
     let it: S
     let ot: S
 }
 
+// ChainSeq —— 同型双序列串接适配器(b 侧定位含 a 全长重扫)
 struct ChainSeq[T, S] {
     let a: S
     let b: S
 }
 
+// RawSeq:数组位置直读
 impl Seq[T, RawSeq[S, T]] for RawSeq[S, T] {
     fn get(var self, i: I64) -> T? {
         if i < self.src.len {
@@ -322,6 +338,7 @@ impl Seq[T, RawSeq[S, T]] for RawSeq[S, T] {
     }
 }
 
+// ListSeq:List 位置直读
 impl Seq[T, ListSeq[T]] for ListSeq[T] {
     fn get(var self, i: I64) -> T? {
         if i < self.src.len {
@@ -331,6 +348,7 @@ impl Seq[T, ListSeq[T]] for ListSeq[T] {
     }
 }
 
+// MapSeq:上游 get 后应用 f(逐点映射,不短路)
 impl Seq[T, MapSeq[T, S]] for MapSeq[T, S] {
     fn get(var self, i: I64) -> T? {
         let g = self.f
@@ -341,6 +359,7 @@ impl Seq[T, MapSeq[T, S]] for MapSeq[T, S] {
     }
 }
 
+// FilterSeq:重扫上游收集过 p 者,取第 i 个(O(n) 每次)
 impl Seq[T, FilterSeq[T, S]] for FilterSeq[T, S] {
     fn get(var self, i: I64) -> T? {
         let g = self.p
@@ -365,6 +384,7 @@ impl Seq[T, FilterSeq[T, S]] for FilterSeq[T, S] {
     }
 }
 
+// TakeSeq:i < k 透传上游,此后 None
 impl Seq[T, TakeSeq[T, S]] for TakeSeq[T, S] {
     fn get(var self, i: I64) -> T? {
         if i < self.k {
@@ -374,12 +394,14 @@ impl Seq[T, TakeSeq[T, S]] for TakeSeq[T, S] {
     }
 }
 
+// SkipSeq:位置平移 i+n 读上游
 impl Seq[T, SkipSeq[T, S]] for SkipSeq[T, S] {
     fn get(var self, i: I64) -> T? {
         return self.it.get(i + self.n)
     }
 }
 
+// TakeWhileSeq:重扫上游取前缀,遇首不满足即断
 impl Seq[T, TakeWhileSeq[T, S]] for TakeWhileSeq[T, S] {
     fn get(var self, i: I64) -> T? {
         let g = self.p
@@ -406,6 +428,7 @@ impl Seq[T, TakeWhileSeq[T, S]] for TakeWhileSeq[T, S] {
     }
 }
 
+// RevSeq:每次 get 先数上游全长再倒序取(O(n) 每次;缓存待 var-self 写回语义)
 impl Seq[T, RevSeq[T, S]] for RevSeq[T, S] {
     fn get(var self, i: I64) -> T? {
         // 无状态重扫:每次 get 计上游全长(正确性优先;缓存待 var-self 写回语义)
@@ -428,6 +451,7 @@ impl Seq[T, RevSeq[T, S]] for RevSeq[T, S] {
     }
 }
 
+// EnumSeq:Pair{fst: i, snd: v} 直包上游
 impl Seq[T, EnumSeq[T, S]] for EnumSeq[T, S] {
     fn get(var self, i: I64) -> Pair[I64, T]? {
         match self.it.get(i) {
@@ -437,6 +461,7 @@ impl Seq[T, EnumSeq[T, S]] for EnumSeq[T, S] {
     }
 }
 
+// ZipSeq:双侧同位读取,任一侧尽即 None(短者截断)
 impl Seq[T, ZipSeq[T, S]] for ZipSeq[T, S] {
     fn get(var self, i: I64) -> Pair[T, T]? {
         match self.it.get(i) {
@@ -451,6 +476,7 @@ impl Seq[T, ZipSeq[T, S]] for ZipSeq[T, S] {
     }
 }
 
+// ChainSeq:a.get(i) 命中直返;否则数 a 全长 m 后读 b 的 i-m 位
 impl Seq[T, ChainSeq[T, S]] for ChainSeq[T, S] {
     fn get(var self, i: I64) -> T? {
         match self.a.get(i) {
@@ -477,48 +503,59 @@ impl Seq[T, ChainSeq[T, S]] for ChainSeq[T, S] {
 
 // ---- 数组入口(UFCS:xs.map(f) 以接收者填首参;§4.8) ----
 
+// 数组入口:xs.map(f)(UFCS 接收者填首参;包 RawSeq 成 MapSeq)
 pub fn map(xs: I32[], f: fn(I32) -> I32) -> MapSeq[I32, RawSeq[I32[], I32]] {
     return MapSeq { it: RawSeq { src: xs }, f: f }
 }
 
+// 数组入口:xs.filter(p)
 pub fn filter(xs: I32[], p: fn(I32) -> Bool) -> FilterSeq[I32, RawSeq[I32[], I32]] {
     return FilterSeq { it: RawSeq { src: xs }, p: p }
 }
 
+// 数组入口:xs.take(k) 截前 k 个
 pub fn take(xs: I32[], k: I64) -> TakeSeq[I32, RawSeq[I32[], I32]] {
     return TakeSeq { it: RawSeq { src: xs }, k: k }
 }
 
+// 数组入口:xs.skip(n) 跳前 n 个
 pub fn skip(xs: I32[], n: I64) -> SkipSeq[I32, RawSeq[I32[], I32]] {
     return SkipSeq { it: RawSeq { src: xs }, n: n }
 }
 
+// 数组入口:xs.take_while(p) 取前缀直遇首败
 pub fn take_while(xs: I32[], p: fn(I32) -> Bool) -> TakeWhileSeq[I32, RawSeq[I32[], I32]] {
     return TakeWhileSeq { it: RawSeq { src: xs }, p: p }
 }
 
+// 数组入口:xs.rev() 反转视图(无状态重扫)
 pub fn rev(xs: I32[]) -> RevSeq[I32, RawSeq[I32[], I32]] {
     return RevSeq { it: RawSeq { src: xs } }
 }
 
+// 数组入口:xs.enumerate() → Pair[I64, T] 序列
 pub fn enumerate(xs: I32[]) -> EnumSeq[I32, RawSeq[I32[], I32]] {
     return EnumSeq { it: RawSeq { src: xs } }
 }
 
+// 数组入口:xs.zip(ys) 同型拉链(短者截断)
 pub fn zip(xs: I32[], ys: I32[]) -> ZipSeq[I32, RawSeq[I32[], I32]] {
     return ZipSeq { it: RawSeq { src: xs }, ot: RawSeq { src: ys } }
 }
 
+// 数组入口:xs.chain(ys) 同型串接
 pub fn chain(xs: I32[], ys: I32[]) -> ChainSeq[I32, RawSeq[I32[], I32]] {
     return ChainSeq { a: RawSeq { src: xs }, b: RawSeq { src: ys } }
 }
 
+// List 入口:iter.from_list(xs)(前奏 class 直 impl 派发不挂,包装 struct 接入)
 pub fn from_list(xs: List[I32]) -> ListSeq[I32] {
     return ListSeq { src: xs }
 }
 
 // ---- 数组直终结(快路径:零包装直接索引循环) ----
 
+// 数组直终结快路径:I64 累加(零包装索引循环)
 pub fn sum(xs: I32[]) -> I64 {
     var t: I64 = 0
     var i: I64 = 0
@@ -529,10 +566,12 @@ pub fn sum(xs: I32[]) -> I64 {
     return t
 }
 
+// 数组直终结:len 直返
 pub fn count(xs: I32[]) -> I64 {
     return xs.len
 }
 
+// 数组直终结:转 List[I32]
 pub fn collect(xs: I32[]) -> List[I32] {
     let out = List[I32]()
     var i: I64 = 0
@@ -543,6 +582,7 @@ pub fn collect(xs: I32[]) -> List[I32] {
     return out
 }
 
+// 数组直终结:短路存在判定
 pub fn any(xs: I32[], p: fn(I32) -> Bool) -> Bool {
     var i: I64 = 0
     while i < xs.len {
@@ -554,6 +594,7 @@ pub fn any(xs: I32[], p: fn(I32) -> Bool) -> Bool {
     return false
 }
 
+// 数组直终结:短路全称判定
 pub fn all(xs: I32[], p: fn(I32) -> Bool) -> Bool {
     var i: I64 = 0
     while i < xs.len {
@@ -565,6 +606,7 @@ pub fn all(xs: I32[], p: fn(I32) -> Bool) -> Bool {
     return true
 }
 
+// 数组直终结:I64 折叠(init 起,逐元素左折叠)
 pub fn fold(xs: I32[], init: I64, f: fn(I64, I32) -> I64) -> I64 {
     var acc: I64 = init
     var i: I64 = 0
@@ -575,6 +617,7 @@ pub fn fold(xs: I32[], init: I64, f: fn(I64, I32) -> I64) -> I64 {
     return acc
 }
 
+// 数组直终结:同型归并;空数组 None
 pub fn reduce(xs: I32[], f: fn(I32, I32) -> I32) -> I32? {
     if xs.len == 0 {
         return None
@@ -588,6 +631,7 @@ pub fn reduce(xs: I32[], f: fn(I32, I32) -> I32) -> I32? {
     return Some(acc)
 }
 
+// 数组直终结:逐元素执行 f,返回处理数
 pub fn foreach(xs: I32[], f: fn(I32)) -> I64 {
     var n: I64 = 0
     var i: I64 = 0
@@ -599,6 +643,7 @@ pub fn foreach(xs: I32[], f: fn(I32)) -> I64 {
     return n
 }
 
+// 数组直终结:最小值;空数组 None
 pub fn min(xs: I32[]) -> I32? {
     if xs.len == 0 {
         return None
@@ -614,6 +659,7 @@ pub fn min(xs: I32[]) -> I32? {
     return Some(best)
 }
 
+// 数组直终结:最大值;空数组 None
 pub fn max(xs: I32[]) -> I32? {
     if xs.len == 0 {
         return None
@@ -629,6 +675,7 @@ pub fn max(xs: I32[]) -> I32? {
     return Some(best)
 }
 
+// 数组直终结:末元素;空数组 None
 pub fn last(xs: I32[]) -> I32? {
     if xs.len == 0 {
         return None
@@ -636,6 +683,7 @@ pub fn last(xs: I32[]) -> I32? {
     return Some(xs[xs.len - 1])
 }
 
+// 数组直终结:首个满足 p 的下标;无则 None
 pub fn position(xs: I32[], p: fn(I32) -> Bool) -> I64? {
     var i: I64 = 0
     while i < xs.len {
@@ -651,10 +699,12 @@ pub fn position(xs: I32[], p: fn(I32) -> Bool) -> I64? {
 // use std.iter.{parallel} 后 parallel.map/reduce 可用;前奏直用 parallel
 // 保持兼容(过渡双轨,迁移注记入 COVERAGE)
 
+// 前奏 parallel.map 薄包装(§7.7 归位;前奏直用 parallel 过渡兼容)
 pub fn parallel_map(xs: List[I32], f: fn(I32) -> I32) -> List[I32] {
     return parallel.map(xs, f)
 }
 
+// 前奏 parallel.reduce 薄包装(init 起 I32 归并;过渡兼容同上)
 pub fn parallel_reduce(xs: List[I32], init: I32, f: fn(I32, I32) -> I32) -> I32 {
     return parallel.reduce(xs, init, f)
 }

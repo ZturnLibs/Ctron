@@ -19,5 +19,5 @@ O(log n) 筛(文档化,v0 接受);堆序:cmp(xs[i], xs[父]) ≥ 0
 | `heap_peek[T](xs: List[T])` | `Option[T]` | 堆顶 |
 | `heap_sorted[T](xs: List[T], cmp: fn(T, T) -> I32)` | `List[T]` | 依次弹出收集(升序 = cmp 序;不动原 List) |
 | `heap_get_i(xs: List[I32], dft: I32)` | `I32` | 发射面安全 Option 助手(match 形;C13a) |
-| `heap_has_i(xs: List[I32])` | `Bool` | — |
+| `heap_has_i(xs: List[I32])` | `Bool` | 堆空判定(peek Some/None 的布尔形;发射面判别助手) |
 

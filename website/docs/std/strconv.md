@@ -14,10 +14,10 @@ format_hex/format_bin v0.2 仅收非负输入(负数补码面待 P1-B,C10 死区
 
 | Signature | Returns | Description |
 |---|---|---|
-| `parse_i64(s: Str)` | `Option[I64]` | — |
-| `parse_bool(s: Str)` | `Option[Bool]` | — |
+| `parse_i64(s: Str)` | `Option[I64]` | 十进制文本 → I64;空串/非数字/溢出 None(阈值比较法无除法;前导 +/0 允许) |
+| `parse_bool(s: Str)` | `Option[Bool]` | "true"/"false" 精确匹配(大小写敏感,余者 None) |
 | `sc_get_l(o: Option[I64], dft: I64)` | `I64` | 发射面安全 Option 助手(match 形;C13a) |
-| `sc_get_b(o: Option[Bool], dft: Bool)` | `Bool` | — |
-| `sc_some_l(o: Option[I64])` | `Bool` | — |
-| `sc_some_b(o: Option[Bool])` | `Bool` | — |
+| `sc_get_b(o: Option[Bool], dft: Bool)` | `Bool` | Option[Bool] 取值(None 返 dft;发射面 C13a 判别形) |
+| `sc_some_l(o: Option[I64])` | `Bool` | Option[I64] 是否 Some |
+| `sc_some_b(o: Option[Bool])` | `Bool` | Option[Bool] 是否 Some |
 
