@@ -118,6 +118,44 @@ nav:
           - ffi: ffi/ffi.md
       - rt:
           - Overview: rt/README.md
+  - Registry Packages:
+      - gui:
+          - Overview: gui/README.md
+          - gui_parse: gui/gui_parse.md
+          - gui_expr: gui/gui_expr.md
+          - gui_render: gui/gui_render.md
+          - gui_edit: gui/gui_edit.md
+          - gui_driver: gui/gui_driver.md
+          - gui_anim: gui/gui_anim.md
+      - gui_theme:
+          - Overview: gui_theme/README.md
+          - gui_theme: gui_theme/gui_theme.md
+      - gui_widgets:
+          - Overview: gui_widgets/README.md
+          - gui_widgets: gui_widgets/gui_widgets.md
+      - themes:
+          - Overview: themes/README.md
+          - themes: themes/themes.md
+      - web:
+          - Overview: web/README.md
+          - core: web/core.md
+          - router: web/router.md
+          - mw: web/mw.md
+          - json: web/json.md
+          - serve: web/serve.md
+          - static: web/static.md
+          - openapi: web/openapi.md
+          - compress: web/compress.md
+          - guard: web/guard.md
+      - s3:
+          - Overview: s3/README.md
+          - s3: s3/s3.md
+      - pkg:
+          - Overview: pkg/README.md
+          - pkg: pkg/pkg.md
+      - ctron:
+          - Overview: ctron/README.md
+          - plugin: ctron/plugin.md
   - Examples: examples.md
   - Server: server-guide.md
   - Download: download.md

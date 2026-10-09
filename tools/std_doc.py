@@ -28,6 +28,11 @@ STD = ROOT / "lib" / "std"
 OUT = ROOT / "website" / "docs" / "std"
 CTC = ROOT / "compiler" / "ctc.sh"
 DOMAINS = ["net", "http", "tls", "db", "ffi"]  # 域包参考页(lib/<域>/**/*.ct;rt 无 .ct 门面,仅指针页)
+PKGS = ["gui", "gui_theme", "gui_widgets", "themes", "web", "s3", "pkg", "ctron"]  # registry 包(pkgs/<名>)
+# gui.ct 门面 / web/view.ct 跳过:doc 驱动 use 合并 E5030(同名 decl 拦截),
+# 真链实测放行(gui:消费面 use gui.{...} 全绿;web:ctc.sh check 十文件全 OK)
+# —— 驱动 vs 真链分歧,登记债务;跳过页的面由包 README 承载
+PKG_SKIP_PAGES = {"gui/gui.ct", "web/view.ct"}
 
 HAND_OPEN = "<!-- hand:desc -->"
 HAND_CLOSE = "<!-- /hand:desc -->"
@@ -179,18 +184,22 @@ def render(title: str, data: dict, hand: str, drop_externs: bool = False) -> str
     return "".join(out)
 
 
-def domain_pages(domain: str):
-    """域包页清单:[(源文件, 页名)]。rglob 全子目录(frm/ 中间件族),跳过
-    c_src/ 与 bind*.ct(extern 窄桥,用户不接触);页名 = 相对路径点连(frm/auth → frm.auth)。"""
-    base = ROOT / "lib" / domain
+def domain_pages(domain: str, base_root: pathlib.Path = None):
+    """域包/registry 包页清单:[(源文件, 页名)]。rglob 全子目录,跳过
+    c_src/、bind/ 目录与 bind*.ct(extern 窄桥,用户不接触)及 PKG_SKIP_PAGES;
+    页名 = 相对路径点连(frm/auth → frm.auth)。"""
+    base = (base_root or ROOT / "lib") / domain
     out = []
     for p in sorted(base.rglob("*.ct")):
         rel = p.relative_to(base)
-        if "c_src" in rel.parts:
+        if "c_src" in rel.parts or "bind" in rel.parts:
             continue
         if p.stem.startswith("bind"):
             continue
-        out.append((p, ".".join(rel.with_suffix("").parts)))
+        page_name = ".".join(rel.with_suffix("").parts)
+        if f"{domain}/{page_name}.ct" in PKG_SKIP_PAGES:
+            continue
+        out.append((p, page_name))
     return out
 
 
@@ -199,9 +208,11 @@ def main() -> int:
     ap.add_argument("--check", action="store_true", help="drift gate: rendered pages must equal on-disk bytes (std + domains)")
     ap.add_argument("--force", action="store_true", help="also reset hand regions to module doc comments")
     ap.add_argument("--domain", action="append", default=[], help="generate one domain's pages (default with --check: all)")
+    ap.add_argument("--pkg", action="append", default=[], help="generate one registry package's pages (default with --check: all)")
     ns = ap.parse_args()
 
     domains = DOMAINS if ns.check else ns.domain
+    pkgs = PKGS if ns.check else ns.pkg
     drift = []
 
     # ---- std 26 页 + 索引 ----
@@ -241,10 +252,11 @@ def main() -> int:
         if not idx.exists() or idx.read_text() != "".join(index):
             drift.append("std/README.md(index)")
 
-    # ---- 域包页(--domain 显式生成;--check 全域对拍)----
+    # ---- 域包页(--domain/--pkg 显式生成;--check 全量对拍)----
     dstats = []
-    for d in domains:
-        pages = domain_pages(d)
+    jobs = [(d, ROOT / "lib") for d in domains] + [(p, ROOT / "pkgs") for p in pkgs]
+    for d, base_root in jobs:
+        pages = domain_pages(d, base_root)
         dout = ROOT / "website" / "docs" / d
         for src, page_name in pages:
             data = ctron_doc_json(src)
@@ -264,7 +276,8 @@ def main() -> int:
         if drift:
             print("std_doc --check: 漂移 " + " ".join(drift) + " —— 复跑 python3 tools/std_doc.py [--domain <域>] 后随批提交")
             return 1
-        print(f"std_doc --check: std {len(mods)} 页 + index" + (" + 域包 " + str(sum(len(domain_pages(d)) for d in DOMAINS)) + " 页" if domains == DOMAINS else "") + " 逐字节一致")
+        total = sum(len(domain_pages(d)) for d in DOMAINS) + sum(len(domain_pages(p, ROOT / "pkgs")) for p in PKGS)
+        print(f"std_doc --check: std {len(mods)} 页 + index + 域/包 {total} 页 逐字节一致")
         return 0
 
     idx.write_text("".join(index))
