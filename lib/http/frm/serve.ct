@@ -110,7 +110,7 @@ pub fn sv_bkind(r: SvRead) -> I64 { return r.bkind }
 
 // 增量头读(parse 每读一块重扫;cx_read_resp 同构,请求面):
 // 头完 rc=1;畸形 rc=-1(err);超缓冲 rc=-4;对端 IO 败 rc=-2;净 eof rc=-3。
-pub fn sv_read_req(fd: I64, buf: &U8[], cap: I64, scr: &U8[], scap: I64, tmo_ms: I64) -> SvRead {
+pub fn sv_read_req(fd: I64, var buf: U8[], cap: I64, var scr: U8[], scap: I64, tmo_ms: I64) -> SvRead {
     var out = sv_read_new()
     let lim = http_limits_default()
     var n: I64 = 0
@@ -157,7 +157,7 @@ pub fn sv_read_req(fd: I64, buf: &U8[], cap: I64, scr: &U8[], scap: I64, tmo_ms:
 }
 
 // CL 体读齐(头后追加; lane 无偏移读面,scratch 转运)。败 -1。
-pub fn sv_read_body_cl(fd: I64, buf: &U8[], n0: I64, hend: I64, clen: I64, cap: I64, scr: &U8[], scap: I64, tmo_ms: I64) -> I64 {
+pub fn sv_read_body_cl(fd: I64, var buf: U8[], n0: I64, hend: I64, clen: I64, cap: I64, var scr: U8[], scap: I64, tmo_ms: I64) -> I64 {
     var n = n0
     let need = hend + clen
     while n < need {
@@ -252,7 +252,7 @@ pub fn sv_status_of(err: I64) -> I64 {
 // ---- 规范循环面 ----
 
 // 单连接全周期(读头→映射→[读体]→派发→写)。返:1 服务 / 2 shutdown / 0 败(已应答或静默)。
-fn sv_conn(fd: I64, h: fn (Str, Str, Str) -> Str, body_limit: I64, tmo_ms: I64, buf: &U8[], cap: I64, scr: &U8[], scap: I64) -> I32 {
+fn sv_conn(fd: I64, h: fn (Str, Str, Str) -> Str, body_limit: I64, tmo_ms: I64, var buf: U8[], cap: I64, var scr: U8[], scap: I64) -> I32 {
     let r = sv_read_req(fd, buf, cap, scr, scap, tmo_ms)
     let rc = sv_rc(r)
     if rc != 1 {
@@ -304,7 +304,7 @@ fn sv_conn(fd: I64, h: fn (Str, Str, Str) -> Str, body_limit: I64, tmo_ms: I64, 
 }
 
 // 循环核(nmax < 0 = 不限)。监听 fd 由调用方关。
-fn sv_run(lfd: I64, h: fn (Str, Str, Str) -> Str, body_limit: I64, nmax: I32, tmo_ms: I64, buf: &U8[], cap: I64, scr: &U8[], scap: I64) -> I32 {
+fn sv_run(lfd: I64, h: fn (Str, Str, Str) -> Str, body_limit: I64, nmax: I32, tmo_ms: I64, var buf: U8[], cap: I64, var scr: U8[], scap: I64) -> I32 {
     var served: I32 = 0
     var unbounded: I32 = 0
     if nmax < 0 {
