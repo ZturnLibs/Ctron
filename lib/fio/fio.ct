@@ -1,0 +1,54 @@
+// fio.ct —— 文件字节平面 IO 门面(lib/fio;CW-F3a 2026-10-09)
+// 定位:内建 fs 面(Str 域)之下的二进制载荷通道——U8[] 视图直读写 + 显式逻辑长度,
+// append/pread/排他创建 0600/尺寸/getcwd。与内建分工:文本与槽读族(read_file_bytes)
+// 走内建;二进制写/偏移读/排他纪律走本包。消费方:loom rawio 门面(内化战役批3)。
+// 门面形态:免费函数面(net/crypto 同款);无 Cap trait → 零 caps(E4010 只审
+// use std.<key>.<Name> + &Name 形参)。e2e = tests/fio(行为夹具,tests/net 同构)。
+use fio.bind.{ctron_fio_write, ctron_fio_append, ctron_fio_read, ctron_fio_read_after_line, ctron_fio_str_bytes, ctron_fio_write_excl_0600, ctron_fio_size, ctron_fio_read_at, ctron_fio_getcwd}
+
+// 整文件写(二进制;视图容量 ≠ 逻辑长度,n 显式):1/0
+pub fn write_raw(path: Str, data: U8[], n: I64) -> I32 {
+    return ctron_fio_write(path, data, n)
+}
+
+// 追加写(二进制):1/0
+pub fn append_raw(path: Str, data: U8[], n: I64) -> I32 {
+    return ctron_fio_append(path, data, n)
+}
+
+// 整文件读 → buf(≤视图容量);返回字节数,-1 = 不存在
+pub fn read_raw(path: Str, var buf: U8[]) -> I64 {
+    return ctron_fio_read(path, buf)
+}
+
+// 读文件跳过首行(CAS 载体"地址行\n载荷"读原语);≥0 余量字节 / -1 不存在 / -2 无首行
+pub fn read_after_line(path: Str, var buf: U8[]) -> I64 {
+    return ctron_fio_read_after_line(path, buf)
+}
+
+// Str → 原始字节(多字节保真);返回拷贝数,-1 = 容量不足
+pub fn str_bytes(s: Str, var out: U8[]) -> I64 {
+    return ctron_fio_str_bytes(s, s.len, out)
+}
+
+// 排他创建写(0600;密钥文件纪律):1 新建 / 2 已存在不覆盖 / 0 失败
+pub fn write_excl_0600(path: Str, data: Str, n: I64) -> I32 {
+    return ctron_fio_write_excl_0600(path, data, n)
+}
+
+// 文件字节数(-1 = 不存在/失败)
+pub fn size(path: Str) -> I64 {
+    return ctron_fio_size(path)
+}
+
+// 偏移读(pread;返回字节数,0 = 末尾,-1 失败)
+pub fn read_at(path: Str, offset: I64, var buf: U8[]) -> I64 {
+    return ctron_fio_read_at(path, offset, buf)
+}
+
+// 当前工作目录绝对路径(字节数;-1 = 失败/容量不足;失败显性,不返半截路径)
+pub fn getcwd(var buf: U8[]) -> I64 {
+    return ctron_fio_getcwd(buf)
+}
+
+// ---- inline tests(纯 Ctron 面:无——本包全为 extern 行为面,见 tests/fio) ----

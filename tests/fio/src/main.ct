@@ -1,0 +1,115 @@
+// fio —— 文件字节平面 IO 回环验收(lib/fio;CW-F3a)
+// 钉住:write/read 二进制往返(含 >127 字节值)、append 累积、read_after_line
+// (CAS 载体"地址行\n载荷")、str_bytes 多字节保真、write_excl_0600 排他+已存在、
+// size、read_at(pread 偏移+末尾 0)、getcwd 绝对路径形。
+// CI 纪律:仅 /tmp 固定夹具路径,先清后写,零网络(tests/net 同口径约束)。
+use fio.{write_raw, append_raw, read_raw, read_after_line, str_bytes, write_excl_0600, size, read_at, getcwd}
+
+fn fixture_path(name: Str) -> Str {
+    return "/tmp/ctron-fio-" + name
+}
+
+test "write/read binary roundtrip incl >127 bytes" {
+    let p = fixture_path("rt.bin")
+    var w: U8[8] = [0, 0, 0, 0, 0, 0, 0, 0]
+    w[0] = 0
+    w[1] = 127
+    w[2] = 128
+    w[3] = 200
+    w[4] = 255
+    w[5] = 10
+    w[6] = 0
+    w[7] = 65
+    assert(write_raw(p, w, 8) == 1)
+    assert(size(p) == 8)
+    var r: U8[8] = [0, 0, 0, 0, 0, 0, 0, 0]
+    let n = read_raw(p, r)
+    assert(n == 8)
+    assert(r[2] == 128 || r[2] == -128)
+    assert(r[4] == 255 || r[4] == -1)
+    assert(r[5] == 10)
+    assert(r[7] == 65)
+    // 部分容量读:视图 4 → 只读 4
+    var r4: U8[4] = [0, 0, 0, 0]
+    assert(read_raw(p, r4) == 4)
+    // 不存在 → -1
+    assert(read_raw("/tmp/ctron-fio-absent.bin", r4) == -1)
+}
+
+test "append accumulates" {
+    let p = fixture_path("ap.bin")
+    var a: U8[3] = [97, 98, 99]
+    var b: U8[2] = [120, 121]
+    assert(write_raw(p, a, 3) == 1)
+    assert(append_raw(p, b, 2) == 1)
+    assert(size(p) == 5)
+    var r: U8[8] = [0, 0, 0, 0, 0, 0, 0, 0]
+    assert(read_raw(p, r) == 5)
+    assert(r[3] == 120)
+    assert(r[4] == 121)
+}
+
+test "read_after_line = cas carrier form" {
+    let p = fixture_path("cas.bin")
+    // 载体 = "addr123\n" + payload(含内嵌换行与高位字节)
+    var w: U8[12] = [97, 100, 100, 114, 49, 50, 51, 10, 112, 10, 200, 122]
+    assert(write_raw(p, w, 12) == 1)
+    var r: U8[8] = [0, 0, 0, 0, 0, 0, 0, 0]
+    let n = read_after_line(p, r)
+    assert(n == 4)
+    assert(r[0] == 112)
+    assert(r[1] == 10)
+    assert(r[3] == 122)
+    // 无首行 → -2
+    var nl: U8[4] = [97, 98, 99, 100]
+    let pn = fixture_path("noline.bin")
+    assert(write_raw(pn, nl, 4) == 1)
+    assert(read_after_line(pn, r) == -2)
+}
+
+test "str_bytes multibyte fidelity" {
+    // "héllo" 的 é = U+00E9(0xC3 0xA9 两字节);Str → 字节平面保真
+    var out: U8[8] = [0, 0, 0, 0, 0, 0, 0, 0]
+    let n = str_bytes("héllo", out)
+    assert(n == 6)
+    assert(out[1] == -61 || out[1] == 195)
+    assert(out[5] == 111)
+    // 容量不足 → -1
+    var small: U8[2] = [0, 0]
+    assert(str_bytes("abc", small) == -1)
+}
+
+test "write_excl_0600 exclusive create" {
+    let p = fixture_path("key.hex")
+    // 夹具纪律:先清可能残留
+    fs_delete(p)
+    assert(write_excl_0600(p, "a1b2c3d4\n", 9) == 1)
+    // 已存在 → 2(不覆盖;内容不变)
+    assert(write_excl_0600(p, "ffffffff\n", 9) == 2)
+    var r: U8[16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    assert(read_raw(p, r) == 9)
+    assert(r[0] == 97)
+    assert(r[1] == 49)
+    fs_delete(p)
+}
+
+test "read_at pread offsets" {
+    let p = fixture_path("pre.bin")
+    var w: U8[8] = [10, 11, 12, 13, 14, 15, 16, 17]
+    assert(write_raw(p, w, 8) == 1)
+    var r: U8[4] = [0, 0, 0, 0]
+    assert(read_at(p, 3, r) == 4)
+    assert(r[0] == 13)
+    assert(r[3] == 16)
+    // 末尾 → 0
+    assert(read_at(p, 8, r) == 0)
+    // 越过末尾 → 0(pread 语义)
+    assert(read_at(p, 100, r) == 0)
+}
+
+test "getcwd absolute shape" {
+    var b: U8[1024] = [0, 0, 0, 0, 0, 0, 0, 0]
+    let n = getcwd(b)
+    assert(n > 0)
+    assert(b[0] == 47)
+}

@@ -1,0 +1,15 @@
+// fio/bind.ct —— ctron_fio.c 垫片 extern 面(lib/fio;CW-F3a 2026-10-09)
+// 纪律(net/crypto bind 同款):参数表单行(C 宿主解析器);缓冲 = var U8[](前缀形参)
+// 字节平面视图(发射 ctron_view_w8u 按值;只读入参用非 var——loom ABI 先例);
+// 可见性 = `pub extern`(loader 的 use 可见性检查仅认 FnExt+pub 尾槽)。
+// rc 口径(详见 c_src/ctron_fio.c 头注):写族 1/0;读族 ≥0 字节 / 负值败;
+// write_excl_0600 = 1 新建 / 2 已存在不覆盖 / 0 失败(密钥文件 0600 纪律)。
+pub extern "c" fn ctron_fio_write(path: Str, data: U8[], n: I64) -> I32
+pub extern "c" fn ctron_fio_append(path: Str, data: U8[], n: I64) -> I32
+pub extern "c" fn ctron_fio_read(path: Str, var buf: U8[]) -> I64
+pub extern "c" fn ctron_fio_read_after_line(path: Str, var buf: U8[]) -> I64
+pub extern "c" fn ctron_fio_str_bytes(s: Str, n: I64, var out: U8[]) -> I64
+pub extern "c" fn ctron_fio_write_excl_0600(path: Str, data: Str, n: I64) -> I32
+pub extern "c" fn ctron_fio_size(path: Str) -> I64
+pub extern "c" fn ctron_fio_read_at(path: Str, offset: I64, var buf: U8[]) -> I64
+pub extern "c" fn ctron_fio_getcwd(var buf: U8[]) -> I64
