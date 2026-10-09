@@ -1,69 +1,69 @@
-<!-- 站点同步件:源头 docs/spec/,勿直接编辑;漂移由 pages workflow --check 把关 -->
-<!-- 英文待翻:中文占位 -->
-# §10 诊断契约与符合性
+<!-- 英文译件:手维护;中文正典 = docs/spec/ 同名文件(经 tools/sync_site_spec.sh 同步至同名 .zh.md) -->
+<!-- 译件滞后于正典修订时,以中文正典为准 -->
+# §10 Diagnostics & Conformance
 
-## 10.1 错误码注册表(v0.3 主注册表)
+## 10.1 The Error-Code Registry (the v0.3 Master Registry)
 
-分段:E1xxx 解析 / E2xxx 类型 / E3xxx 内存与并发 / E4xxx 效果 / E5xxx 模块与配置(双域:E5010–5030 模块;E5040–5050 CTCL 配置,宿主线已发布冻结) / E6xxx comptime / E7xxx FFI/ABI(新段;存量 E404x 码位冻结原地,此后 FFI/ABI 新码一律入 E7) / W8xxx lint。
+Segments: E1xxx parsing / E2xxx types / E3xxx memory & concurrency / E4xxx effects / E5xxx modules & configuration (dual domain: E5010–5030 modules; E5040–5050 CTCL configuration, frozen as of the host-line release) / E6xxx comptime / E7xxx FFI/ABI (a new segment; the existing E404x code slots are frozen in place, and all new FFI/ABI codes go into E7 from now on) / W8xxx lint.
 
-| 码 | 含义 | 规范依据 | 测试锚点 |
+| Code | Meaning | Normative basis | Test anchor |
 |---|---|---|---|
-| E1001 | 解析错误(通用语法违规;含比较不可链 §4.3) | §1 | `01c_parse.neg.ct` |
-| E2010 | 类型不匹配 | §3 | 通用 |
-| E2020 | 未解析的名称 | §2.4 | 通用 |
-| E2030 | match 不穷尽 | §4.6 | `02_match_exhaustive.neg.ct` |
-| E2040 | 字面量超出期望整数类型宽度(§3.7 自适应的宽度约束;let 注解/赋值/返回/实参四点;无后缀字面量,十进制与 0x/0o/0b 同口径,v0) | §3.1.1 | `compiler/test/fx_litfit_neg.ct` 等四件(含 as/ret/arg 挂点) |
-| E2050 | bound 不满足(泛型实参不满足型参 bound,诊断携带实参型别名) | §3.9.2(v0.6) | `compiler/test/fx_bound_neg.ct` + `fx_bound_ann_neg.ct`(注解位) |
-| E2060 | 无法推断类型实参(型参未出现于实参位且实参有具体信息;请显式标注) | §3.9.1(v0.7) | `tests/04f_infer_missing.neg.ct` + R 线同形 |
-| E2061 | 类型实参候选冲突(同一型参多候选不一致) | §3.9.1(v0.7) | `tests/04f_infer_ambig.neg.ct` + R 线同形 |
-| E2070 | break/continue 出现在循环外 | §4.2(v0.7) | `compiler-rust/tests/fixtures/04e_break_outside.neg.ct` |
-| E2071 | break/continue 需越过带 Drop 局部的作用域(v1 静态拒绝,规范明文可解除) | §4.2(v0.7) | `compiler-rust/tests/fixtures/04e_break_drop.neg.ct` |
-| E2072 | break/continue 穿越闭包边界 | §4.2(v0.7) | `compiler-rust/tests/fixtures/04e_break_closure.neg.ct` |
-| E2080 | 对不可变绑定赋值(`let` 局部;`var`/形参/闭包形参/for·match 模式绑定不在本门——豁免面收窄留后续修订) | §4.0(v0.9) | `tests/04g_let_assign.neg.ct`(三线:自举 cc/C 宿主/R 线) |
-| E3010 | spawn 捕获非 Send | §7.4 | `06_spawn_nonsend.neg.ct` |
-| E3020 | channel 收发非 Send 类型 | §7.4 | `06_channel_nonsend.neg.ct` |
-| E3030 | `static var` 不存在(解析器对 `static var` 做恢复并专门产出本码,而非 E1xxx——对 AI 迭代友好) | §7.6 | `06_static_var.neg.ct` |
-| E3031 | 非 Send 类型作为全局/静态存储 | §7.4 | `06c_static_nonsend.neg.ct` |
-| E3040 | no_alloc 上下文出现 GC/String 分配 | §6.5 | `05_own_alloc.neg.ct` / `08_bare_alloc.neg.ct` |
-| E3050 | own 块 move/borrow 违规(含 use-after-move) | §6.3 | `05_own_move.neg.ct` |
-| E3060 | own 块内对 GC 值可变借用 | §6.3 | `05e_own_gc_mut.neg.ct` |
-| E3070 | 闭包可变捕获未显式 `Mutex[T]` 包装 | §4.7(T27 终态) | `roadmap/r3a_capture_var.neg.ct` |
-| E4010 | 能力使用超出 manifest 声明 | §8.2 | `modules/caps` + `modules/caps_fs` |
-| E4020 | `#[pure]` 含副作用 | §8.3 | `07_pure.neg.ct` |
-| E4030 | `#[no_spawn]` 上下文 spawn | §8.3 | `08b_nospawn.neg.ct` |
-| E4040 | `#[trusted]` 仅限 extern "c" 声明 | §9.6(v0.6) | `compiler/test/fx_trusted_fn_neg.ct` |
-| E4041 | `#[repr(c)]` 用于非 struct 声明 | §9.6(v0.6) | `tests/ffi/repr_on_fn.neg.ct` |
-| E4042 | 捕获闭包作 C-ABI 回调实参(无 env 槽) | §9.6(v0.6) | `tests/ffi/closure_cb.neg.ct` |
-| E4044 | 变参形参(`...`)仅限 extern 声明 | §9.6(v0.7) | `tests/ffi/variadic_nonext.neg.ct` |
-| E4050 | 类直接持有需确定性释放的资源字段(Mutex/Channel)(§6.2 硬规则) | §6.2(v0.7 GC spike) | `compiler/test/fx_res_class_neg.ct` |
-| W8050 | extern "c" 未标记 `#[trusted]`(信任边界) | §9.6(v0.6) | `compiler/test/fx_trusted_neg.ct` + `tests/ffi/no_trusted.lint.ct` |
-| W8051 | repr(c) struct 含非 C-ABI 字段 | §9.6(v0.6) | `tests/ffi/repr_unsafe_field.lint.ct` |
-| W8052 | extern 形参/返回非 C-ABI 类型 | §9.6(v0.6) | `tests/ffi/ext_nonabi_param.lint.ct` |
-| W9001 | fn 顶层语句数超限(官方 lint 样例码;第三方 W9xxx 须经清单 plugin 块 codes 声明后使用,诊断文案由插件自带) | §10.6(T52) | `tests/plugins/lint_demo/src/main.ct` |
-| W8053 | extern 返回 fn 类型(v0.6 警示;v0.7 返回向合法化,**dormant**,码位保留) | §9.6(v0.6/v0.7) | —(dormant) |
-| E5010 | trait 孤儿规则违规 | §2.5 | `modules/orphan` |
-| E5020 | 循环依赖 | §2.6 | `modules/circular` |
-| E5030 | use 导入同名 decl(曾"首个胜出"静默遮蔽,现拦截) | §2.6 | 预留:多文件 use 用例 |
-| E5054 | 依赖工件摘要不符(需求 digest ≠ 实际 self_digest;闭源分发 D8-2 L2 记录-比对,替代静默错版本) | 闭源分发 spec D8 | `compiler/test/smoke.sh` 3p 腿 |
-| E5055 | 工件摘要未验(meta 缺 self_digest 或 dep.digest 记录;fail-closed 拒载) | 闭源分发 spec D8 | `compiler/test/smoke.sh` 3p 腿 |
-| E5056 | 轨迹复放不符(黄金轨迹期望 ≠ 工件行为;闭源分发 S3 信任协议;当前载体=ctron pkg verify --deep 工具面,加载期腿预留) | 闭源分发 spec D3/§5 | `compiler/test/smoke.sh` 3u 腿 |
-| E5057 | attest 与工件不符(artifact_digest/trace_count 漂移或伪造;闭源分发 S4-② 发布公证;载体=ctron pkg verify --deep 工具面) | 闭源分发 spec §5.4 | `compiler/test/smoke.sh` 3x 腿 |
-| E6010 | comptime 预算超限 | §8.4 | `roadmap/r6f_comptime_budget.neg.ct` + `modules/comptime_budget` |
-| E6020 | comptime 副作用/不确定 | §8.4 | 预留 |
-| E5060 | 插件未声明/插件包加载失败/接口面不符(nodecl/load/iface 子码;T52 插件沙箱) | §8.3/§10.6(T52) | `tests/plugins/no_decl/src/main.ct`(nodecl) |
-| E6040 | 单态化实例预算超限(§8.5:泛型 fn 显式特化 + 泛型 struct 实例 > 上限,建议 `&Trait` 化;CTRON_MONO_BUDGET 可调,默认 8192;v0 计显式 TypeArgs 位,推断位随 §3.9.1 ex_ty 登记并入) | §8.5(v0.9) | `compiler/test/fx_mono_budget_neg.ct`(smoke emit 臂) |
-| E6030 | comptime 反射泛型运行时类型(parametricity) | §8.4 | 预留 → **封闭性承载**(2026-09-28 论证:语言无反射算子/ceval 值域仅整型/类型名不可作值,违规不可达;类型级 comptime 或反射 API 引入时须补实检,见 tests/COVERAGE.md T06 条) |
-| W8010 | struct 含可变类引用字段(拷贝浅共享) | §6.1 | `03_shallow_copy.lint.ct` |
-| W8020 | must-use 结果被丢弃(Result/Option) | §5.6 | 预留(已发射,锚待补) |
-| W8030 | 未使用绑定 | — | 预留(已发射,锚待补) |
-| W8040 | 遮蔽前奏符号 | §3.8 | 预留(已发射,锚待补) |
+| E1001 | parse error (generic syntax violation; includes non-chainable comparisons, §4.3) | §1 | `01c_parse.neg.ct` |
+| E2010 | type mismatch | §3 | generic |
+| E2020 | unresolved name | §2.4 | generic |
+| E2030 | match not exhaustive | §4.6 | `02_match_exhaustive.neg.ct` |
+| E2040 | literal exceeds the expected integer type's width (the §3.7 adaptive width constraint; four sites — let annotation / assignment / return / argument; unsuffixed literals, decimal and 0x/0o/0b under the same policy, v0) | §3.1.1 | `compiler/test/fx_litfit_neg.ct` and three more (with as/ret/arg hook points) |
+| E2050 | bound not satisfied (a generic argument fails the type parameter's bound; the diagnostic carries the argument's type alias) | §3.9.2 (v0.6) | `compiler/test/fx_bound_neg.ct` + `fx_bound_ann_neg.ct` (annotation site) |
+| E2060 | type arguments cannot be inferred (the type parameter appears in no argument position while the arguments carry concrete information; annotate explicitly) | §3.9.1 (v0.7) | `tests/04f_infer_missing.neg.ct` + R-line same-shape |
+| E2061 | conflicting type-argument candidates (multiple candidates for the same type parameter disagree) | §3.9.1 (v0.7) | `tests/04f_infer_ambig.neg.ct` + R-line same-shape |
+| E2070 | break/continue outside a loop | §4.2 (v0.7) | `compiler-rust/tests/fixtures/04e_break_outside.neg.ct` |
+| E2071 | break/continue would cross a scope holding Drop locals (statically rejected in v1; the spec text allows lifting this) | §4.2 (v0.7) | `compiler-rust/tests/fixtures/04e_break_drop.neg.ct` |
+| E2072 | break/continue crossing a closure boundary | §4.2 (v0.7) | `compiler-rust/tests/fixtures/04e_break_closure.neg.ct` |
+| E2080 | assignment to an immutable binding (`let` locals; `var` / parameters / closure parameters / for·match pattern bindings are not covered by this gate — narrowing the exemption surface is left to a later revision) | §4.0 (v0.9) | `tests/04g_let_assign.neg.ct` (three lines: bootstrap cc / C host / R line) |
+| E3010 | spawn captures a non-Send value | §7.4 | `06_spawn_nonsend.neg.ct` |
+| E3020 | channel send/receive of a non-Send type | §7.4 | `06_channel_nonsend.neg.ct` |
+| E3030 | `static var` does not exist (the parser recovers on `static var` and emits this code specifically, rather than an E1xxx — friendly to AI iteration) | §7.6 | `06_static_var.neg.ct` |
+| E3031 | a non-Send type as global/static storage | §7.4 | `06c_static_nonsend.neg.ct` |
+| E3040 | a GC/String allocation in a no_alloc context | §6.5 | `05_own_alloc.neg.ct` / `08_bare_alloc.neg.ct` |
+| E3050 | own-block move/borrow violation (including use-after-move) | §6.3 | `05_own_move.neg.ct` |
+| E3060 | a mutable borrow of a GC value inside an own block | §6.3 | `05e_own_gc_mut.neg.ct` |
+| E3070 | closure mutable capture without explicit `Mutex[T]` wrapping | §4.7 (T27 final) | `roadmap/r3a_capture_var.neg.ct` |
+| E4010 | capability use exceeds the manifest declaration | §8.2 | `modules/caps` + `modules/caps_fs` |
+| E4020 | `#[pure]` contains side effects | §8.3 | `07_pure.neg.ct` |
+| E4030 | spawn inside a `#[no_spawn]` context | §8.3 | `08b_nospawn.neg.ct` |
+| E4040 | `#[trusted]` restricted to extern "c" declarations | §9.6 (v0.6) | `compiler/test/fx_trusted_fn_neg.ct` |
+| E4041 | `#[repr(c)]` applied to a non-struct declaration | §9.6 (v0.6) | `tests/ffi/repr_on_fn.neg.ct` |
+| E4042 | a capturing closure as a C-ABI callback argument (no env slot) | §9.6 (v0.6) | `tests/ffi/closure_cb.neg.ct` |
+| E4044 | variadic parameters (`...`) restricted to extern declarations | §9.6 (v0.7) | `tests/ffi/variadic_nonext.neg.ct` |
+| E4050 | a class directly holding resource fields that need deterministic release (Mutex/Channel) (the §6.2 hard rule) | §6.2 (v0.7 GC spike) | `compiler/test/fx_res_class_neg.ct` |
+| W8050 | extern "c" without the `#[trusted]` marker (trust boundary) | §9.6 (v0.6) | `compiler/test/fx_trusted_neg.ct` + `tests/ffi/no_trusted.lint.ct` |
+| W8051 | a repr(c) struct containing non-C-ABI fields | §9.6 (v0.6) | `tests/ffi/repr_unsafe_field.lint.ct` |
+| W8052 | extern parameters/returns of non-C-ABI types | §9.6 (v0.6) | `tests/ffi/ext_nonabi_param.lint.ct` |
+| W9001 | fn top-level statement count over the limit (the official lint sample code; third-party W9xxx codes may be used only after being declared in the manifest plugin block's codes; diagnostic wording ships with the plugin) | §10.6 (T52) | `tests/plugins/lint_demo/src/main.ct` |
+| W8053 | extern returning fn types (warned in v0.6; the return direction legalized in v0.7, **dormant**, code slot retained) | §9.6 (v0.6/v0.7) | — (dormant) |
+| E5010 | trait orphan-rule violation | §2.5 | `modules/orphan` |
+| E5020 | circular dependency | §2.6 | `modules/circular` |
+| E5030 | use importing a same-named decl (previously silently shadowed as "first wins"; now intercepted) | §2.6 | reserved: multi-file use case |
+| E5054 | dependency artifact digest mismatch (required digest ≠ actual self_digest; closed-source distribution D8-2 L2 record-and-compare, replacing a silently wrong version) | closed-source distribution spec D8 | `compiler/test/smoke.sh` 3p leg |
+| E5055 | artifact digest unverified (meta lacks self_digest or a dep.digest record; fail-closed refusal to load) | closed-source distribution spec D8 | `compiler/test/smoke.sh` 3p leg |
+| E5056 | trace replay mismatch (golden-trace expectation ≠ artifact behavior; the closed-source distribution S3 trust protocol; current vehicle = the ctron pkg verify --deep tooling surface, load-time leg reserved) | closed-source distribution spec D3/§5 | `compiler/test/smoke.sh` 3u leg |
+| E5057 | attestation does not match the artifact (artifact_digest/trace_count drift or forgery; closed-source distribution S4-② release notarization; vehicle = the ctron pkg verify --deep tooling surface) | closed-source distribution spec §5.4 | `compiler/test/smoke.sh` 3x leg |
+| E6010 | comptime budget exceeded | §8.4 | `roadmap/r6f_comptime_budget.neg.ct` + `modules/comptime_budget` |
+| E6020 | comptime side effects / nondeterminism | §8.4 | reserved |
+| E5060 | plugin not declared / plugin package failed to load / interface-surface mismatch (nodecl/load/iface subcodes; the T52 plugin sandbox) | §8.3/§10.6 (T52) | `tests/plugins/no_decl/src/main.ct` (nodecl) |
+| E6040 | monomorphization instance budget exceeded (§8.5: generic fn explicit specializations + generic struct instances above the cap, with `&Trait`-ification recommended; CTRON_MONO_BUDGET adjustable, default 8192; v0 counts explicit TypeArgs positions, with inferred positions joining the count as they get registered via §3.9.1 ex_ty) | §8.5 (v0.9) | `compiler/test/fx_mono_budget_neg.ct` (smoke emit arm) |
+| E6030 | comptime reflection over generic runtime types (parametricity) | §8.4 | reserved → **carried by parametricity** (2026-09-28 argument: the language has no reflection operators / the ceval value domain is integers only / type names cannot serve as values, so violations are unreachable; when type-level comptime or a reflection API is introduced, a live test must be added — see tests/COVERAGE.md item T06) |
+| W8010 | a struct containing a mutable class-reference field (copies share shallowly) | §6.1 | `03_shallow_copy.lint.ct` |
+| W8020 | a must-use result discarded (Result/Option) | §5.6 | reserved (already emitted, anchor pending) |
+| W8030 | unused binding | — | reserved (already emitted, anchor pending) |
+| W8040 | shadowing a prelude symbol | §3.8 | reserved (already emitted, anchor pending) |
 
-- 码一经发布**永不改义**;废弃只增不改;新增码先进本表再使用(与 `tests/meta_check.py` 注册表同步)。
-- 每条诊断必须含:稳定码、人读消息、**机器可执行修复建议**(fix-it)。
+- Once released, a code **never changes meaning**; deprecation only adds and never removes; new codes enter this table first, then get used (kept in sync with the `tests/meta_check.py` registry).
+- Every diagnostic must contain: a stable code, a human-readable message, and a **machine-executable fix suggestion** (fix-it).
 
-## 10.2 JSON 诊断契约(`ctron check --format=json`)
+## 10.2 The JSON Diagnostic Contract (`ctron check --format=json`)
 
-面向 agent 循环消费的第一接口,格式冻结:
+The first interface for agent-loop consumption; the format is frozen:
 
 ```json
 {
@@ -79,38 +79,38 @@
 }
 ```
 
-- `severity ∈ error|warning`;`fixes[].edits.kind ∈ replace|insert|delete`;span 为 1-based。
-- 同一次 `ctron check` 完成 parse + 类型 + Send + 分配效果 + lint,一次返回全部诊断(P3/§8.3)。
+- `severity ∈ error|warning`; `fixes[].edits.kind ∈ replace|insert|delete`; spans are 1-based.
+- A single `ctron check` completes parse + types + Send + allocation effects + lint, returning all diagnostics in one pass (P3/§8.3).
 
-## 10.3 确定性与可复现
+## 10.3 Determinism and Reproducibility
 
-- `ctron test --deterministic`:冻结调度序与哈希种子;并发测试失败可复现。
-- 构建内容寻址缓存:同输入同产物(跨机可复用)。
+- `ctron test --deterministic`: freezes the scheduling order and the hash seeds; concurrent-test failures are reproducible.
+- Content-addressed build cache: same input, same artifact (reusable across machines).
 
 ## 10.4 doc-test
 
-- `///` 文档注释中的代码块**编译并运行**(失败 = 测试失败);文档即回归,服务人审 AI 产物的"立即可验证"。
+- Code blocks inside `///` doc comments are **compiled and run** (failure = test failure); the docs are the regression suite, serving the "immediately verifiable" human review of AI-produced code.
 
-## 10.5 规范↔测试符合性映射(总表)
+## 10.5 Spec↔Test Conformance Mapping (Master Table)
 
-| 规范章 | 主题 | 锚点测试 |
+| Spec section | Topic | Anchor tests |
 |---|---|---|
-| §1 | 词法/语法 | `01_basics.ct`、`04_generics_comptime.ct` |
-| §3/§6 | 值/引用/Box/浅拷贝 | `03_values_refs.ct`、`03_shallow_copy.lint.ct` |
-| §4/§5 | 表达式/错误模型 | `01_basics.ct`、`02_option_result.ct`、`02_match_exhaustive.neg.ct`、`01_overflow.panic.ct` |
-| §6 | own/bare/分配效果 | `05_own.ct`、`05_own_alloc.neg.ct`、`05_own_move.neg.ct`、`08_bare.ct`、`08_bare_alloc.neg.ct` |
-| §7 | Send/并发 | `06_concurrency.ct`、`06_spawn_nonsend.neg.ct`、`06_channel_nonsend.neg.ct`、`06_static_var.neg.ct` |
-| §8 | 能力/纯度 | `07_capabilities.ct`、`07_pure.neg.ct` |
+| §1 | lexing/grammar | `01_basics.ct`, `04_generics_comptime.ct` |
+| §3/§6 | values/references/Box/shallow copy | `03_values_refs.ct`, `03_shallow_copy.lint.ct` |
+| §4/§5 | expressions/error model | `01_basics.ct`, `02_option_result.ct`, `02_match_exhaustive.neg.ct`, `01_overflow.panic.ct` |
+| §6 | own/bare/allocation effects | `05_own.ct`, `05_own_alloc.neg.ct`, `05_own_move.neg.ct`, `08_bare.ct`, `08_bare_alloc.neg.ct` |
+| §7 | Send/concurrency | `06_concurrency.ct`, `06_spawn_nonsend.neg.ct`, `06_channel_nonsend.neg.ct`, `06_static_var.neg.ct` |
+| §8 | capabilities/purity | `07_capabilities.ct`, `07_pure.neg.ct` |
 
-符合性定义:**P1 实现达标 = 上表全部测试按 `tests/README.md` 规则通过**。多文件用例(模块/孤儿/FFI/包)随 P1 基建补入,格式不变。
+Conformance definition: **a P1-conformant implementation = every test in the table above passing under the `tests/README.md` rules**. Multi-file cases (modules/orphan/FFI/packages) are added as P1 infrastructure lands; the format stays unchanged.
 
-## 10.6 插件扩展点(诊断相关)
+## 10.6 Plugin Extension Points (Diagnostics-Related)
 
-- lint 插件:输入类型化 HIR,输出带注册码的诊断(码段 W9xxx 预留给第三方);沙箱执行、确定性、可缓存(§8 插件原则)。
+- lint plugins: the input is typed HIR, the output is diagnostics carrying registered codes (the W9xxx code segment is reserved for third parties); sandboxed execution, determinism, cacheable (§8 plugin principles).
 
-> **修订注(2026-10-03,T52 v1 落库)**:lint 插件 = 普通 Ctron 包,约定入口 `ctron_lint(LintUnit) -> List[LintDiag]`;输入 = 声明级投影(fn 签名/语句计数/嵌套深度;**HIR 暴露宽度 v1 裁决 = 窄面投影,不暴露编译器内部 AST**,表达式级面列 v2 裁决)。**第三方码纪律「先进表再使用」对第三方的投影 = 码先进消费清单 plugin 块 `codes`,后使用**(codes 外码丢弃并告警);官方样例码 W9001 进诊断目录。确定性为硬锚(双跑逐字一致);诊断缓存(内容寻址)列 v2。执行点 = check 驱动 sem 全绿后,W 级不置 rc。
-- 第三方码必须落在 W9xxx;E 段为语言保留。
+> **Revision note (2026-10-03, T52 v1 landed)**: a lint plugin = an ordinary Ctron package, with the conventional entry point `ctron_lint(LintUnit) -> List[LintDiag]`; the input = a declaration-level projection (fn signatures / statement counts / nesting depth; **the v1 ruling on HIR exposure width = a narrow-surface projection that does not expose the compiler's internal AST**, with the expression-level surface deferred to a v2 ruling). **Projected onto third parties, the "enter the table first, then use" code discipline reads: the code first enters the consuming manifest's plugin block `codes`, then gets used** (codes outside `codes` are dropped with a warning); the official sample code W9001 enters the diagnostic catalog. Determinism is a hard anchor (two runs identical word for word); diagnostic caching (content-addressed) is listed for v2. Execution point = after the check driver's sema is fully green; W-level does not set the rc.
+- Third-party codes must fall within W9xxx; the E segment is reserved for the language.
 
-## 10.7 冻结清单回顾
+## 10.7 Freeze-List Review
 
-v0.3 规范冻结 = 本文档 §1–§9 normative 项 + §10.1/§10.2 契约。实现阶段的规范修订走"先改本文档 + 增补测试锚点,再改实现"的顺序(测试先行)。
+The v0.3 spec freeze = the normative items of §1–§9 of this document + the §10.1/§10.2 contracts. Spec revisions during implementation follow the order "edit this document first + add the test anchors, then change the implementation" (tests first).

@@ -1,93 +1,94 @@
-<!-- 站点同步件:源头 docs/spec/,勿直接编辑;漂移由 pages workflow --check 把关 -->
-<!-- 英文待翻:中文占位 -->
-# §7 并发
+<!-- 英文译件:手维护;中文正典 = docs/spec/ 同名文件(经 tools/sync_site_spec.sh 同步至同名 .zh.md) -->
+<!-- 译件滞后于正典修订时,以中文正典为准 -->
 
-模型:**无色**——没有 async/await 关键字,所有代码一种颜色;可挂起点由编译器与运行时识别。
+# §7 Concurrency
 
-## 7.1 任务与调度
+Model: **colorless** — no async/await keywords, all code is a single color; suspendable points are recognized by the compiler and the runtime.
 
-- `spawn` 启动**轻量任务**(有栈协程);调度 = work-stealing;栈 = **可增长连续栈(拷贝式)**,上限默认 1MB(可配),触顶 = 任务边界 panic;bare 档静态栈 + guard page(溢出 = trap)。
-- 调度器不保证公平性/实时性;硬实时走 bare 档(§9.3)。
+## 7.1 Tasks and Scheduling
 
-## 7.2 结构化并发
+- `spawn` starts a **lightweight task** (a stackful coroutine); scheduling = work-stealing; the stack is a **growable contiguous stack (copying)** with a default 1MB limit (configurable); hitting the limit = a panic at the task boundary; the bare profile uses static stacks + a guard page (overflow = trap).
+- The scheduler guarantees no fairness or real-time behavior; hard real-time goes through the bare profile (§9.3).
+
+## 7.2 Structured Concurrency
 
 ```c
 let total = scope { |s|
     let t = s.spawn(|| compute())
-    t.join()                    // join() -> T;任务 panic 则重抛
+    t.join()                    // join() -> T; rethrows if the task panicked
 }
 ```
 
-- `scope` 是表达式;作用域退出**必然 join 全部子任务**(成功取值/失败传播)。
-- 取消是一等公民:子任务失败 → 取消兄弟任务 → 错误沿作用域树向上传播;取消通过任务级取消令牌实现,阻塞点(通道/锁/睡眠)响应取消。
-- 向已取消作用域的通道操作返回 `Err(ScopeCancelled)`——不 panic、不静默。
-- `join() -> T`:panic 重抛语义;`join_or() -> Result[T, TaskPanic]` 用于显式处理。
+- `scope` is an expression; at scope exit **all child tasks are necessarily joined** (value on success / propagation on failure).
+- Cancellation is a first-class citizen: a child task fails → sibling tasks are cancelled → the error propagates up the scope tree; cancellation is implemented via task-level cancellation tokens, and blocking points (channels/locks/sleep) respond to cancellation.
+- Channel operations on an already-cancelled scope return `Err(ScopeCancelled)` — no panic, no silence.
+- `join() -> T`: panic-rethrow semantics; `join_or() -> Result[T, TaskPanic]` for explicit handling.
 
-## 7.3 通道与共享原语(前奏)
+## 7.3 Channels and Shared Primitives (Prelude)
 
 ```c
-let (tx, rx) = Channel[T](cap)     // 有界;send/recv -> Result(背压/取消显式)
-let m = Mutex[T](value)            // m.with_mut(|var x| ... ) 独占访问,返回闭包值;m.with(|x| ...) 只读
-Atomic[I32]                        // 原子整数族(fetch_add 等,stdlib)
+let (tx, rx) = Channel[T](cap)     // bounded; send/recv -> Result (backpressure/cancellation explicit)
+let m = Mutex[T](value)            // m.with_mut(|var x| ... ) exclusive access, returns the closure's value; m.with(|x| ...) read-only
+Atomic[I32]                        // atomic integer family (fetch_add etc., stdlib)
 ```
 
-- 通道有界默认(容量必填)——背压显式(P5)。
-- `Mutex.with` 保证临界区无遗漏解锁(闭包作用域)。
+- Channels are bounded by default (capacity required) — backpressure is explicit (P5).
+- `Mutex.with` guarantees the critical section is never left unlocked (closure scope).
 
-## 7.4 Send(数据竞争消除的核心机制)
+## 7.4 Send (the Core Mechanism for Eliminating Data Races)
 
-**定义(编译器自动推导,用户不可手工实现)**:
+**Definition (inferred automatically by the compiler; users cannot implement it by hand)**:
 
-| 类型 | Send 当且仅当 |
+| Type | Send if and only if |
 |---|---|
-| 标量/值类型 struct/enum/tuple/`T[N]` | 全部字段/元素 Send |
-| `class` | **全部字段为 `let` 且各字段类型 Send**(深度不可变) |
-| 闭包 | **spawn 处按字面捕获逐个检查**(E3010);经 channel/静态存储 = 非 Send(捕获不可知) |
-| `fn(...)` 函数类型的值 | 同闭包:字面处可判,经 channel/静态存储 = 非 Send |
-| `&T[]` 只读切片 / `Str` | 元素类型 Send |
-| `T[]` 可变切片 | **恒非 Send** |
-| `&Trait` | **v0.3 恒非 Send**(保守裁决:具体类型已擦除,静态不可判;动态 Send 位预留 v2) |
-| `Mutex[T]` `Atomic[T]` `Global[T]` | 恒 Send(T 任意) |
-| 含任一 `var` 字段的类 | **非 Send** |
+| Scalars / value-type struct/enum/tuple/`T[N]` | All fields/elements are Send |
+| `class` | **All fields are `let` and every field type is Send** (deeply immutable) |
+| Closures | **Checked one by one against the literal captures at the spawn site** (E3010); passed via channels/static storage = not Send (captures unknowable) |
+| Values of `fn(...)` function types | Same as closures: decidable at the literal site; via channels/static storage = not Send |
+| `&T[]` read-only slices / `Str` | Element type is Send |
+| `T[]` mutable slices | **Never Send** |
+| `&Trait` | **Never Send in v0.3** (conservative ruling: the concrete type is erased and statically undecidable; a dynamic Send bit is reserved for v2) |
+| `Mutex[T]` `Atomic[T]` `Global[T]` | Always Send (T arbitrary) |
+| Classes with any `var` field | **Not Send** |
 
-**强制检查点(三处,编译期硬检查)**:
+**Enforcement checkpoints (three of them, hard compile-time checks)**:
 
-1. `spawn` 闭包捕获的每个值必须 Send → 违规 E3010;
-2. `Channel[T]`/`Sender[T]`/`Receiver[T]` 的 `T` 必须 Send → 违规 E3020;
-3. 非 Send 类型不可作为全局/静态存储 → 违规 **E3031**。
+1. Every value captured by a `spawn` closure must be Send → violation E3010;
+2. The `T` of `Channel[T]`/`Sender[T]`/`Receiver[T]` must be Send → violation E3020;
+3. Non-Send types may not serve as global/static storage → violation **E3031**.
 
-**由此得到的保证**(无 `#[trusted]` 介入):任何被两个任务同时触达的数据要么深度不可变、要么在锁内——**非 Send 实例的全部引用天然被困于单一任务**(无法越界),任务内自由可变无竞争。数据竞争在编译期消除,且无生命周期标注。
+**Guarantees that follow** (with no `#[trusted]` involvement): any data touched by two tasks concurrently is either deeply immutable or behind a lock — **all references to a non-Send instance are naturally trapped within a single task** (they cannot escape), and within the task mutation is free and race-free. Data races are eliminated at compile time, with no lifetime annotations.
 
-与既有语言的关系:同 Rust 的 Send 目标、无生命周期参与、错误机械可修("字段 x 为 var → 加 Mutex 或改 let");同 Swift Sendable 的形态但**硬检查**(无 ObjC 互操作包袱)。
+Relation to existing languages: the same goal as Rust's Send, no lifetimes involved, errors mechanically fixable ("field x is var → add a Mutex or change it to let"); the same shape as Swift's Sendable but with **hard checks** (no ObjC interop baggage).
 
-## 7.5 可变访问的任务局部性
+## 7.5 Task Locality of Mutable Access
 
-- `var self`/`var` 字段的可变使用要求路径独占:由于非 Send 类型不能跨任务,任务内引用即独占(§7.4 保证);可变使用跨任务唯一通道是 `Mutex.with`。
-- 通过 `let` 绑定的可变字段访问 = 编译错误(可变路径必须根为 `var`)。
+- Mutable use of `var self`/`var` fields requires path exclusivity: since non-Send types cannot cross tasks, a reference within a task is exclusive (guaranteed by §7.4); the only channel for mutable use across tasks is `Mutex.with`.
+- Accessing a mutable field through a `let` binding = compile error (a mutable path must be rooted in `var`).
 
-## 7.6 全局状态
+## 7.6 Global State
 
-- `static let NAME: T = 常量/纯惰性值`:合法;初始化为 comptime 常量,或首次访问的 `#[pure]` 惰性求值(线程安全 once;full/web 档允许其中的纯分配,§6.5)。**bare 档仅允许 comptime 常量**。
-- **`static var` 不存在**(E3030);可变全局唯一路径:`Global[T]` 显式注册(内部 Mutex),并在 manifest 能力审计中可见(§8.2)。
+- `static let NAME: T = constant/pure lazy value`: legal; initialization is either a comptime constant or `#[pure]` lazy evaluation on first access (thread-safe once; the full/web profiles allow pure allocation inside it, §6.5). **The bare profile allows only comptime constants**.
+- **`static var` does not exist** (E3030); the only path to a mutable global is explicit registration via `Global[T]` (a Mutex inside), visible in the manifest capability audit (§8.2).
 
-## 7.7 数据并行(独立建模)
+## 7.7 Data Parallelism (Independently Modeled)
 
-- `parallel.map / reduce / fold`(stdlib,`iter` 模块):fork-join + work-stealing,与 I/O 任务互不混用(Rayon 证据);闭包经**推断纯度**判定(不捕获 `&Cap` 能力、不 spawn、不触全局可变——机制同 §8.3,无需注解语法)且捕获 Send;数据入参为 `&T[]` 只读视图(§3.1)。
-- 自动 SIMD 向量化与分块;确定性模式(§10.4)下分块顺序固定。
+- `parallel.map / reduce / fold` (stdlib, `iter` module): fork-join + work-stealing, never mixed with I/O tasks (Rayon as evidence); closures are judged by **inferred purity** (they capture no `&Cap` capabilities, do not spawn, do not touch global mutable state — same mechanism as §8.3, no annotation syntax needed) and their captures are Send; data inputs are `&T[]` read-only views (§3.1).
+- Automatic SIMD vectorization and chunking; under the deterministic mode (§10.4) chunk order is fixed.
 
-## 7.8 web 档差异(规范性)
+## 7.8 web Profile Differences (Normative)
 
-- 默认单线程事件循环:JS 回调不构建并行竞争——Send 检查按"编译期可判定的近似"执行(共享放开、阻塞禁用);启用 wasm threads 后恢复全量检查。
-- JSPI/栈切换承载任务挂起;语义与 full 档一致(§9.2)。
+- Default single-threaded event loop: JS callbacks do not construct parallel races — Send checks run as a "compile-time decidable approximation" (sharing relaxed, blocking disabled); full checks resume once wasm threads are enabled.
+- JSPI/stack switching carries task suspension; semantics identical to the full profile (§9.2).
 
-## 7.9 与测试集的对应
+## 7.9 Corresponding Tests
 
-`tests/06_concurrency.ct`(Send 正例/通道/Mutex)、`tests/06_spawn_nonsend.neg.ct`(E3010)、`tests/06_channel_nonsend.neg.ct`(E3020)、`tests/06_static_var.neg.ct`(E3030)。
+`tests/06_concurrency.ct` (Send positive cases/channels/Mutex), `tests/06_spawn_nonsend.neg.ct` (E3010), `tests/06_channel_nonsend.neg.ct` (E3020), `tests/06_static_var.neg.ct` (E3030).
 
-## 7.10 异步执行模型(服务器档,规范性,v0.8)
+## 7.10 Async Execution Model (server profile, normative, v0.8)
 
-- 门面 IO(§11.2)恒为**阻塞语义**;实际承载两形态:P1 阻塞运行时(1:1 线程)与 P2 协程运行时(N:M,§7.1 有栈协程)。**同形异构契约**:同一源码零改动,两运行时可观察语义一致;以机械不变式测试钉死(每波出口必跑)。
-- **挂起点契约**:网络门面调用、`sleep`、通道操作是仅有的可挂起点;编译器与运行时识别,用户代码无感知、无标注(§9.5"API 无色"的语义落点)。
-- **过渡口径注记**:§7.1"可增长连续栈 + work-stealing"调度面已于 2026-10-02 落码(每 worker 环形双端本地队+邻位轮转偷取;种子模式全量旁路保确定性);栈面于 2026-10-03 落码(发射器 morestack 序言机器:A′ 分段+调用窗回收+再入续跑,`CTRON_MORESTACK` 发射期门选通;缺省路径 = 1MB VA 上限+guard+触顶 panic 的字面终形,上限可配)。两面的可观测语义与过渡前逐字节一致(同形契约机械测试站岗);C100K/C10M 口径以实测为准。
-- **取消**:网络操作在挂起点响应 §7.2 取消令牌,返回 `Err(NetErr::Cancelled)`;阻塞运行时口径 = join 等效。
-- **FFI 纪律**:`extern "c"` 回调内禁止触达网络门面/通道/睡眠(协程栈不可重入);违者调试断言 + 未定义行为声明。
+- Facade IO (§11.2) always has **blocking semantics**; two forms actually carry it: the P1 blocking runtime (1:1 threads) and the P2 coroutine runtime (N:M, §7.1 stackful coroutines). **Same-shape, different-carrier contract**: the same source code with zero changes, with identical observable semantics on both runtimes; pinned down by mechanical invariant tests (must run at every wave exit).
+- **Suspension-point contract**: network facade calls, `sleep`, and channel operations are the only suspension points; recognized by the compiler and the runtime, imperceptible and unannotated in user code (the semantic landing point of §9.5 "colorless APIs").
+- **Transition note**: the §7.1 "growable contiguous stack + work-stealing" scheduling face landed in code on 2026-10-02 (a per-worker ring double-ended local queue + neighbor-rotation stealing; the seed mode is fully bypassed to preserve determinism); the stack face landed on 2026-10-03 (the emitter's morestack prologue machine: A′ segmentation + call-window reclamation + resume-on-reentry, gated at emission time by `CTRON_MORESTACK`; the default path is the literal final shape of a 1MB VA limit + guard + panic on hitting the limit, with the limit configurable). The observable semantics of both faces are byte-for-byte identical to before the transition (the same-shape contract stands guard with mechanical tests); C100K/C10M claims are governed by measured results.
+- **Cancellation**: network operations respond to the §7.2 cancellation token at suspension points and return `Err(NetErr::Cancelled)`; on the blocking runtime the equivalent is join semantics.
+- **FFI discipline**: `extern "c"` callbacks must not touch the network facade/channels/sleep (coroutine stacks are not reentrant); violators get a debug assertion + a declared-undefined-behavior statement.

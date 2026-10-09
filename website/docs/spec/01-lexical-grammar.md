@@ -1,28 +1,29 @@
-<!-- 站点同步件:源头 docs/spec/,勿直接编辑;漂移由 pages workflow --check 把关 -->
-<!-- 英文待翻:中文占位 -->
-# §1 词法与语法
+<!-- 英文译件:手维护;中文正典 = docs/spec/ 同名文件(经 tools/sync_site_spec.sh 同步至同名 .zh.md) -->
+<!-- 译件滞后于正典修订时,以中文正典为准 -->
 
-## 1.1 源文件
+# §1 Lexical & Grammar
 
-- 源文件必须为 UTF-8 编码;扩展名 `.ct`。
-- 源文件是一个**模块**(§2.1);文件内声明顺序无关(§2.6)。
-- 空白符:空格、Tab、换行。**缩进无语义**(P8/tokenizer 友好)。
-- 换行统一按 `\n` 处理(`\r\n` 归一化)。
+## 1.1 Source Files
 
-## 1.2 注释
+- Source files must be UTF-8 encoded; extension `.ct`.
+- A source file is a **module** (§2.1); declaration order within a file is irrelevant (§2.6).
+- Whitespace: space, Tab, newline. **Indentation carries no meaning** (P8/tokenizer friendly).
+- Newlines are uniformly handled as `\n` (`\r\n` is normalized).
 
-- 行注释 `//` 到行尾;**块注释不存在**(tokenizer 简单、grep 友好)。
-- 文档注释 `///`,必须紧邻被文档声明之前;文档注释中的代码块参与 doc-test 编译与运行(§10.4)。
+## 1.2 Comments
 
-## 1.3 标识符与关键字
+- Line comments `//` run to end of line; **block comments do not exist** (keeps the tokenizer simple and grep friendly).
+- Doc comments `///` must immediately precede the declaration they document; code blocks inside doc comments participate in doc-test compilation and execution (§10.4).
 
-- 标识符:`[A-Za-z_][A-Za-z0-9_]*`(Unicode 标识符预留)。禁止以下划线开头的外部可见名(`_` 开头仅用于内部/占位)。
-- 命名约定(强制 lint,非语法错误):
-  - 类型/枚举/变体/构造:`PascalCase`
-  - 函数/绑定/字段:`snake_case`
-  - 常量/静态:`SCREAMING_CASE`
-  - 包名:全小写单词
-- **关键字**(不能作标识符,唯一权威清单):
+## 1.3 Identifiers & Keywords
+
+- Identifiers: `[A-Za-z_][A-Za-z0-9_]*` (Unicode identifiers reserved). Externally visible names must not begin with an underscore (a leading `_` is for internal/placeholder use only).
+- Naming conventions (enforced as lint, not syntax errors):
+  - Types/enums/variants/constructors: `PascalCase`
+  - Functions/bindings/fields: `snake_case`
+  - Constants/statics: `SCREAMING_CASE`
+  - Package names: all-lowercase words
+- **Keywords** (cannot be used as identifiers; the single authoritative list):
 
 ```
 fn let var const static comptime
@@ -32,57 +33,57 @@ own scope test use pub extern
 prop true false void self
 ```
 
-- **保留运算符字**(不可作标识符):`or`(取默认中缀,§4.4)。
-- **预留字**(当前为语法错误,为演进保留):`do async await interface module`(v0.7 起 `break continue` 转正为关键字,§4.2)。
-- `as` **不是关键字**——数值显式转换是数值类型的前奏方法 `x.as[U64]()`(§3.6)。`arena`、`Box`、`List`、`String`、`Channel`、`Mutex`、`Arena`、`Option`、`Result` 等是前奏类型/绑定,不是关键字。
-- 禁用的标点(语法错误):`;` `::`。`!` 仅作一元非;`&` 仅出现在类型中;`?` 仅作后缀。
+- **Reserved operator words** (cannot be used as identifiers): `or` (infix default value, §4.4).
+- **Reserved words** (currently syntax errors, reserved for evolution): `do async await interface module` (as of v0.7, `break continue` are promoted to keywords, §4.2).
+- `as` is **not a keyword** — explicit numeric conversion is a prelude method on numeric types, `x.as[U64]()` (§3.6). `arena`, `Box`, `List`, `String`, `Channel`, `Mutex`, `Arena`, `Option`, `Result`, etc. are prelude types/bindings, not keywords.
+- Forbidden punctuation (syntax errors): `;` `::`. `!` serves only as unary not; `&` appears only in types; `?` only as a suffix.
 
-## 1.4 字面量
+## 1.4 Literals
 
-- **整数字面量**:十进制;`0x` 十六进制、`0o` 八进制、`0b` 二进制;可含 `_` 分隔(`1_000_000`)。
-  - 无后缀时默认 `I32`;在期望类型明确的上下文中**自适应**到期望的整数类型(§3.7)。
-  - 后缀:`i8 i16 i32 i64 isize u8 u16 u32 u64 usize f32 f64`(如 `255u8`)。
-- **浮点字面量**:十进制,可含指数;无后缀默认 `F64`;后缀 `f32`/`f64`。
-- **布尔**:`true` / `false`。
-- **无字符字面量**(`char` 类型不存在;码点迭代经 stdlib 只读 API 返回整数)。
-- **字符串字面量**:双引号;转义 `\n \t \r \\ \" \0 \{ \u{HEX}`;字面量类型为 `Str`(不可变借用,§3.3),存放于静态存储(任何档位可用)。
-  - **插值**:`{` 引入插值表达式,可含标识符、字段/属性/方法链与索引(`{clock.now()}`、`{xs[0]}`);字面 `{` 必须写 `\{`。插值串是语法糖,等价于对片段拼接的 `fmt` 调用(§4.6)。
+- **Integer literals**: decimal; `0x` hexadecimal, `0o` octal, `0b` binary; may contain `_` separators (`1_000_000`).
+  - Without a suffix the default is `I32`; in contexts where the expected type is clear, it **adapts** to the expected integer type (§3.7).
+  - Suffixes: `i8 i16 i32 i64 isize u8 u16 u32 u64 usize f32 f64` (e.g. `255u8`).
+- **Floating-point literals**: decimal, may carry an exponent; the default without a suffix is `F64`; suffixes `f32`/`f64`.
+- **Booleans**: `true` / `false`.
+- **No character literals** (there is no `char` type; code point iteration returns integers via read-only stdlib APIs).
+- **String literals**: double-quoted; escapes `\n \t \r \\ \" \0 \{ \u{HEX}`; the literal's type is `Str` (an immutable borrow, §3.3), stored in static storage (available in every profile).
+  - **Interpolation**: `{` introduces an interpolation expression, which may contain identifiers, field/property/method chains, and indexing (`{clock.now()}`, `{xs[0]}`); a literal `{` must be written `\{`. Interpolated strings are syntactic sugar, equivalent to a `fmt` call over concatenated fragments (§4.6).
 
-## 1.5 运算符与标点
+## 1.5 Operators & Punctuation
 
 ```
-+  -  *  /  %        算术
-+% -% *= /= %= +=    回绕加/减;复合赋值
-== != <  >  <= >=    比较
-=                    赋值(仅语句,§4.2)
-&&                   逻辑与(short-circuit)
-||                   逻辑或(short-circuit,v0.7;§4.4)
--  !                  一元:负号 / 逻辑非(仅 Bool;§4.3 层 7,§4.4)
-or                   中缀取默认(Option/Result,§5.2);非逻辑或
-.. ..=               range(左闭右开/双闭)
-..                   切片类型/省略(见语法)
--> =>                返回类型 / match 分支
-?                    Result/Option 传播后缀(§5.3)
-.                    路径/字段/方法/元组索引(.0 .1)
-, : ;(禁用)
-[ ] ( ) { }          泛型实参、分组/元组/参数、块
-&                    仅类型:共享只读引用(&T / &Trait)
-#[@ ] @derive(...)   注解 / derive(§8.3)
-|                    闭包参数界定
-_                    通配
++  -  *  /  %        arithmetic
++% -% *= /= %= +=    wrapping add/sub; compound assignment
+== != <  >  <= >=    comparison
+=                    assignment (statement only, §4.2)
+&&                   logical and (short-circuit)
+||                   logical or (short-circuit, v0.7; §4.4)
+-  !                  unary: negation / logical not (Bool only; §4.3 level 7, §4.4)
+or                   infix default value (Option/Result, §5.2); not logical or
+.. ..=               range (half-open / closed)
+..                   slice type / elision (see grammar)
+-> =>                return type / match arm
+?                    Result/Option propagation suffix (§5.3)
+.                    path/field/method/tuple index (.0 .1)
+, : ;                forbidden
+[ ] ( ) { }          generic args, grouping/tuple/params, blocks
+&                    types only: shared read-only references (&T / &Trait)
+#[@ ] @derive(...)   annotations / derive (§8.3)
+|                    delimits closure parameters
+_                    wildcard
 ```
 
-## 1.6 换行终止规则(语句定界)
+## 1.6 Newline Termination Rules (Statement Delimiting)
 
-Ctron 无分号。**换行是语句/字段/变体/match 臂的终止符**,除非满足以下任一条件:
+Ctron has no semicolons. **A newline is the terminator of statements/fields/variants/match arms**, unless any of the following holds:
 
-1. 行尾 token 属于延续集(该行语义未完成):
+1. The line's final token belongs to the continuation set (the line's semantics are incomplete):
 
 ```
 ,  =  ->  =>  &&  ||  or  ..  ..=  +  -  *  /  %  +%  -%  ==  !=  <  >  <=  >=  (  [  {  |
-```(`?` 不在延续集:它是后缀,总终结语句)
+```(`?` is not in the continuation set: it is a suffix and always terminates a statement)
 
-2. **下一行以 `.` 或二元运算符开头**(支持链式调用的"首点排版":
+2. **The next line starts with `.` or a binary operator** (supporting the "leading-dot" layout of chained calls:
 
 ```c
 let y = xs
@@ -90,40 +91,40 @@ let y = xs
     .map(|x| x * 2)
 ```
 
-行首 `.` 因此**永远**是前一行表达式的继续,不是新语句的开始;反之,行尾 `.` 不在延续集中,尾点式链式写法非法(统一用首点式,formatter 输出唯一形态)。
+A leading `.` is therefore **always** a continuation of the previous line's expression, never the start of a new statement; conversely, a trailing `.` is not in the continuation set, so trailing-dot chaining is illegal (leading-dot style is mandated, and the formatter emits the unique form).
 
-- `else` 必须与 `}` 同行:`} else {`。跨行(`}` 后换行再 `else`)由解析器拒绝(E1001)——词法层不抑制该换行。
-- 块内最后一个表达式(块值)后可无换行直接 `}`。
+- `else` must be on the same line as `}`: `} else {`. The cross-line form (a newline after `}`, then `else`) is rejected by the parser (E1001) — the lexer does not suppress that newline.
+- After the last expression in a block (the block value), `}` may follow directly without a newline.
 
-## 1.7 完整语法(EBNF)
+## 1.7 Full Grammar (EBNF)
 
-记法:`{ X }` 重复、`[ X ]` 可选、`|` 选择、`NEWLINE` 换行。产生式右端的 `NL+` 表示"以换行分隔的重复"。
+Notation: `{ X }` repetition, `[ X ]` optionality, `|` alternation, `NEWLINE` a newline. `NL+` at the right end of a production means "newline-separated repetition".
 
 ```ebnf
-(* ---------- 顶层 ---------- *)
+(* ---------- top level ---------- *)
 File        = { TopDecl } ;
 TopDecl     = UseDecl | StructDecl | ClassDecl | EnumDecl | TraitDecl | ImplDecl
             | FnDecl | ConstDecl | StaticDecl | TestDecl ;
 UseDecl     = "use" Path [ "{" Path { "," Path } [ "," ] "}" ] NEWLINE ;
 Path        = IDENT { "." IDENT } ;
 
-(* ---------- 类型声明 ---------- *)
+(* ---------- type declarations ---------- *)
 StructDecl  = { DeclAttr } "struct" IDENT [ TypeParams ] "{" NEWLINE* { Field NEWLINE+ } "}" ;
-Field       = Visibility [ "let" | "var" ] IDENT ":" Type ;   (* let 可省略;let/省略 = 不可变,var = 可变 *)
+Field       = Visibility [ "let" | "var" ] IDENT ":" Type ;   (* let may be omitted; let/omitted = immutable, var = mutable *)
 ClassDecl   = { DeclAttr } "class" IDENT [ TypeParams ] "{" NEWLINE* { ClassItem NEWLINE+ } "}" ;
 ClassItem   = Field | Method | PropImpl ;
 EnumDecl    = { DeclAttr } "enum" IDENT [ TypeParams ] "{"
               NEWLINE* { Variant NEWLINE+ } "}" ;
 Variant     = IDENT [ "(" [ Type { "," Type } ] ")"
-                    | "{" Field { ( "," | NEWLINE+ ) Field } [ "," ] "}" ] ;   (* 变体字段:逗号或换行分隔 *)
+                    | "{" Field { ( "," | NEWLINE+ ) Field } [ "," ] "}" ] ;   (* variant fields: separated by commas or newlines *)
 TypeParams  = "[" TypeParam { "," TypeParam } "]" ;
 TypeParam   = IDENT [ ":" Bound ] | "comptime" IDENT ":" Type ;
 Bound       = Path { "+" Path } ;
 Visibility  = "pub" | "pub" "(" "pkg" ")" ;
 
-(* ---------- trait 与 impl ---------- *)
+(* ---------- traits and impls ---------- *)
 TraitDecl   = { DeclAttr } "trait" IDENT [ TypeParams ] [ ":" Bound ]
-              "{" NEWLINE* { TraitItem NEWLINE+ } "}" ;      (* Bound = 超 trait *)
+              "{" NEWLINE* { TraitItem NEWLINE+ } "}" ;      (* Bound = supertrait *)
 TraitItem   = Method | PropSig | PropImpl | ConstDecl ;
 Method      = { DeclAttr } Visibility "fn" IDENT [ TypeParams ] "(" ParamList ")" [ "->" Type ] Block ;
 PropSig     = Visibility "prop" IDENT ":" Type ;
@@ -131,9 +132,9 @@ PropImpl    = Visibility "prop" IDENT ":" Type Block ;
 ImplDecl    = "impl" [ TypeParams ] Path [ TypeArgs ] "for" Type
               "{" NEWLINE* { (Method | PropImpl) NEWLINE+ } "}" ;
 
-(* ---------- 函数与测试 ---------- *)
+(* ---------- functions and tests ---------- *)
 FnDecl      = { DeclAttr } [ "pub" ] [ "comptime" ] [ "extern" STRING_LIT ] "fn" IDENT
-              [ TypeParams ] "(" ParamList ")" [ "->" Type ] [ Block ] ;   (* extern 声明省略 Block,§9.6 *)
+              [ TypeParams ] "(" ParamList ")" [ "->" Type ] [ Block ] ;   (* extern declarations omit Block, §9.6 *)
 ParamList   = [ Param { "," Param } [ "," ] ] ;
 Param       = Receiver | [ "var" ] IDENT ":" Type ;
 Receiver    = "&" "self" | "var" "self" ;
@@ -141,13 +142,13 @@ ConstDecl   = "const" IDENT ":" Type "=" Expr NEWLINE ;
 StaticDecl  = "static" "let" IDENT ":" Type "=" Expr NEWLINE ;
 TestDecl    = "test" STRING_LIT Block ;
 
-(* ---------- 属性 ---------- *)
-DeclAttr    = Attribute | DeriveAttr ;            (* 修饰紧随其后的声明 *)
+(* ---------- attributes ---------- *)
+DeclAttr    = Attribute | DeriveAttr ;            (* modifies the declaration that immediately follows *)
 Attribute   = "#[" IDENT [ "(" AttrArgs ")" ] "]" ;
 AttrArgs    = Expr | IDENT { "," (Expr | IDENT) } ;
 DeriveAttr  = "@derive" "(" Path { "," Path } ")" ;
 
-(* ---------- 语句 ---------- *)
+(* ---------- statements ---------- *)
 Block       = "{" NEWLINE* { (Stmt | Expr) NEWLINE+ } [ Expr NEWLINE* ] "}" ;
 Stmt        = LetStmt | VarStmt | ReturnStmt | ForStmt | WhileStmt | AssignStmt | ExprStmt ;
 LetStmt     = "let" Pattern [ ":" Type ] "=" Expr ;
@@ -158,21 +159,21 @@ WhileStmt   = "while" Expr Block ;
 AssignStmt  = PostfixExpr AssignOp Expr ;
 AssignOp    = "=" | "+=" | "-=" | "*=" | "/=" | "%=" ;
 
-(* ---------- 模式 ---------- *)
+(* ---------- patterns ---------- *)
 Pattern     = IDENT | "_" | LiteralPattern | TuplePattern | AggPattern ;
 LiteralPattern = INT_LIT | FLOAT_LIT | STRING_LIT | "true" | "false" ;
 TuplePattern = "(" [ Pattern { "," Pattern } ] ")" ;
 AggPattern  = PathPattern [ "(" [ Pattern { "," Pattern } ] ")"
                         | "{" FieldPattern { "," FieldPattern } "}" ] ;
-PathPattern = IDENT { "." IDENT } ;   (* 枚举变体 / 具名类型 *)
+PathPattern = IDENT { "." IDENT } ;   (* enum variants / named types *)
 FieldPattern= IDENT | IDENT ":" Pattern ;
 
-(* ---------- 表达式(按优先级升序,详见 §4.3) ---------- *)
+(* ---------- expressions (ascending precedence; see §4.3 for details) ---------- *)
 Expr        = LogicOrOr ;
-LogicOrOr   = LogicOr { "||" LogicOr } ;    (* v0.7:第 0 层;起始位置 || 为零参闭包起始,见 §4.7 角色分离 *)
+LogicOrOr   = LogicOr { "||" LogicOr } ;    (* v0.7: level 0; a || in starting position begins a zero-parameter closure, see §4.7 role separation *)
 LogicOr     = LogicAnd { "or" LogicAnd } ;
 LogicAnd    = Compare { "&&" Compare } ;
-Compare     = Range [ ( "==" | "!=" | "<" | ">" | "<=" | ">=" ) Range ] ;   (* 不可链 *)
+Compare     = Range [ ( "==" | "!=" | "<" | ">" | "<=" | ">=" ) Range ] ;   (* not chainable *)
 Range       = Additive [ ( ".." | "..=" ) Additive ] ;
 Additive    = Multiplicative { ( "+" | "-" | "+%" | "-%" ) Multiplicative } ;
 Multiplicative = Unary { ( "*" | "/" | "%" ) Unary } ;
@@ -180,18 +181,18 @@ Unary       = ( "-" | "!" ) Unary | Postfix ;
 Postfix     = Primary { Call | Index | Member | TypeArgs | Try } ;
 Call        = "(" [ Expr { "," Expr } [ "," ] ] ")" ;
 Index       = "[" Expr "]" ;
-Member      = "." ( IDENT | INT_LIT ) ;            (* INT_LIT: 元组 .0 .1 *)
+Member      = "." ( IDENT | INT_LIT ) ;            (* INT_LIT: tuple .0 .1 *)
 TypeArgs    = "[" Type { "," Type } "]" ;
 Try         = "?" ;
 
 Primary     = INT_LIT | FLOAT_LIT | STRING_LIT | "true" | "false" | "void" | IDENT
-            | "(" [ Expr { "," Expr } ] ")"             (* 分组 / 元组 *)
+            | "(" [ Expr { "," Expr } ] ")"             (* grouping / tuple *)
             | ArrayLit | StructLit | IfExpr | MatchExpr
             | Closure | ScopeExpr | OwnExpr | Block ;
 ArrayLit    = "[" [ Expr { "," Expr } [ "," ] ] "]" ;
 StructLit   = Path [ TypeArgs ] "{" FieldInit { "," FieldInit } [ "," ] "}" ;
-FieldInit   = IDENT [ ":" Expr ] ;                   (* 缺省 = 同名字段简写 *)
-IfExpr      = "if" Expr Block ( "else" ( IfExpr | Block ) ) ;   (* 作为值时 else 必需 *)
+FieldInit   = IDENT [ ":" Expr ] ;                   (* omitted = shorthand for the same-named field *)
+IfExpr      = "if" Expr Block ( "else" ( IfExpr | Block ) ) ;   (* else is required when used as a value *)
 MatchExpr   = "match" Expr "{" NEWLINE* { MatchArm NEWLINE+ } "}" ;
 MatchArm    = Pattern "=>" Expr ;
 Closure     = "|" [ ClosureParam { "," ClosureParam } ] "|" [ "->" Type ] Expr ;
@@ -200,25 +201,25 @@ ScopeExpr   = "scope" ClosureBlock ;
 ClosureBlock= "{" "|" IDENT "|" NEWLINE* { (Stmt | Expr) NEWLINE+ } [ Expr NEWLINE* ] "}" ;
 OwnExpr     = "own" "(" IDENT ")" Block ;
 
-(* ---------- 类型 ---------- *)
-Type        = "&" Type                  (* 共享只读引用 / trait 对象 *)
-            | Type "[" "]"              (* 可变切片视图 T[](§3.1;&T[] 为只读视图) *)
-            | Type "[" Expr "]"         (* 定长数组 T[N],N 为 comptime 表达式 *)
-            | Type "?"                  (* Option 糖 *)
-            | "(" [ Type { "," Type } ] ")"   (* 元组 / 单元 "()")
-            | "fn" "(" [ Type { "," Type } ] ")" [ "->" Type ]   (* 函数类型:仅参数/返回位 *)
-            | Path [ TypeArgs ]         (* 命名/泛型类型 *)
-            | "self" ;                  (* impl 内指代实现类型 *)
+(* ---------- types ---------- *)
+Type        = "&" Type                  (* shared read-only reference / trait object *)
+            | Type "[" "]"              (* mutable slice view T[] (§3.1; &T[] is the read-only view) *)
+            | Type "[" Expr "]"         (* fixed-size array T[N]; N is a comptime expression *)
+            | Type "?"                  (* Option sugar *)
+            | "(" [ Type { "," Type } ] ")"   (* tuple / unit "()")
+            | "fn" "(" [ Type { "," Type } ] ")" [ "->" Type ]   (* function type: parameter/return positions only *)
+            | Path [ TypeArgs ]         (* named/generic type *)
+            | "self" ;                  (* inside impl: refers to the implementing type *)
 ```
 
-## 1.8 语法歧义裁决
+## 1.8 Grammar Ambiguity Rulings
 
-- **表达式位置的 `IDENT {`**:恒为(具名类型的)构造字面量。裸块只能出现在关键字引导的位置(`fn`/`if`/`else`/`while`/`for`/`own`/`scope`/`match` 臂、闭包体),二者不冲突。
-- **表达式位置的 `IDENT [ ... ]`**:若 `[...]` **紧跟** `(` 或 `{` → 泛型实例化(如 `Channel[I32](4)`、`Box[Point](p)`);否则按索引解析,**索引内容不是合法单表达式时(如含顶层逗号)回退为类型实参**(覆盖 `Simd[F32, 4].splat(v)`)。由此,对"数组元素为闭包再调用"必须加括号:`(xs[i])(arg)`——解析器无需类型信息即可判定。
-- 泛型用 `[]` 而非 `<>`(消除 `a < b > c` 歧义;规范性裁决,来自测试钉子)。
-- 函数类型 `fn(...) -> T` 仅出现在类型位置;表达式位置 `fn` 是非法 Primary,无歧义。
-- **类型位置的 `[` 消歧(P1-B 裁决)**:空 `[]` → 切片;内容为**单个整数字面量** → 定长数组 `Type [ Expr ]`;其余 → 泛型类型实参。残余歧义:`T[SIZE]`(SIZE 为 comptime 常量标识符)按泛型解析——定长数组用字面量维度,或经 comptime 单态化 `Arr[T, N]` 形态使用。
+- **`IDENT {` in expression position**: always a construction literal (of a named type). Bare blocks can only appear in keyword-introduced positions (`fn`/`if`/`else`/`while`/`for`/`own`/`scope`/`match` arms, closure bodies), so the two never conflict.
+- **`IDENT [ ... ]` in expression position**: if `[...]` is **immediately followed** by `(` or `{` → generic instantiation (e.g. `Channel[I32](4)`, `Box[Point](p)`); otherwise parsed as indexing, and **when the index content is not a legal single expression (e.g. it contains a top-level comma) it falls back to type arguments** (covering `Simd[F32, 4].splat(v)`). Consequently, "indexing an array of closures and then calling" requires parentheses: `(xs[i])(arg)` — the parser can decide without type information.
+- Generics use `[]` rather than `<>` (eliminating the `a < b > c` ambiguity; a normative ruling, from a test pinned ruling).
+- The function type `fn(...) -> T` appears only in type positions; `fn` in expression position is an illegal Primary, so there is no ambiguity.
+- **`[` in type position disambiguation (P1-B ruling)**: empty `[]` → slice; content is a **single integer literal** → fixed-size array `Type [ Expr ]`; anything else → generic type arguments. Residual ambiguity: `T[SIZE]` (where SIZE is a comptime constant identifier) parses as generic — fixed-size arrays use literal dimensions, or are used via the comptime-monomorphized `Arr[T, N]` form.
 
-## 1.9 与测试集的对应
+## 1.9 Correspondence with the Test Suite
 
-词法/语法的可执行样例:`tests/01_basics.ct`(字面量/运算/循环)、`tests/04_generics_comptime.ct`(泛型与 comptime 语法)。
+Executable samples for lexical/grammar features: `tests/01_basics.ct` (literals/operations/loops), `tests/04_generics_comptime.ct` (generic and comptime syntax).

@@ -1,66 +1,67 @@
-<!-- 站点同步件:源头 docs/spec/,勿直接编辑;漂移由 pages workflow --check 把关 -->
-<!-- 英文待翻:中文占位 -->
-# §6 内存模型
+<!-- 英文译件:手维护;中文正典 = docs/spec/ 同名文件(经 tools/sync_site_spec.sh 同步至同名 .zh.md) -->
+<!-- 译件滞后于正典修订时,以中文正典为准 -->
 
-目标:默认层保生成顺畅与阅读清爽(GC),性能与裸机场景走显式通道(own/bare)。硬指标:own/热点路径与 C 互有 5% 内;GC 档 ≤15% 为带退出条件的目标(§9.4)。
+# §6 Memory Model
 
-## 6.1 值/引用二分
+Goal: the default tier keeps generation smooth and reading clean (GC); performance and bare-metal scenarios go through the explicit channel (own/bare). Hard targets: own/hot paths stay within 5% of C in both directions; ≤15% for the GC profile is a target with exit conditions attached (§9.4).
 
-- `struct`/`enum`/元组/定长数组/标量 = **值类型**:赋值拷贝、栈/内联存放;编译器保证可观察语义不变的前提下消除拷贝。
-- `class` = **引用类型**:GC 堆;变量持引用;字段默认 `let`,`var` 显式。
-- `Box[T]`:显式堆装箱值类型;访问自动解引用;`Box` 变量按句柄复制——**赋值/传参/绑定共享堆 cell,经别名的可变字段写全可见**(§3.11.1 v0.6 细化;取代 v0.5"独占持有"的含混表述)。
+## 6.1 Value/Reference Dichotomy
 
-## 6.2 GC 契约(full/web 档)
+- `struct`/`enum`/tuples/fixed-size arrays/scalars = **value types**: assignment copies, stack/inline storage; the compiler eliminates copies provided observable semantics are unchanged.
+- `class` = **reference type**: GC heap; variables hold references; fields default to `let`, `var` is explicit.
+- `Box[T]`: explicitly heap-boxes a value type; access auto-dereferences; `Box` variables copy by handle — **assignment/argument passing/binding share the heap cell, and mutable field writes through aliases are fully visible** (§3.11.1, v0.6 refinement; supersedes the vague v0.5 wording of "exclusive ownership").
 
-- 可达性回收:无循环引用泄漏问题;精确栈扫描。
-- 停顿目标:P99 < 0.5ms(并发分代);分配走线程本地 size-class(典型小对象 ~10ns)。
-- **无 finalizer**:GC 不执行用户析构;资源必须 RAII(§6.4)。**硬规则:类不得直接持有需确定性释放的资源**(文件/锁/socket),资源只能由值类型句柄或能力对象持有——违者 lint E 级。
-- 档位内 GC 可插拔(并发分代默认 / 移动端 RC),对语言语义零影响。
-- **能力扩展位(T27)**:闭包捕获变量按引用共享(闭包环境入 GC 堆,外层再赋值对闭包可见)留作 GC 成熟后的按需立项项——前置 = 精确根集(M1.5);与 §4.7 拷贝捕获终态不冲突。
+## 6.2 GC Contract (full/web Profiles)
+
+- Reachability-based reclamation: no leak problems from reference cycles; precise stack scanning.
+- Pause targets: P99 < 0.5ms (concurrent generational); allocation goes through thread-local size classes (typical small object ~10ns).
+- **No finalizers**: the GC never runs user destructors; resources must be RAII (§6.4). **Hard rule: a class must not directly hold resources requiring deterministic release** (files/locks/sockets); resources may only be held by value-type handles or capability objects — violators get an E-level lint.
+- Within a profile the GC is pluggable (concurrent generational by default / RC on mobile), with zero impact on language semantics.
+- **Capability extension slot (T27)**: sharing closure-captured variables by reference (closure environments into the GC heap, outer reassignment visible to the closure) is reserved as an on-demand project once the GC matures — prerequisite = the precise root set (M1.5); it does not conflict with the §4.7 copy-capture end state.
 
 ```c
 own (arena) {
-    var buf = arena.array[I32](8)      // 显式 arena 分配
+    var buf = arena.array[I32](8)      // explicit arena allocation
     ...
-    return acc                          // 出块规则见下
+    return acc                          // block-exit rules below
 }
 ```
 
-- `own (id) {}` 引入全新 arena,块退出时整体释放(一个 free);允许嵌套(arena 父子链)。
-- 块内**禁止 GC 分配**(E3040,机制 §6.5);GC 值只读进入(对 GC 值可变借用 = E3060)。
-- **move 语义**:arena 句柄(`arena.array/zeros/list` 的返回值)**仅移动**——赋值即 move,使用已移动值 = E3050;其余块内值为 Copy(标量/Copy struct)。
-- **借用检查(可判定子集)**:同一 arena 对象任一时刻"多个只读借用"或"单个可变使用",二者不并存;违规 = E3050。检查范围为块内局部流,推断**通常成功**;失败时诊断给机械降级建议(拷贝值 / 改 GC 值 / 提参数),**不引入生命周期标注**。
-- **出块规则**:仅 (a) Copy 值;(b) 显式 `into_gc()`。
-  - `into_gc()` v1 规范语义:**深拷贝**进 GC 堆(O(数据量),调用点显式可见);arena 晋升(一遍扫描免拷贝)为允许的优化(v2),语义等价。
-  - 设计含义:own 适合"进大出小"负载;构造大结果返回在 v1 付出口拷贝。
-- own 块在所有档位可用(full 档内用于热点优化)。
+- `own (id) {}` introduces a brand-new arena; the whole arena is released at block exit (one free); nesting is allowed (arena parent-child chains).
+- **GC allocation is forbidden inside the block** (E3040, mechanism in §6.5); GC values enter read-only (a mutable borrow of a GC value = E3060).
+- **Move semantics**: arena handles (the return values of `arena.array/zeros/list`) are **move-only** — assignment is a move, using a moved value = E3050; the other in-block values are Copy (scalars/Copy structs).
+- **Borrow checking (a decidable subset)**: for a given arena object, at any moment either "multiple read-only borrows" or "a single mutable use" — the two never coexist; violation = E3050. The check covers local flow within the block, and inference **usually succeeds**; on failure the diagnostic gives mechanical downgrade advice (copy the value / switch to a GC value / lift it to a parameter); **no lifetime annotations are introduced**.
+- **Block-exit rules**: only (a) Copy values; (b) an explicit `into_gc()`.
+  - `into_gc()` v1 normative semantics: a **deep copy** into the GC heap (O(data size), explicit at the call site); arena promotion (a single pass, no copying) is an allowed optimization (v2), semantically equivalent.
+  - Design implication: own suits "big in, small out" workloads; constructing a large result to return pays an exit copy in v1.
+- own blocks are available in all profiles (used for hot-path optimization within the full profile).
 
-## 6.4 RAII 与确定性析构
+## 6.4 RAII and Deterministic Destruction
 
-- 值类型可实现 `Drop` trait(`fn drop(var self)`),**确定性**执行:作用域退出按声明逆序、panic 展开保证执行。
-- panic 消息流口径(双臂一致):panic/assert 族消息**即时写 stderr**(任务体内 panic 在 panic 点即写,`join` 再展开为二次输出,`join_or` 不重印);`Drop` 体 `println` 走 stdout。`eprint(s)` 为前奏内建:即时写宿主 stderr、无换行、不入输出缓冲——诊断与流分离的唯一能力口。
-- 类引用的回收由 GC,不触发 `Drop`——这是 §6.2 硬规则的根据。
-- `Arena` 本身是值类型,`Drop` 整体释放。
+- Value types may implement the `Drop` trait (`fn drop(var self)`), executed **deterministically**: at scope exit in reverse declaration order, and guaranteed to run during panic unwinding.
+- panic message stream policy (both arms consistent): panic/`assert`-family messages are **written to stderr immediately** (a panic inside a task body is written at the panic point, `join` then re-emits it as a second output, `join_or` does not reprint); `println` inside a `Drop` body goes to stdout. `eprint(s)` is a prelude builtin: writes to the host stderr immediately, no newline, does not enter the output buffer — the only capability gateway for separating diagnostics from the stream.
+- Class references are reclaimed by the GC and do not trigger `Drop` — this is the basis for the §6.2 hard rule.
+- `Arena` itself is a value type; its `Drop` releases everything at once.
 
-## 6.5 分配效果(alloc effect)
+## 6.5 The alloc Effect
 
-- 每个函数具有编译器推断属性:**`alloc`**(含 GC 分配:构造类实例/`String`/`List`/`Box`/增长操作/插值串)或 **`no_alloc`**。
-- 推断:函数体直接分配 → `alloc`;调用 `alloc` 函数 → `alloc`;**经 `&Trait` 动态分发不可判定 → 保守 `alloc`**。
-- trait 方法可显式标注 `#[no_alloc]` 作为**契约**:所有实现必须 `no_alloc`(违者 E3040);用于发布"无分配接口"(ISR 回调等)。
-- 属性对用户零书写负担(默认推断),展示于签名文档与 LSP hover(P5)。
-- **强制点**:own 块内、`#[no_alloc]` 函数体、bare 档全部函数、**bare 档的 `static let` 初始化** → 调用/出现 `alloc` = E3040。(full/web 档的 `static let` 允许 `#[pure]` 惰性初始化中的分配,§7.6——纯函数分配不可观察,§8.3。)
+- Every function carries a compiler-inferred attribute: **`alloc`** (includes GC allocation: constructing class instances/`String`/`List`/`Box`, growth operations, interpolated strings) or **`no_alloc`**.
+- Inference: the function body allocates directly → `alloc`; it calls an `alloc` function → `alloc`; **dynamic dispatch through `&Trait` is undecidable → conservatively `alloc`**.
+- A trait method may be explicitly annotated `#[no_alloc]` as a **contract**: all impls must be `no_alloc` (violators = E3040); used to publish allocation-free interfaces (ISR callbacks and the like).
+- The attribute costs users nothing to write (inferred by default) and is shown in signature docs and LSP hover (P5).
+- **Enforcement points**: inside own blocks, in `#[no_alloc]` function bodies, in all functions of the bare profile, and in **`static let` initializers of the bare profile** → calling/exhibiting `alloc` = E3040. (`static let` in the full/web profiles allows allocation inside `#[pure]` lazy initialization, §7.6 — allocation by a pure function is unobservable, §8.3.)
 
-## 6.6 `bare` 档内存(§9.3 详述档位)
+## 6.6 Memory in the `bare` Profile (Profiles Detailed in §9.3)
 
-- 无 GC、无隐式分配;**所有内存经显式分配器参数**(`arena: Arena` 等)。
-- `Arena.fixed(n)` / `Region` / `Pool` / `Static` 分配器族;`core` 层容器可用(传 arena 即可)。
-- ISR 默认约束 `#[no_alloc] #[no_spawn]`。
-- 硬实时达成路径:零隐式分配 + 无 GC 停顿 + 确定性构建。
+- No GC, no implicit allocation; **all memory goes through explicit allocator parameters** (`arena: Arena`, etc.).
+- The `Arena.fixed(n)` / `Region` / `Pool` / `Static` allocator family; `core`-layer containers are usable (just pass an arena).
+- ISRs default to the `#[no_alloc] #[no_spawn]` constraints.
+- The hard real-time path: zero implicit allocation + no GC pauses + deterministic builds.
 
-## 6.7 内存安全承诺(safe 子集)
+## 6.7 Memory Safety Guarantee (safe Subset)
 
-无 `#[trusted]` 介入时,编译产物**保证**:无 use-after-free、无越权越界访问(索引检查)、无数据竞争(§7.4)、无未初始化读取、默认检查算术。`#[trusted]` 是唯一豁免口(§9.6),包级审计。
+Without `#[trusted]` involvement, compiled artifacts **guarantee**: no use-after-free, no unauthorized out-of-bounds access (bounds checks), no data races (§7.4), no reads of uninitialized memory, checked arithmetic by default. `#[trusted]` is the only exemption gate (§9.6), audited at the package level.
 
-## 6.8 与测试集的对应
+## 6.8 Corresponding Tests
 
-`tests/03_values_refs.ct`(值/引用/Box)、`tests/03_shallow_copy.lint.ct`(W8010)、`tests/05_own.ct`(own 正例)、`tests/05_own_alloc.neg.ct`(E3040)、`tests/05_own_move.neg.ct`(E3050)、`tests/08_bare.ct` 与 `tests/08_bare_alloc.neg.ct`(bare 档)。
+`tests/03_values_refs.ct` (values/references/Box), `tests/03_shallow_copy.lint.ct` (W8010), `tests/05_own.ct` (own positive cases), `tests/05_own_alloc.neg.ct` (E3040), `tests/05_own_move.neg.ct` (E3050), `tests/08_bare.ct` and `tests/08_bare_alloc.neg.ct` (the bare profile).

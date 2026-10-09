@@ -1,102 +1,102 @@
-<!-- 站点同步件:源头 docs/spec/,勿直接编辑;漂移由 pages workflow --check 把关 -->
-<!-- 英文待翻:中文占位 -->
-# §11 网络与服务器档
+<!-- 英文译件:手维护;中文正典 = docs/spec/ 同名文件(经 tools/sync_site_spec.sh 同步至同名 .zh.md) -->
+<!-- 译件滞后于正典修订时,以中文正典为准 -->
+# §11 Networking
 
-> 状态:**定稿(v0.8.1,2026-09-21)**——随服务器路线 S0 批次并入规范冻结面;后续修订按 v0.8.x 注记。v0.8.1 = P3/P4 终审遗留语义回写(加法式:AF_UNIX 落地面四件入 §11.2、resolve 池语义入 §11.5、TLS 门面语义指针新 §11.9),不改动 v0.8 冻结面。实现锚定:tests/modules/caps_net(E4010)、tests/net/(行为)。
-> 执行模型语义归 §7;本章定网络门面、传输语义、HTTP 档分层。规范性约定(必须/禁止/应当/可以)同规范 README。
+> Status: **finalized (v0.8.1, 2026-09-21)** — merged into the spec freeze surface along with the server roadmap's S0 batch; subsequent revisions are recorded as v0.8.x notes. v0.8.1 = write-back of semantics left over from the P3/P4 final review (additive: the four landed AF_UNIX items into §11.2, the resolve pool semantics into §11.5, and a new TLS facade semantics pointer as §11.9); it does not alter the v0.8 frozen surface. Implementation anchors: tests/modules/caps_net (E4010), tests/net/ (behavior).
+> Execution-model semantics belong to §7; this chapter defines the network facade, transport semantics, and the HTTP profile layering. Normative conventions (MUST / MUST NOT / SHOULD / MAY) follow the spec README.
 
-## 11.1 能力键(规范性)
+## 11.1 Capability Keys (Normative)
 
-- 网络访问一律经能力对象;包级 `[caps]`(§2.7)声明上限,程序实际使用集 ⊆ 声明集,超出 = E4010:
+- All network access goes through capability objects; the package-level `[caps]` (§2.7) declares the upper bounds, the set the program actually uses ⊆ the declared set, and exceeding them = E4010:
 
-| 键 | 授予面 | 无键后果 |
+| Key | Granted surface | Consequence without the key |
 |---|---|---|
-| `net.listen` | `TcpListener`/`UnixListener` 的 bind + accept | E4010 |
-| `net.connect` | `TcpStream`/`UnixStream` connect、`UdpSocket` | E4010 |
-| `net.resolve` | DNS 解析(§11.5) | E4010 |
+| `net.listen` | bind + accept for `TcpListener`/`UnixListener` | E4010 |
+| `net.connect` | `TcpStream`/`UnixStream` connect, `UdpSocket` | E4010 |
+| `net.resolve` | DNS resolution (§11.5) | E4010 |
 
-- `#[pure]` 函数(§8)触达任何网络门面 = E4020(编译期拒绝)。
-- 能力对象不可构造、不可复制出授予链;`listener.accept()` 派生的连接句柄**继承监听者授权**,不重复消耗 `net.connect`。
-- 数据库访问的 `db.connect` 键见 §12.1。
+- A `#[pure]` function (§8) touching any network facade = E4020 (rejected at compile time).
+- Capability objects cannot be constructed, nor copied out of the grant chain; connection handles derived from `listener.accept()` **inherit the listener's authorization** and do not consume `net.connect` again.
+- For the database-access `db.connect` key, see §12.1.
 
-## 11.2 地址与 socket 门面(规范性)
+## 11.2 Addresses and the Socket Facade (Normative)
 
 ```c
-let ln = caps.net.listen(TcpListener.bind("127.0.0.1:0")?)   // :0 = 内核分端口
-let conn = ln.accept()?                                       // -> TcpStream(继承授权)
+let ln = caps.net.listen(TcpListener.bind("127.0.0.1:0")?)   // :0 = kernel-assigned port
+let conn = ln.accept()?                                       // -> TcpStream (inherits authorization)
 let n = conn.read(var buf)?                                   // buf: Byte[] / T[N]
 conn.write(bytes)?
 conn.shutdown(Write)?
-let addrs = caps.net.resolve(Dns.name("example.com")?)        // List[SocketAddr],双栈
+let addrs = caps.net.resolve(Dns.name("example.com")?)        // List[SocketAddr], dual-stack
 ```
 
-- `SocketAddr`:IPv4/IPv6 **双栈**(v6 不歧视);字面与解析两形态。
-- 值类型句柄:`TcpListener`、`TcpStream`、`UdpSocket`、`UnixListener`、`UnixStream`(Unix 族仅 posix 目标可用,windows 目标引用即 E 编译错)。**全部 `impl Drop`**(§6.4):作用域退出确定性关闭;类不得持有(§6.2 硬规则逐字适用)。
-- 语义形态:**门面 API 恒为"阻塞语义"**——read/write/connect 无回调、无 Future;实际并发由运行时承载(§11.4)。
-- 底层文件描述符/`SOCKET` 句柄**禁止**由程序直接触达(发射面拒绝导出;E 锚随发射面收口波次登记,登记面见 divergences 服务器面)。
+- `SocketAddr`: IPv4/IPv6 **dual-stack** (no v6 discrimination); two forms, literal and resolved.
+- Value-type handles: `TcpListener`, `TcpStream`, `UdpSocket`, `UnixListener`, `UnixStream` (the Unix family is available only on posix targets; referencing them on a windows target is a compile error, E). **All `impl Drop`** (§6.4): deterministic close on scope exit; classes must not hold them (the §6.2 hard rule applies verbatim).
+- Semantic shape: **facade APIs always have "blocking semantics"** — read/write/connect with no callbacks and no Futures; actual concurrency is carried by the runtime (§11.4).
+- The underlying file descriptors / `SOCKET` handles are **forbidden** to be touched directly by programs (the emission surface refuses to export them; E anchors are registered with the wave that closes off the emission surface — see the divergences server surface for the register).
 
-### 11.2.1 AF_UNIX 落地面四件(v0.8.1 注记;实现锚 std/net.ct P3-E 面 + tests/net/unix_sock)
+### 11.2.1 The Four Landed AF_UNIX Items (v0.8.1 note; implementation anchors: the std/net.ct P3-E surface + tests/net/unix_sock)
 
-Unix 族句柄(`UnixListener`/`UnixStream`)在本档冻结语义之上,落地面钉死以下四件(跨平台一致口径,不得静默偏离):
+On top of this profile's frozen semantics, the Unix-family handles (`UnixListener`/`UnixStream`) pin down the following four landed items (one consistent policy across platforms; silent divergence is not allowed):
 
-1. **路径上限 = `min(sizeof sun_path)` = 104 字节**(darwin 104 / linux 108,含 NUL):`strlen(path) >= 104` → `EINVAL`(垫片统一置码,跨平台同形;不暴露各平台原生差异)。
-2. **bind 前 unlink 陈旧 socket 文件 = 后绑者赢**:listener 建立时对既有路径先 `unlink`(ENOENT 为常态忽略)——残留文件自愈,不辨活/死(活 listener 被后绑者顶掉的竞态面归调用方编排,垫片不仲裁)。
-3. **Drop 只关 fd,不摘 socket 文件**:句柄 RAII 作用域退出仅确定性关闭描述符;"最后一个 Drop 摘路径"会误摘继任者的活路径(后绑者赢语义下的必然后果),故文件生命周期显式归调用方。
-4. **显式清理 = `net_unix_unlink(path)`**:`ENOENT` 亦返 `rc < 0`(与真失败同形)——幂等清理路径的"已不存在"判别由调用方自决,垫片不设特例。
+1. **Path limit = `min(sizeof sun_path)` = 104 bytes** (darwin 104 / linux 108, including NUL): `strlen(path) >= 104` → `EINVAL` (the shim sets the code uniformly, same shape across platforms; the native per-platform differences are not exposed).
+2. **Unlinking a stale socket file before bind = last binder wins**: when a listener is created, an existing path is `unlink`ed first (ENOENT is the normal case and is ignored) — leftover files self-heal, with no alive/dead discrimination (the race surface where a live listener is displaced by a later binder belongs to caller orchestration; the shim does not arbitrate).
+3. **Drop only closes the fd, never removes the socket file**: the handle's RAII scope exit only deterministically closes the descriptor; "the last Drop removes the path" would wrongly remove a successor's live path (an inevitable consequence of last-binder-wins semantics), so the file's lifecycle belongs explicitly to the caller.
+4. **Explicit cleanup = `net_unix_unlink(path)`**: `ENOENT` also returns `rc < 0` (same shape as a real failure) — the "already gone" discrimination for idempotent cleanup paths is decided by the caller; the shim sets no special case.
 
-## 11.3 传输语义默认值(规范性)
+## 11.3 Transport Semantics Defaults (Normative)
 
-服务器工艺默认值在此定死,实现不得静默偏离:
+The server-engineering defaults are pinned here; implementations must not silently deviate:
 
-- **`TCP_NODELAY` 默认开启**(禁 Nagle;低延迟为默认;批量吞吐场景可显式关闭)。
-- **`SO_KEEPALIVE` 默认开启**,idle/interval/probes 用平台默认,提供显式调参。
-- listener 默认 `SO_REUSEADDR`;`SO_REUSEPORT` 不在门面(P9 多租户口志向)。
-- 门面 `write` 直通内核,不做用户态大缓冲;聚合/`writev` 供协议层显式使用。
-- 半关闭 `shutdown(Write)` 合法;对端读到 EOF 的平台差异(winsock)由垫片垫平。
-- 读写超时**应当**经上下文 deadline 参数表达(§11.4);per-call setter 允许但同形测试必须双运行时通过。
+- **`TCP_NODELAY` on by default** (Nagle disabled; low latency is the default; bulk-throughput scenarios may turn it off explicitly).
+- **`SO_KEEPALIVE` on by default**; idle/interval/probes use the platform defaults, with explicit tuning knobs provided.
+- Listeners default to `SO_REUSEADDR`; `SO_REUSEPORT` is not in the facade (the P9 multi-tenancy aspiration).
+- Facade `write` goes straight to the kernel; no large user-space buffers. Batching / `writev` is there for protocol layers to use explicitly.
+- Half-close `shutdown(Write)` is legal; platform differences in the peer reading EOF (winsock) are smoothed over by the shim.
+- Read/write timeouts **should** be expressed via context deadline parameters (§11.4); per-call setters are allowed, but same-shape tests must pass under both runtimes.
 
-## 11.4 执行模型与同形异构契约(规范性)
+## 11.4 Execution Model and the Same-Shape-Different-Wiring Contract (Normative)
 
-- 门面之下由两种运行时承载同一语义:P1 **阻塞运行时**(1:1 线程)与 P2 **协程运行时**(N:M,§7.1 有栈协程)。**同形异构契约:同一程序源码零改动,两运行时下可观察语义一致**——以机械测试不变式钉死(每波出口必跑)。
-- **挂起点契约**(协程口径):网络门面调用、`sleep`、通道操作是仅有的可挂起点;编译器与运行时识别,用户代码无感知、无标注。
-- 栈口径注记:§7.1 承诺"可增长连续栈";过渡实现为 64KB 固定 mmap 栈(子集),**触顶 = 任务边界 panic**(与 §7.1 上限口径一致);完全符合在 P9 栈经济专案达成。C100K/C10M 口径以专案为准,过渡口径不得外推。
-- **取消**:沿 §7.2 任务级取消令牌传播;网络操作在挂起点响应取消,返回 `NetErr::Cancelled`;阻塞运行时口径 = join 等效(取消即等待完成)。向已取消作用域的门面操作返回 `Err(ScopeCancelled)` 语义对齐 §7.2。
-- **FFI 纪律(必须)**:`extern "c"` 回调内不得触达网络门面/通道/睡眠(协程栈不可重入);违者 = 调试断言 + 未定义行为声明。
-- 超时预算:deadline 经上下文参数进入门面;跨任务继承随作用域树(§7.2)。
+- Beneath the facade, two runtimes carry the same semantics: the P1 **blocking runtime** (1:1 threads) and the P2 **coroutine runtime** (N:M, §7.1 stackful coroutines). **Same-shape-different-wiring contract: the same program source, with zero changes, has identical observable semantics under both runtimes** — pinned down by mechanical test invariants (run at every wave exit).
+- **Suspension-point contract** (coroutine policy): network facade calls, `sleep`, and channel operations are the only suspension points; recognized by the compiler and the runtime, imperceptible and unannotated in user code.
+- Stack policy note: §7.1 promises a "growable contiguous stack"; the transitional implementation is a fixed 64KB mmap stack (a subset), and **hitting the top = task-boundary panic** (consistent with §7.1's cap policy); full conformance is reached with the P9 stack-economics project. The C100K/C10M figures are governed by that project; the transitional figures must not be extrapolated.
+- **Cancellation**: propagated along the §7.2 task-level cancellation tokens; network operations respond to cancellation at suspension points, returning `NetErr::Cancelled`; on the blocking runtime the policy is join equivalence (cancellation means waiting for completion). Facade operations targeting an already-cancelled scope return `Err(ScopeCancelled)`, semantically aligned with §7.2.
+- **FFI discipline (MUST)**: inside `extern "c"` callbacks, no touching the network facade / channels / sleep (coroutine stacks are not reentrant); violators = debug assertion + a declared undefined behavior.
+- Timeout budgets: deadlines enter the facade via context parameters; cross-task inheritance follows the scope tree (§7.2).
 
-## 11.5 DNS 与解析(规范性)
+## 11.5 DNS and Resolution (Normative)
 
-- `resolve(host) -> List[SocketAddr]`:多记录返回,不歧视 v6;受 `net.resolve` 键约束。
-- 实现口径:池线程 `getaddrinfo` + 协程包装(语义无色);c-ares 列志向档。
-- 连接编排:调用方按序尝试,连接超时独立于读超时;happy-eyeballs 列志向档。
+- `resolve(host) -> List[SocketAddr]`: returns multiple records, no v6 discrimination; constrained by the `net.resolve` key.
+- Implementation policy: pooled threads running `getaddrinfo` + coroutine wrapping (semantically colorless); c-ares is listed as an aspiration tier.
+- Connection orchestration: the caller attempts in order; the connect timeout is independent of the read timeout; happy-eyeballs is listed as an aspiration tier.
 
-### 11.5.1 resolve 异步化语义(v0.8.1 注记;实现锚 ctron_net.c DNS helper 池)
+### 11.5.1 Asynchronous resolve Semantics (v0.8.1 note; implementation anchor: the ctron_net.c DNS helper pool)
 
-- **池线程语义**:协程口径下 resolve 经 2 线程 helper 池 + park/wake 完成(惰性建池,进程生命周期常驻)——解析不滞留调用协程所在 worker(workers=1 时旧形整 runtime 饿死,已实证差分);裸线程面(未链 rt)P1 内联原路径逐字节不变。
-- **不可取消**:任务取消广播**不中断在途解析**——`getaddrinfo` 本身无取消面,协程被取消唤醒后以 `while !done` 再停车吸收虚假唤醒,直至解析返回;**最长等待 = getaddrinfo 本身**(登记口径:CI 面仅 localhost/数值 host,毫秒级;任意外联 host 的解析时长不在门面担保内)。
-- **降级形态**:建池全败(线程创建失败)退化为调用面内联阻塞(旧语义,降级不悬挂);签名与返回值全程不变。
+- **Pool-thread semantics**: under the coroutine policy, resolve completes via a 2-thread helper pool + park/wake (the pool is built lazily and stays resident for the process lifetime) — resolution does not sit on the worker hosting the calling coroutine (with workers=1 the old shape starved the whole runtime; differentially proven); on the bare-thread surface (rt not linked), the P1 inline original path is unchanged byte for byte.
+- **Not cancellable**: the task-cancellation broadcast **does not interrupt an in-flight resolution** — `getaddrinfo` itself has no cancellation surface; after the coroutine is woken by cancellation it parks again in a `while !done` loop to absorb spurious wakeups, until the resolution returns; **the maximum wait = getaddrinfo itself** (registered policy: the CI surface uses only localhost/numeric hosts, millisecond scale; resolution duration for arbitrary outbound hosts is not covered by the facade's guarantee).
+- **Degraded mode**: if pool creation fails entirely (thread creation failure), it degrades to inline blocking on the calling surface (the old semantics; degradation does not hang); signature and return values are unchanged throughout.
 
-## 11.6 时钟与定时器(规范性)
+## 11.6 Clock and Timers (Normative)
 
-- `now_ns() -> I64`:单调钟内建(clock_gettime / QueryPerformanceCounter 底座)。
-- `sleep_ns`:无色、可取消(§11.4)。
-- 测试形态:**虚拟时钟**——测试模式可跳变,定时器确定性触发(确定性异步测试的地基)。
+- `now_ns() -> I64`: a monotonic clock built in (on a clock_gettime / QueryPerformanceCounter foundation).
+- `sleep_ns`: colorless, cancellable (§11.4).
+- Testing mode: the **virtual clock** — in test mode it can jump, and timers fire deterministically (the foundation of deterministic async testing).
 
-## 11.7 HTTP 档分层(概览,详细契约随路线 P4/P6 定稿)
+## 11.7 HTTP Profile Layering (Overview; Detailed Contracts Finalized Along Roadmap P4/P6)
 
-- **协议半层**:HTTP/1.1(RFC 9110/9112)编解码、chunked、keep-alive、100-continue、头/体上限(能力参数化)、压缩协商(gzip/deflate 起步,zstd 志向档)、SSE、WebSocket(RFC 6455)。版本路线:HTTP/2 = 志向档(P9)。
-- **框架半层**:comptime 路由、中间件(认证/CORS/CSRF/限流/超时/安全头)、静态文件(条件请求/Range)、multipart、comptime OpenAPI 导出。
-- 分层纪律:框架半层禁止绕过协议半层触网;协议半层禁止内嵌路由/业务概念。
-- **落地面注记(v0.8.1,P4-A)**:协议半层首件落地 = `std/http/`(parse.ct 请求行/状态行/头部解析 + message.ct 报文构造/chunked 编解码/100-continue 钩子),**零 use 纯 Ctron 半层**(不 import std.net:加载器菱形 use 误报 E5020 规避 + 解释器可测,同 std/tls.ct 口径);走私加固姿态从严(RFC 9112 §5.2 obs-fold 拒、§6.1 TE+CL 并存拒、重复 CL 拒、裸 LF 拒);上限参数化五槽(行/头数/单头/头总/体,超限独立 err 码,400/414/431/413/505 映射归框架波次);IO 粘合(net 门面写道/读道超时)随框架半层落地。
+- **Protocol half-layer**: HTTP/1.1 (RFC 9110/9112) codec, chunked, keep-alive, 100-continue, header/body limits (capability-parameterized), compression negotiation (gzip/deflate to start, zstd as an aspiration tier), SSE, WebSocket (RFC 6455). Version roadmap: HTTP/2 = aspiration tier (P9).
+- **Framework half-layer**: comptime routing, middleware (auth/CORS/CSRF/rate limiting/timeouts/security headers), static files (conditional requests/Range), multipart, comptime OpenAPI export.
+- Layering discipline: the framework half-layer is forbidden from bypassing the protocol half-layer to touch the network; the protocol half-layer is forbidden from embedding routing/business concepts.
+- **Landed-surface note (v0.8.1, P4-A)**: the protocol half-layer's first landed item = `std/http/` (parse.ct for request-line/status-line/header parsing + message.ct for message construction / chunked codec / 100-continue hooks), a **pure-Ctron half-layer with zero use** (it does not import std.net: avoiding the loader's diamond-use false-positive E5020 + keeping it testable on the interpreter, same policy as std/tls.ct); request-smuggling hardening posture is strict (RFC 9112 §5.2 obs-fold rejected, §6.1 TE+CL coexistence rejected, duplicate CL rejected, bare LF rejected); five parameterized limit slots (line / header count / single header / total headers / body, each over-limit with its own err code; the 400/414/431/413/505 mapping belongs to the framework wave); the IO glue (write-side/read-side timeouts over the net facade) lands with the framework half-layer.
 
-## 11.8 与测试集的对应
+## 11.8 Correspondence with the Test Suite
 
-`tests/net/`(回环纪律:`:0` 内核分端口、外部网络零依赖)、`tests/http/`;锚点 `tests/modules/caps_net`(E4010,多文件包负例)、`r7b_pure_net.neg.ct`(E4020)、`r7c_http_caps.neg.ct`;同形兼容不变式夹具(examples/ctecho 源码跨运行时零改动)。
+`tests/net/` (loopback discipline: `:0` kernel-assigned ports, zero dependence on the external network), `tests/http/`; anchors `tests/modules/caps_net` (E4010, multi-file package negative case), `r7b_pure_net.neg.ct` (E4020), `r7c_http_caps.neg.ct`; same-shape compatibility invariant fixtures (examples/ctecho source unchanged across runtimes).
 
-## 11.9 TLS 门面语义指针(v0.8.1;P3-C 落地面,实现锚 std/tls.ct + ctron_tls.c)
+## 11.9 TLS Facade Semantics Pointer (v0.8.1; P3-C landed surface, implementation anchors: std/tls.ct + ctron_tls.c)
 
-门面三件语义在此定死(细节见 std/tls.ct 头注;与 §11.2/§11.3 冻结面同构延伸):
+The three facade semantics are pinned here (details in the std/tls.ct header comment; an isomorphic extension of the §11.2/§11.3 frozen surface):
 
-- **hostname 匹配默认 opt-out**:`tls_set_hostname` 不调即跳过**名字匹配**;证书链验证(REQUIRED)**保留**不随之关闭。传空串 = 回到 opt-out 态。显式校验 host 名是调用方义务(连接编排层工艺)。
-- **超时为每块(per-record)口径**:`tls_read` 的 `timeout_ms` 经 mbedTLS `conf_read_timeout` + BIO `recv_timeout` 契约生效,**作用于单条记录的到达等待**,非"整记录链总预算"(一条多记录记录链在手时逐记录重置等待);超时返 `rc < 0`(槽 = `SSL_TIMEOUT`)。整读预算(deadline)归 §11.4 上下文参数,门面不设。
-- **EOF 双形同映 0**:对端关闭的两形——BIO 层 fd FIN(mbedTLS fetch_input 收 0 转 `CONN_EOF`)与记录层 close_notify(`PEER_CLOSE_NOTIFY`)——**同映 `tls_read() == 0`**(eof 口径,与 §11.2 read EOF 单形对齐);调用方不区分,亦不得依赖区分。
+- **Hostname matching is opt-out by default**: not calling `tls_set_hostname` skips **name matching**; certificate-chain verification (REQUIRED) is **retained** and is not turned off along with it. Passing an empty string = back to the opt-out state. Explicitly validating the host name is the caller's obligation (connection-orchestration-layer craft).
+- **Timeouts are per-record**: `tls_read`'s `timeout_ms` takes effect via the mbedTLS `conf_read_timeout` + BIO `recv_timeout` contract and **governs the wait for a single record's arrival**, not "a total budget for the whole record chain" (when a multi-record chain is in hand, the wait resets per record); on timeout it returns `rc < 0` (slot = `SSL_TIMEOUT`). The overall read budget (deadline) belongs to the §11.4 context parameters; the facade sets none.
+- **Both EOF forms map to 0**: the two forms of peer close — the BIO-layer fd FIN (mbedTLS fetch_input receiving 0, converted to `CONN_EOF`) and the record-layer close_notify (`PEER_CLOSE_NOTIFY`) — **both map to `tls_read() == 0`** (the eof policy, aligned with §11.2's single read-EOF form); callers do not distinguish them, and must not rely on distinguishing them.

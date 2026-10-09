@@ -1,55 +1,56 @@
-<!-- 站点同步件:源头 docs/spec/,勿直接编辑;漂移由 pages workflow --check 把关 -->
-<!-- 英文待翻:中文占位 -->
-# §8 效果系统与 comptime
+<!-- 英文译件:手维护;中文正典 = docs/spec/ 同名文件(经 tools/sync_site_spec.sh 同步至同名 .zh.md) -->
+<!-- 译件滞后于正典修订时,以中文正典为准 -->
 
-## 8.1 能力对象(capabilities)——I/O 效果建模
+# §8 Effects & Comptime
 
-I/O 类效果 = **必须持有的能力值**,依赖出现在参数里(P5):
+## 8.1 Capability Objects (capabilities) — Modeling I/O Effects
+
+I/O-style effects = **capability values that must be held**, with the dependencies appearing in the parameters (P5):
 
 ```c
 fn read(path: Path, fs: &Fs) -> Result[Bytes]
 fn handler(req: &Request, clock: &Clock) -> Result[Response, HttpError]
 ```
 
-- 能力是普通值/引用(`&Fs`、`&Clock`),可组合为 trait;测试注入 fake 实现(`FakeClock`),无需 mock 框架。
-- **不做新类型系统/效应关键字**——能力参数即签名即契约;已知代价是深链传递样板,缓解:入口集中构造 + 任务局部传递(编译期可判定,不跨任务,RFC 细化)。
-- 长链传递污染库签名时,能力可打包为上下文 trait(超 trait 组合):`trait Env: Clock + Fs + Log`——接收 `&Env` 即同时持有三者。
+- Capabilities are ordinary values/references (`&Fs`, `&Clock`) and can be composed into traits; tests inject fake implementations (`FakeClock`) with no mock framework needed.
+- **No new type system / effect keywords** — the capability parameters are the signature, and the signature is the contract; the known cost is boilerplate for passing capabilities down deep chains; mitigation: construct centrally at the entry point + pass along task-local paths (compile-time decidable, never across tasks; to be refined by an RFC).
+- When passing along long chains would pollute library signatures, capabilities can be packaged into a context trait (supertrait composition): `trait Env: Clock + Fs + Log` — receiving `&Env` means holding all three at once.
 
-## 8.2 能力审计
+## 8.2 Capability Audit
 
-- 包清单声明能力上限(§2.7 `[caps]`);程序实际使用集 ⊆ 声明集,超出 = E4010。
-- 服务器档键集(v0.8):`net.listen` / `net.connect` / `net.resolve`(§11.1)、`db.connect`(§12.1)——语义同 fs 键:manifest 声明上限,实际使用集 ⊆ 声明集,超出 = E4010;`#[pure]` 触达 = E4020。
-- main 的能力由**运行时初始化**按 manifest 授予(启动期失败优于运行期越权)。
-- `Global[T]` 可变全局纳入审计视图(§7.6)。
+- A package's manifest declares capability ceilings (§2.7 `[caps]`); the set the program actually uses ⊆ the declared set; exceeding it = E4010.
+- Server-profile key set (v0.8): `net.listen` / `net.connect` / `net.resolve` (§11.1), `db.connect` (§12.1) — semantics identical to the fs keys: the manifest declares the ceiling, the actually-used set ⊆ the declared set, exceeding it = E4010; `#[pure]` touching them = E4020.
+- main's capabilities are granted by **runtime initialization** according to the manifest (failing at startup beats overstepping at runtime).
+- `Global[T]` mutable globals are included in the audit view (§7.6).
 
-## 8.3 注解契约(全部内建注解,就此四个 + derive)
+## 8.3 Annotation Contracts (all built-in annotations: just these four + derive)
 
-| 注解 | 语义 | 违规 |
+| Annotation | Semantics | Violation |
 |---|---|---|
-| `#[pure]` | 无 `&Cap` 能力调用(**能力判定机制**:能力 trait 必须继承前奏标记 `trait Cap`,§3.8.2;对 `&Cap` 接收者的方法调用即非纯)、无 spawn、无全局可变;分配允许(不可观察) | E4020 |
-| `#[no_alloc]` | 函数体内无 GC 分配(§6.5);用于 trait 方法 = 实现契约 | E3040 |
-| `#[no_spawn]` | 函数体内禁止 spawn | E4030 |
-| `#[trusted]` | 开放不健全操作(仅 FFI/底层,§9.6);包级可枚举审计 | lint 统计 |
-| `@derive(A, B)` | 声明式代码生成,由沙箱内 derive 插件展开(普通代码,非宏手术) | 插件诊断 |
+| `#[pure]` | No `&Cap` capability calls (**capability determination mechanism**: a capability trait must inherit the prelude marker `trait Cap`, §3.8.2; a method call on a `&Cap` receiver is impure), no spawn, no global mutation; allocation allowed (unobservable) | E4020 |
+| `#[no_alloc]` | No GC allocation inside the function body (§6.5); on a trait method = an implementation contract | E3040 |
+| `#[no_spawn]` | spawn forbidden inside the function body | E4030 |
+| `#[trusted]` | Opens unsound operations (FFI/low-level only, §9.6); an enumerable audit at the package level | lint statistics |
+| `@derive(A, B)` | Declarative code generation, expanded by derive plugins inside the sandbox (ordinary code, not macro surgery) | plugin diagnostics |
 
-> **修订注(2026-10-03,T52 插件沙箱 v1 落库)**:插件 = 普通 Ctron 包(清单 `plugin "kind.name"` 块声明,CTCL 注册表增殖文法零改动);编译器进程内以受限调用面执行(复用自举解释器 = comptime CVM 全量形态,零进程外插件/动态链接/FFI)。沙箱边界三层:①静态纯度门(extern 禁 + I/O/时钟/并发白名单 + 能力调用门,E6020.sandbox 域);②静态规模门(256 KiB/512 decl;执行期步数预算列 v2——`Global[T]` 实证为单绑定持久盒无跨调用计数载体,与 comptime v0→v1 同演进路径);③确定性(禁时钟/环境/并发,同输入同输出锚)。derive 插件约定入口 `ctron_derive(DeriveInput) -> Str`(合成源码文本经重 parse 注入,产物禁 use/test/@derive 递归);内建集 {Show, Eq, Error} 维持 v0 声明性口径不动。设计案与 HIR 暴露宽度裁决:`docs/superpowers/specs/2026-10-03-t52-plugin-sandbox.md`。
+> **Revision note (2026-10-03, T52 plugin sandbox v1 landed)**: a plugin is an ordinary Ctron package (declared in the manifest's `plugin "kind.name"` block; zero changes to the CTCL registry extension grammar); it executes inside the compiler process behind a restricted call surface (reusing the bootstrap interpreter = the full form of the comptime CVM; zero out-of-process plugins / dynamic linking / FFI). The sandbox boundary has three layers: (1) a static purity gate (extern banned + an I/O/clock/concurrency whitelist + a capability-call gate, the E6020.sandbox domain); (2) a static size gate (256 KiB / 512 decls; an execution-time step budget is listed for v2 — `Global[T]` proved to be a single-binding persistent box with no carrier for cross-call counting, the same evolution path as comptime v0→v1); (3) determinism (clock/environment/concurrency banned; same input, same output anchor). Derive plugins agree on the entry point `ctron_derive(DeriveInput) -> Str` (synthesized source text is injected via a re-parse; the artifacts may not recursively contain use/test/@derive); the built-in set {Show, Eq, Error} keeps its v0 declarative stance unchanged. Design doc and HIR exposure-width ruling: `docs/superpowers/specs/2026-10-03-t52-plugin-sandbox.md`.
 
-- 编译器可利用 `#[pure]` 做优化与并行证明;`parallel.map` 闭包的纯度由**推断**得出(规则同上,§7.7),无需在闭包上书写注解。
-- `#[trusted]` 数量与位置随包发布元数据上报;`ctron lint --trusted` 列出全部信任边界。
+- The compiler may exploit `#[pure]` for optimization and parallelism proofs; the purity of `parallel.map` closures is obtained by **inference** (same rules as above, §7.7) — no annotation needs to be written on the closure.
+- `#[trusted]` counts and locations are reported with the package's release metadata; `ctron lint --trusted` lists every trust boundary.
 
-## 8.4 comptime:有边界的编译期执行
+## 8.4 comptime: Bounded Compile-Time Execution
 
-- `comptime fn` 在编译期(CVM)执行:**`#[pure]` 语义 + 总步数预算**(默认 1200 步/编译单元,可调)。超预算 E6010;副作用/不确定性 E6020。
-  > **修订注(2026-09-28,T08 用户裁决)**:预算口径由 v0.3 草案的「1s 时间预算」改为**步数预算为 v1 终态**——步数天然确定可复现(同输入同判定),与 §10.3 确定性编译无张力;时间口径依赖宿主时钟,同输入不可复现,故不采用。编译器内置 1200 步/编译单元(E6010 判据,`sem_ceval.ct` ceval)。清单键 `comptime.budget_ms`(CTCL 注册表,C 宿主 pkg 解析+fail-closed 校验)为声明位,当前不进入预算执行;量纲命名统一原定随 CTCL 迁移批次(spec-gap T48)定夺——T48 已落(2026-10-02),键名维持 `budget_ms` 现状(声明位未激活,改名无消费方,留待预算执行实装时一并处理)。
-- `const NAME: T = expr`:expr 在编译期求值(可调用 `comptime fn`);`static let` 的常量形式同理(§7.6)。
-- 泛型值参数(`comptime N: USize`,定长数组维度 `T[N]`)是 v0.3 唯一的类型级 comptime;**类型产出函数**(`fn Matrix(comptime N) -> type`)预留 v2。
-- **parametricity 保持**:comptime 代码不得反射泛型参数的运行时类型(E6030);类型反射仅经显式 `@derive` 声明,插件展开为普通代码——杜绝 Zig comptime 式泛型反射。
+- `comptime fn` executes at compile time (CVM): **`#[pure]` semantics + a total step budget** (default 1200 steps per compilation unit, adjustable). Over budget = E6010; side effects/nondeterminism = E6020.
+  > **Revision note (2026-09-28, T08 user ruling)**: the budget metric changed from the v0.3 draft's "1s time budget" to a **step budget as the v1 end state** — a step count is naturally deterministic and reproducible (same input, same verdict), with no tension against §10.3 deterministic compilation; a time metric depends on the host clock and is not reproducible for the same input, so it was not adopted. The compiler ships with 1200 steps per compilation unit (the E6010 criterion, `sem_ceval.ct` ceval). The manifest key `comptime.budget_ms` (CTCL registry, C-host pkg parsing + fail-closed validation) is a declaration slot and currently does not enter budget enforcement; unifying the unit naming was originally to be settled with the CTCL migration batch (spec-gap T48) — T48 has landed (2026-10-02), and the key name remains `budget_ms` as-is (the declaration slot is inactive, a rename has no consumers; left to be handled together when budget enforcement is implemented).
+- `const NAME: T = expr`: expr is evaluated at compile time (it may call `comptime fn`); likewise the constant form of `static let` (§7.6).
+- Generic value parameters (`comptime N: USize`, fixed-size array dimension `T[N]`) are v0.3's only type-level comptime; **type-producing functions** (`fn Matrix(comptime N) -> type`) are reserved for v2.
+- **Parametricity preserved**: comptime code must not reflect on the runtime types of generic parameters (E6030); type reflection happens only through explicit `@derive` declarations, which plugins expand into ordinary code — ruling out Zig-comptime-style generic reflection.
 
-## 8.5 编译预算(与 §8.4 配套的编译速度保护)
+## 8.5 Compilation Budget (compile-speed protection paired with §8.4)
 
-- 单态化实例总数/包有上限(默认 8192,可调);超限诊断建议 `&Trait` 化。
-- comptime 预算、实例预算、模块无循环依赖(§2.6)共同构成"编译速度否决权"的语言级落地。
+- The total number of monomorphized instances per package is capped (default 8192, adjustable); when over the limit, the diagnostic suggests erasing to `&Trait`.
+- The comptime budget, the instance budget, and acyclic module dependencies (§2.6) together constitute the language-level realization of the "compile-speed veto".
 
-## 8.6 与测试集的对应
+## 8.6 Corresponding Tests
 
-`tests/07_capabilities.ct`(能力注入)、`tests/07_pure.neg.ct`(E4020)、`tests/04_generics_comptime.ct`(comptime/const)。
+`tests/07_capabilities.ct` (capability injection), `tests/07_pure.neg.ct` (E4020), `tests/04_generics_comptime.ct` (comptime/const).

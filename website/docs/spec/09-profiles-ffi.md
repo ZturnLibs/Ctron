@@ -1,83 +1,83 @@
-<!-- 站点同步件:源头 docs/spec/,勿直接编辑;漂移由 pages workflow --check 把关 -->
-<!-- 英文待翻:中文占位 -->
-# §9 档位与互操作
+<!-- 英文译件:手维护;中文正典 = docs/spec/ 同名文件(经 tools/sync_site_spec.sh 同步至同名 .zh.md) -->
+<!-- 译件滞后于正典修订时,以中文正典为准 -->
+# §9 Profiles & Interop
 
-## 9.1 三档模型
+## 9.1 The Three-Profile Model
 
-| 档位 | 目标 | 内存 | 并发 | stdlib 层 |
+| Profile | Target | Memory | Concurrency | stdlib layer |
 |---|---|---|---|---|
-| `full` | Linux / macOS / Windows / 移动 NDK | 并发分代 GC(可插拔) | 任务+通道+并行 | `core < alloc < std` |
-| `web` | WasmGC(浏览器/边缘/沙箱) | 宿主 GC | JSPI / wasm threads | `core < alloc < stdweb` |
-| `bare` | Cortex-M / RISC-V / 裸机 wasm | 无(arena/静态池) | 可选协作调度器库 | `core` |
+| `full` | Linux / macOS / Windows / mobile NDK | concurrent generational GC (pluggable) | tasks + channels + parallelism | `core < alloc < std` |
+| `web` | WasmGC (browser / edge / sandbox) | host GC | JSPI / wasm threads | `core < alloc < stdweb` |
+| `bare` | Cortex-M / RISC-V / bare-metal wasm | none (arena / static pools) | optional cooperative-scheduler library | `core` |
 
-- 分层按**档位**组织(非特性开关);包可声明最低所需层。
-- **兼容方向(硬规则)**:`bare ⊆ full ⊆ (任何档)` 向上兼容——bare/own 代码任何档位可用;依赖 GC 分配(alloc 属性)的代码进 bare = E3040(§6.5 机械判定)。
+- Layering is organized by **profile** (not feature flags); packages may declare the minimum layer they require.
+- **Compatibility direction (hard rule)**: `bare ⊆ full ⊆ (any profile)` is upward compatible — bare/own code is usable under any profile; code that depends on GC allocation (the alloc attribute) entering bare = E3040 (§6.5 mechanical determination).
 
-## 9.2 web 档
+## 9.2 The web Profile
 
-- 后端 WasmGC;GC 用宿主;任务挂起经 JSPI/栈切换;wasm threads 启用时恢复全量 Send 检查(§7.8)。
-- JS 桥:类型化(无 `any` 泄漏);JS 异常在边界转为 `Result`;JS 回调按 web 档 Send 近似规则;DOM/Canvas/Fetch 经 `stdweb`。
-- **stdweb 最小 API(v0.5 钉死,P1-D 起可用)**:`use stdweb.dom` 后——`dom.set_title(Str) -> Void`、`dom.title() -> Str`。其余 DOM/Canvas/Fetch 以此模式逐版扩充(锚定测试:`10_web_dom.ct`)。
-- **自举侧现状(T45 注记,v0.9·六)**:所有权三约定之 2 落地——`CBox[T]`(std ffi 域包):C→Ctron 移交 `cbox_own`、调用期借用 `cbox_borrow`(约定之 3)、移交赴 C `cbox_into_raw`、显式释放 `cbox_free`(#[trusted] 释放面);所有权哨 = C 侧登记表(值拷贝不复制哨状态,双 free/free 后使用响亮 panic),CBox 恒编译通道(解释桥指针截断)。解释口径 extern 直调桥 float 帧闭合(f:/g: 帧按声明型驱动 + Ri:/Rf:/Rg: 返回别 + ABI 正确 SIMD 类 cast + 浮返 "%.17g" 文本零损回传;>4 参浮形状响亮 panic);整返回升 long 全宽(int 截断缺口 bootstrap 侧销)。cimport union/struct/enum 关键字限定指针形参(`union Vals*` 剥词走 typedef 名表)。锚定:`tests/ffi/`(cbox 三目录/ext_finterp 双通道/cimport union 形参)。
-- **自举侧现状(v0.7 注记)**:动态面——`#[dlsym]` 运行期 thunk(`dlsym(RTLD_DEFAULT)`)+ `dlopen/dlclose/dlsym` 内建;变参 extern(形参表尾 `...`,非 extern = E4044);`#[link_name(x)]` 符号重命名与堆叠属性;导出面 `#[export]`(非静态 C 符号包装,嵌入面);extern 返回 fn 解禁(声明位装箱,env 哨兵双路径);`USize` → `size_t`(码 "z");`#[repr(packed)]`/`#[repr(align(N))]`;C 头自动消费 `compiler/tools/cimport.ct`(decl 级子集:原型/#define/标量 struct,真实 math.h 实测 71 绑定)。锚定:`tests/ffi/`(cimport/dyn_link/variadic/export/ext_fn_ret/layout)。
-- **自举侧现状(v0.6 注记)**:`--profile=web` 下 `stdweb.dom` 检查面与运行面已可用(`dom` 为内建命名空间,标题存运行态;full 档 = E2020 拦截);发射面产出 `ctron_dom_set_title/ctron_dom_title` C stub,真实 JS 桥由 WasmGC 后端(P1-D)替换。
+- The backend is WasmGC; GC is the host's; task suspension goes through JSPI / stack switching; when wasm threads is enabled, full Send checking is restored (§7.8).
+- The JS bridge is typed (no `any` leaking through); JS exceptions are converted to `Result` at the boundary; JS callbacks follow the web-profile Send approximation rules; DOM/Canvas/Fetch go through `stdweb`.
+- **The stdweb minimal API (pinned in v0.5, available from P1-D)**: after `use stdweb.dom` — `dom.set_title(Str) -> Void`, `dom.title() -> Str`. The rest of DOM/Canvas/Fetch is expanded release by release following this pattern (anchoring test: `10_web_dom.ct`).
+- **Bootstrap-side status (T45 note, v0.9·6)**: ownership convention 2 of the three has landed — `CBox[T]` (a package in the std ffi domain): C→Ctron handoff via `cbox_own`, call-duration borrow via `cbox_borrow` (convention 3), handoff to C via `cbox_into_raw`, explicit release via `cbox_free` (a #[trusted] release surface); the ownership sentinel = a C-side registration table (value copies do not copy the sentinel state; double free / use-after-free panic loudly), and CBox always goes through the compiled channel (the interpreter bridge truncates pointers). On the interpreter side, the extern direct-call bridge closes the float-frame gap (f:/g: frames driven by declared types + Ri:/Rf:/Rg: return aliases + ABI-correct SIMD-class casts + float returns round-tripping losslessly as "%.17g" text; float shapes with more than 4 arguments panic loudly); integer returns widened to full-width long (the int-truncation gap destroyed on the bootstrap side). cimport union/struct/enum keywords qualify pointer parameters (`union Vals*` strips the keyword and resolves through the typedef name table). Anchors: `tests/ffi/` (the three cbox directories / ext_finterp dual-channel / cimport union parameters).
+- **Bootstrap-side status (v0.7 note)**: the dynamic surface — `#[dlsym]` runtime thunks (`dlsym(RTLD_DEFAULT)`) + `dlopen/dlclose/dlsym` built in; variadic externs (trailing `...` in the parameter list; non-extern = E4044); `#[link_name(x)]` symbol renaming and stackable attributes; the export surface `#[export]` (wrapping non-static C symbols, for the embedding surface); extern-returning fns unblocked (boxed at the declaration site, dual paths for the env sentinel); `USize` → `size_t` (code "z"); `#[repr(packed)]`/`#[repr(align(N))]`; automatic consumption of C headers via `compiler/tools/cimport.ct` (a decl-level subset: prototypes / #define / scalar structs; 71 bindings measured against the real math.h). Anchors: `tests/ffi/` (cimport/dyn_link/variadic/export/ext_fn_ret/layout).
+- **Bootstrap-side status (v0.6 note)**: under `--profile=web`, the `stdweb.dom` checking surface and runtime surface are already usable (`dom` is a built-in namespace; the title is stored in runtime state; the full profile = intercepted with E2020); the emission side produces the `ctron_dom_set_title/ctron_dom_title` C stubs, with the real JS bridge to be substituted by the WasmGC backend (P1-D).
 
-## 9.3 bare 档
+## 9.3 The bare Profile
 
-- 交叉编译内建:`ctron build --target <triple>`,工具链自包含(内嵌 lld + minilibc 选项)。
-- 首批 bare 目标(tier-1):`thumbv7em-none-eabi`、`riscv32imac-unknown-none`;其余 LLVM 支持目标 tier-2。
-- ISR 约束、显式分配器、硬实时路径见 §6.6。
+- Cross-compilation is built in: `ctron build --target <triple>`, with a self-contained toolchain (bundled lld + a minilibc option).
+- First bare targets (tier-1): `thumbv7em-none-eabi`, `riscv32imac-unknown-none`; the remaining LLVM-supported targets are tier-2.
+- For ISR constraints, explicit allocators, and hard-real-time paths, see §6.6.
 
-## 9.4 性能口径(R4 规范化)
+## 9.4 Performance Targets (R4 Normalization)
 
-| 路径 | 指标 | 性质 |
+| Path | Metric | Nature |
 |---|---|---|
-| own/热点档 | 与 C 互有 5% 内 | **硬指标**(P3 出口) |
-| GC 档 | 与 C 差距 ≤15% | 带退出条件的目标:未达标则收紧 GC 默认策略并引导热点走 own(§15 风险对策) |
-| bare | 零隐式分配、无 GC 停顿、可确定性构建 | 硬指标 |
+| own / hot-path profiles | within 5% of C in both directions | **hard target** (P3 exit) |
+| GC profile | gap to C ≤ 15% | a target with an exit condition: if unmet, tighten the GC default policies and steer hot paths to own (§15 risk mitigation) |
+| bare | zero implicit allocation, no GC pauses, deterministically buildable | hard target |
 
-## 9.5 硬件利用
+## 9.5 Hardware Utilization
 
-- `Simd[E, N]` 定长向量一等公民;自动向量化 + comptime 展开。
-- 异步 I/O 统一层:io_uring / kqueue / IOCP(运行时内建,API 无色)。
-- NUMA 感知分配与任务亲和(运行时选项)。
-- GPU(`kernel` 块 → SPIR-V/PTX):预留 v2,经 codegen 插件(§10.5)。
+- `Simd[E, N]` fixed-length vectors as first-class citizens; auto-vectorization + comptime unrolling.
+- A unified async I/O layer: io_uring / kqueue / IOCP (built into the runtime, colorless API).
+- NUMA-aware allocation and task affinity (runtime options).
+- GPU (`kernel` blocks → SPIR-V/PTX): reserved for v2, via codegen plugins (§10.5).
 
-- **自举侧现状(T51 注,2026-10-03)**:异步 I/O 统一层四后端落库
-  (`lib/net/c_src/ctron_rt.c` reactor)——kqueue(darwin)/ epoll(linux)/
-  **io_uring(linux,运行时探测:NODROP 特性门 + 开机双 NOP 自检,不过响亮登记回退
-  epoll;env `CTRON_RT_REACTOR=epoll|io_uring` 压制;`ctron_rt_reactor_name()` 观测)**/
-  POSIX poll(其他)。同构映射 = POLL_ADD 天然 one-shot ≙ EV_ONESHOT/EPOLLONESHOT,
-  armed 吞发/last-wins 零新契约;reactor 单消费者阻塞 enter,免 100ms 兜底 tick。
-  `CTRON_RT_NUMA=off|on|auto` 选项位 + `ctron_rt_numa_nodes()` 拓扑探测已立
-  (linux `/sys/devices/system/node`),感知分配/任务亲和为志向(触发条件 = 多节点
-  靶机)。IOCP:windows 无 net 靶机,环境依赖登记。双臂同形冒烟挂 `ci.sh`
-  (linux = epoll + io_uring 双点名;darwin = kqueue)。Simd v0 = 语义/标量模拟,
-  向量化评估结论与志向分级见 `docs/simd-vectorization-analysis.md`(§3.11 同注)。
+- **Bootstrap-side status (T51 note, 2026-10-03)**: the unified async I/O layer's four backends are in the tree
+  (the `lib/net/c_src/ctron_rt.c` reactor) — kqueue (darwin) / epoll (linux) /
+  **io_uring (linux, runtime-probed: a NODROP feature gate + a boot-time double-NOP self-check; on failure, loudly registered with fallback to
+  epoll; suppressed via the env `CTRON_RT_REACTOR=epoll|io_uring`; observed via `ctron_rt_reactor_name()`)**/
+  POSIX poll (others). Isomorphic mapping = POLL_ADD is natively one-shot ≙ EV_ONESHOT/EPOLLONESHOT,
+  armed swallow-on-delivery / last-wins, zero new contracts; the reactor's enter is single-consumer blocking, eliminating the 100ms fallback tick.
+  The `CTRON_RT_NUMA=off|on|auto` option slot + `ctron_rt_numa_nodes()` topology probing are in place
+  (linux `/sys/devices/system/node`); aware allocation / task affinity remain aspirations (trigger condition = multi-node
+  target machines). IOCP: no windows net target machine; registered as environment-dependent. The dual-arm same-shape smoke test is hooked into `ci.sh`
+  (linux = epoll + io_uring double roll call; darwin = kqueue). Simd v0 = semantics / scalar emulation;
+  for the vectorization assessment conclusions and aspiration tiers, see `docs/simd-vectorization-analysis.md` (same note as §3.11).
 
-## 9.6 FFI 与 `#[trusted]`
+## 9.6 FFI and `#[trusted]`
 
-- `extern "c"` 函数声明 + `#[trusted]` 标记 = safe 子集外**唯一**入口;包级审计(`ctron lint --trusted`)。声明语法(v0.5):
+- An `extern "c"` function declaration + the `#[trusted]` marker = the **only** entry point outside the safe subset; audited at the package level (`ctron lint --trusted`). Declaration syntax (v0.5):
 
 ```c
 #[trusted]
-extern "c" fn ctron_add(a: I64, b: I64) -> I64     // 无函数体;定义在 C 侧
+extern "c" fn ctron_add(a: I64, b: I64) -> I64     // no function body; defined on the C side
 ```
-- **C ABI 类型映射**(节选):`I8↔int8_t` `USize↔size_t` `F64↔double` `Bool↔bool(C99)` `T[N]↔T[N]` `T[]↔(ptr,len)`(经包装);struct 按声明布局(`#[repr(c)]` 默认对 FFI 导出)。
-- **所有权三约定**(bindgen 按此生成包装):
-  1. `C-owned`:C 分配 C 释放,Ctron 仅调用期借用;
-  2. `Ctron-owned`:跨边界移交所有权必须经包装类型(如 `CBox[T]`),drop 责任显式;
-  3. `borrowed`:临时借用,生命周期 = 调用期,包装层内不外泄。
-- **禁止**把 arena 内存交 C 长期持有(释放即悬垂);需要时深拷贝出边界。
-- **自举侧现状(v0.7 注记)**:动态面——`#[dlsym]` 运行期 thunk(`dlsym(RTLD_DEFAULT)`)+ `dlopen/dlclose/dlsym` 内建;变参 extern(形参表尾 `...`,非 extern = E4044);`#[link_name(x)]` 符号重命名与堆叠属性;导出面 `#[export]`(非静态 C 符号包装,嵌入面);extern 返回 fn 解禁(声明位装箱,env 哨兵双路径);`USize` → `size_t`(码 "z");`#[repr(packed)]`/`#[repr(align(N))]`;C 头自动消费 `compiler/tools/cimport.ct`(decl 级子集:原型/#define/标量 struct,真实 math.h 实测 71 绑定)。锚定:`tests/ffi/`(cimport/dyn_link/variadic/export/ext_fn_ret/layout)。
-- **自举侧现状(v0.6 注记)**:extern 原型外链修复(旧实现 `static` 靠链接器宽容);C-ABI 回调——fn 类型形参按边界映射 `ct_fn1..3`,裸 fn 名零包装直传,捕获闭包 E4042 拦(无 env 槽);`#[repr(c)]` struct 声明面(E4041 误用拦/W8051 非 C-ABI 字段警示),发射面按声明序直出 C struct 同型即 ABI 兼容;Str 编组 `str_from_c`(arena 深拷,Ctron-owned);边界治理 W8052(容器类型)/W8053(返回 fn)。Bool 以 int 落界(三线统一,ABI 等价于 bool)。锚定测试:`tests/ffi/`(§9.8 承诺落点),性能:`compiler/test/bench_ffi.sh`(标量调用/struct 按值与纯 C 1.00×)。缺陷清单与主流语言对比见 `docs/ffi-analysis.md`。
+- **C ABI type mapping** (excerpt): `I8↔int8_t` `USize↔size_t` `F64↔double` `Bool↔bool(C99)` `T[N]↔T[N]` `T[]↔(ptr,len)` (via wrappers); structs are laid out as declared (`#[repr(c)]` is the default for FFI exports).
+- **The three ownership conventions** (bindgen generates wrappers according to them):
+  1. `C-owned`: C allocates, C frees; Ctron only borrows for the duration of the call;
+  2. `Ctron-owned`: transferring ownership across the boundary must go through a wrapper type (e.g. `CBox[T]`), with drop responsibility explicit;
+  3. `borrowed`: a temporary borrow whose lifetime is the duration of the call, never escaping the wrapper layer.
+- **Forbidden** to hand arena memory to C for long-term holding (freeing it leaves a dangling pointer); when needed, deep-copy it across the boundary.
+- **Bootstrap-side status (v0.7 note)**: the dynamic surface — `#[dlsym]` runtime thunks (`dlsym(RTLD_DEFAULT)`) + `dlopen/dlclose/dlsym` built in; variadic externs (trailing `...` in the parameter list; non-extern = E4044); `#[link_name(x)]` symbol renaming and stackable attributes; the export surface `#[export]` (wrapping non-static C symbols, for the embedding surface); extern-returning fns unblocked (boxed at the declaration site, dual paths for the env sentinel); `USize` → `size_t` (code "z"); `#[repr(packed)]`/`#[repr(align(N))]`; automatic consumption of C headers via `compiler/tools/cimport.ct` (a decl-level subset: prototypes / #define / scalar structs; 71 bindings measured against the real math.h). Anchors: `tests/ffi/` (cimport/dyn_link/variadic/export/ext_fn_ret/layout).
+- **Bootstrap-side status (v0.6 note)**: fixed the external linkage of extern prototypes (the old implementation used `static`, relying on linker leniency); C-ABI callbacks — fn-type parameters map across the boundary to `ct_fn1..3`, bare fn names pass through unwrapped, and capturing closures are intercepted with E4042 (no env slot); the `#[repr(c)]` struct declaration surface (E4041 intercepts misuse / W8051 warns on non-C-ABI fields), with the emission side emitting the C struct in declaration order — same shape = ABI compatible; Str marshalling via `str_from_c` (arena deep copy, Ctron-owned); boundary governance W8052 (container types) / W8053 (returning fn). Bool crosses the boundary as int (unified across the three lines; ABI-equivalent to bool). Anchoring tests: `tests/ffi/` (the landing point of the §9.8 commitments); performance: `compiler/test/bench_ffi.sh` (scalar calls / struct by value at 1.00× vs pure C). For the defect list and the comparison with mainstream languages, see `docs/ffi-analysis.md`.
 
-## 9.7 产物与工具链(规范性概要)
+## 9.7 Artifacts and Toolchain (Normative Summary)
 
-- 默认静态单二进制;体积口径:bare+core 运行时 < 100KB(硬指标),full 完整运行时 < 1MB(目标)。
-- 后端矩阵(全部插件化):Cranelift(dev)/ LLVM(release)/ WasmGC(web)/ Wasm MVP(嵌入式 wasm)/ CVM 解释器(comptime、`ctron run` 脚本、调试)。
-- 一条命令:`ctron build/test/fmt/doc/lint/bench/run/publish/add/target/check`;`ctron check --format=json` 见 §10.2。
+- A static single binary by default; size targets: bare+core runtime < 100KB (hard target), full complete runtime < 1MB (goal).
+- The backend matrix (all pluggable): Cranelift (dev) / LLVM (release) / WasmGC (web) / Wasm MVP (embedded wasm) / the CVM interpreter (comptime, `ctron run` scripts, debugging).
+- One command: `ctron build/test/fmt/doc/lint/bench/run/publish/add/target/check`; see §10.2 for `ctron check --format=json`.
 
-## 9.8 与测试集的对应
+## 9.8 Correspondence with the Test Suite
 
-`tests/08_bare.ct`(bare 显式 arena)、`tests/08_bare_alloc.neg.ct`(bare E3040);FFI 多文件用例 P1 起由 `tests/ffi/` 承载(v0.6 已落地:行为四件 + 负例/lint 七件,`tests/ffi/run.sh` 与 suite.py `ffi/` 小节双通道验收)。
+`tests/08_bare.ct` (bare explicit arena), `tests/08_bare_alloc.neg.ct` (bare E3040); FFI multi-file cases are carried by `tests/ffi/` from P1 on (landed in v0.6: four behavior cases + seven negative/lint cases, accepted through both channels — `tests/ffi/run.sh` and the suite.py `ffi/` section).

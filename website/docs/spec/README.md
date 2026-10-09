@@ -1,84 +1,85 @@
-<!-- 站点同步件:源头 docs/spec/,勿直接编辑;漂移由 pages workflow --check 把关 -->
-<!-- 英文待翻:中文占位 -->
-# Ctron 语言规范 v0.8(§11/§12 v0.8;其余 v0.7)
+<!-- 英文译件:手维护;中文正典 = docs/spec/ 同名文件(经 tools/sync_site_spec.sh 同步至同名 .zh.md) -->
+<!-- 译件滞后于正典修订时,以中文正典为准 -->
 
-状态:**冻结草案**——本文档是 Ctron 语言的规范性规范(P0 阶段出口物)。实现(P1 起)以本文档为准;一致性以 [`tests/`](https://github.com/ZturnLibs/Ctron/blob/main/tests/README.md) 为验收标准。
+# Ctron Language Spec v0.8 (§11/§12 v0.8; remaining chapters v0.7)
 
-> **v0.6 修订(2026-09-11)**:泛型体系成文——§3.9 实例化/bound/嵌套语义(显式 TypeArgs 调用点、E2050 结构化 bound 核对、TPar 传递、递归特化诊断),新增 §3.11 `@derive(Show, Eq)` 结构化方法与格式契约,§10 注册表补 E2050。依据:自举编译器(`compiler/`)泛型深水区实现 + `tests/03e_generics_types.ct`、`compiler/test/fx_derive.ct`、`fx_generic.ct`、`fx_bound_neg.ct`、`fx_genrec_neg.ct` 语料。v0.5 冻结范围不受影响;§4.7(v0.6 草案,E3070)仍为草案。
+Status: **frozen draft** — this document is the normative specification of the Ctron language (the P0 phase exit deliverable). Implementations (from P1 on) follow this document; conformance is accepted against [`tests/`](https://github.com/ZturnLibs/Ctron/blob/main/tests/README.md).
 
-> **v0.7 修订(2026-09-12)**:三项书写松绑 + §4.0 运算符宪法——① 新增 **§4.0 运算符宪法**(一义一符/符号·关键字分工律/永不挪用律/角色分离律);② **`||` 逻辑或**(§4.3 第 0 优先级、§4.4 重写并附否决注记、§1.5 记号表与 §1.6 延续集扩充;零参闭包按语法位置消歧,§4.7);③ **break/continue 转正**(§1.3 预留字清单收缩、§4.2 循环语义、E2070/E2071/E2072 三道静态门);④ **泛型调用点类型推断**(§3.9.1 两段式契约,Go 式仅实参,E2060/E2061)。设计全文与备选方案否决记录:`docs/superpowers/specs/2026-09-12-v07-operator-constitution.md`。落地状态:**三线全量落地**——R 线(oror/breakc/infer 三 suite)、自举线(修订一 15e5b00/修订二 9d56b73/修订三 866cb1b,裸型参位名级推断;结构化形态待 ex_ty 保留实参)、C 线 oracle(两修订最小面 + eval_block 流跳过修复 + TypeArgs 用户 fn 直调);E2071/E2072 与 C 线推断 neg 面待后续。v0.6 冻结范围不受影响(全部为新增扩展位)。
+> **v0.6 revision (2026-09-11)**: the generics system is codified — §3.9 instantiation/bound/nesting semantics (explicit TypeArgs at call sites, E2050 structured bound checking, TPar propagation, recursive specialization diagnostics); new §3.11 `@derive(Show, Eq)` structured methods and format contracts; E2050 added to the §10 registry. Basis: the self-hosted compiler's (`compiler/`) deep-generics implementation plus the corpora `tests/03e_generics_types.ct`, `compiler/test/fx_derive.ct`, `fx_generic.ct`, `fx_bound_neg.ct`, `fx_genrec_neg.ct`. The v0.5 frozen scope is unaffected; §4.7 (v0.6 draft, E3070) remains a draft.
 
-> **v0.8 修订(2026-09-20)**:新增 §11 网络与服务器档、§12 数据访问档(定稿);§7.10 异步执行模型;§8.2/§2.7 服务器键集。设计:`docs/superpowers/specs/2026-09-20-server-roadmap-design.md`(v3)。§12 实现锚定随 P5 开工;§11 随 P1。
+> **v0.7 revision (2026-09-12)**: three notational relaxations plus the §4.0 operator constitution — ① new **§4.0 operator constitution** (one meaning one symbol / the symbol–keyword division-of-labor law / the never-repurpose law / the role separation law); ② **`||` logical or** (§4.3 precedence level 0, §4.4 rewritten with a veto note attached, §1.5 token table and §1.6 continuation set extended; zero-parameter closures disambiguated by syntactic position, §4.7); ③ **break/continue promoted to keywords** (§1.3 reserved-word list shrunk, §4.2 loop semantics, the three static gates E2070/E2071/E2072); ④ **generic call-site type inference** (§3.9.1 two-phase contract, Go-style arguments only, E2060/E2061). Full design text and the record of rejected alternatives: `docs/superpowers/specs/2026-09-12-v07-operator-constitution.md`. Landing status: **fully landed on all three lines** — the R line (the oror/breakc/infer suites), the self-host line (revision 1 15e5b00 / revision 2 9d56b73 / revision 3 866cb1b, name-level inference at bare type-parameter positions; the structured form awaits ex_ty retaining arguments), and the C line oracle (the minimal surface of both revisions + the eval_block flow-skip fix + direct calls of user fns with TypeArgs); E2071/E2072 and the C line's inference neg surface remain future work. The v0.6 frozen scope is unaffected (all items are new extension slots).
 
-> **T27 终态修订(2026-10-02)**:§4.7 闭包捕获定稿——捕获 = **创建时拷贝绑定值**(外层绑定再赋值不可见),可变共享仅经 `Mutex[T]`/`Atomic[T]`/`Global[T]` 显式单元,E3070 = 该规则的语义执行;按引用捕获留 §6.2 能力扩展位(GC 成熟后按需立项)。v0.6 所记「§4.7 仍为草案」自此翻面。裁决记录与业界对齐:`docs/superpowers/plans/2026-09-28-spec-gap-execution-plan.md` T27 卡。
+> **v0.8 revision (2026-09-20)**: new §11 networking & server profile and §12 data access profile (finalized); §7.10 asynchronous execution model; §8.2/§2.7 server key sets. Design: `docs/superpowers/specs/2026-09-20-server-roadmap-design.md` (v3). §12's implementation anchoring starts with P5; §11's with P1.
 
-> **let 不可变门修订(2026-10-08)**:§4.1 `let` 绑定不可变语义落实现强制——对 `let` 局部重赋值(含 `+=` 族)= **E2080**(新码,§10 注册);门判据 = 赋值左目的最内层绑定,`var`/形参/闭包形参/for·match 模式绑定列为豁免面(收窄留后续修订)。钉子:`tests/04g_let_assign.neg.ct`。
+> **T27 final-state revision (2026-10-02)**: §4.7 closure capture is finalized — capture = **copying the bound value at creation time** (later reassignment of the outer binding is invisible); mutable sharing only via the explicit units `Mutex[T]`/`Atomic[T]`/`Global[T]`; E3070 = semantic enforcement of this rule. Capture by reference is left as a §6.2 capability extension slot (to be scoped as needed once GC matures). The v0.6 note that "§4.7 remains a draft" is hereby overturned. For the ruling record and industry alignment, see the T27 card in `docs/superpowers/plans/2026-09-28-spec-gap-execution-plan.md`.
 
-## 规范性约定
+> **let immutability gate revision (2026-10-08)**: the immutable semantics of §4.1 `let` bindings are now enforced by the implementation — reassignment to a `let` local (including the `+=` family) = **E2080** (new code, registered in §10); the gate criterion is the innermost binding of the assignment's left-hand target, with `var`/parameters/closure parameters/for·match pattern bindings listed as the exemption surface (narrowing is left to a later revision). Pinned ruling: `tests/04g_let_assign.neg.ct`.
 
-- **必须 / 禁止**:对实现与程序的硬性要求,违反 = 编译错误或运行时契约破坏。
-- **应当**:默认要求,允许显式豁免(豁免点在文中列明,如 `#[trusted]`)。
-- **可以**:允许的自由度。
-- "诊断"指编译器产出的错误/警告,一律携带稳定错误码(§10)。
-- 与历史文档的关系:设计文档 v0.2(`docs/superpowers/specs/2026-09-04-ctron-language-design.md`)记录设计动机;测试钉子(`tests/README.md` §3)与本文档冲突处以**本文档**为准。
+## Normative Conventions
 
-## 章节地图
+- **Must / Must not**: hard requirements on implementations and programs; violation = compile error or runtime contract breach.
+- **Should**: the default requirement; explicit exemptions are allowed (exemption points are listed in the text, e.g. `#[trusted]`).
+- **May**: permitted freedom.
+- "Diagnostics" refers to errors/warnings produced by the compiler, always carrying a stable error code (§10).
+- Relationship to historical documents: design doc v0.2 (`docs/superpowers/specs/2026-09-04-ctron-language-design.md`) records design motivation; where the test pinned rulings (`tests/README.md` §3) conflict with this document, **this document** prevails.
 
-| 章 | 内容 | 一句话 |
+## Chapter Map
+
+| Chapter | Contents | In one sentence |
 |---|---|---|
-| §1 | 词法与语法 | 源码编码、记号、完整 EBNF、换行终止规则 |
-| §2 | 名字与模块 | 包/模块、可见性、导入、孤儿规则、循环依赖禁止 |
-| §3 | 类型系统 | 类型种类、trait、泛型、推断、标准前奏 |
-| §4 | 表达式 | 优先级、控制流、闭包、match、UFCS、test 块 |
-| §5 | 错误模型 | Option/Result、`?`、panic、Error trait、错误链 |
-| §6 | 内存模型 | 值/引用二分、GC 契约、RAII、own 块、分配效果、bare 档 |
-| §7 | 并发 | 任务、结构化作用域、通道、Mutex、Send 三检查点 |
-| §8 | 效果与 comptime | 能力对象、注解契约、编译期执行 |
-| §9 | 档位与互操作 | full/web/bare、目标矩阵、C ABI/FFI、JS 桥 |
-| §10 | 诊断与符合性 | 错误码注册表、JSON 诊断契约、规范↔测试映射、冻结范围 |
-| §11 | 网络与服务器 | 能力键、socket 门面、传输默认值、同形异构契约、HTTP 档分层 |
-| §12 | 数据访问 | db.connect 能力键、纯 Ctron 线协议驱动契约、连接池、comptime 行映射 |
+| §1 | Lexical & grammar | source encoding, tokens, the full EBNF, newline termination rules |
+| §2 | Names & modules | packages/modules, visibility, imports, the orphan rule, the cyclic-dependency ban |
+| §3 | Type system | type kinds, traits, generics, inference, the standard prelude |
+| §4 | Expressions | precedence, control flow, closures, match, UFCS, test blocks |
+| §5 | Error model | Option/Result, `?`, panic, the Error trait, error chains |
+| §6 | Memory model | value/reference dichotomy, GC contract, RAII, own blocks, allocation effects, the bare profile |
+| §7 | Concurrency | tasks, structured scopes, channels, Mutex, the three Send checkpoints |
+| §8 | Effects & comptime | capability objects, annotation contracts, compile-time execution |
+| §9 | Profiles & interop | full/web/bare, the target matrix, C ABI/FFI, the JS bridge |
+| §10 | Diagnostics & conformance | the error code registry, the JSON diagnostic contract, the spec↔test mapping, the frozen scope |
+| §11 | Networking & server | capability keys, the socket facade, transport defaults, the same-shape heterogeneous contract, HTTP profile layering |
+| §12 | Data access | the db.connect capability key, the pure-Ctron wire-protocol driver contract, connection pooling, comptime row mapping |
 
-## 冻结范围声明(v0.4)
+## Frozen Scope Statement (v0.4)
 
-以下为**规范性(normative)**,实现必须遵守:§1–§7 全部(含 v0.4 新增的函数类型与切片二分);§8 的 `#[pure]`/`#[no_alloc]`/`#[no_spawn]`、Cap 标记机制与 comptime 常量求值;§9 的三档模型与 C ABI 所有权约定;§10 的错误码与诊断 schema;§3.8.2 前奏 API 最小清单。
+The following is **normative** and implementations must comply: all of §1–§7 (including the v0.4 additions of function types and the slice dichotomy); §8's `#[pure]`/`#[no_alloc]`/`#[no_spawn]`, the Cap marking mechanism, and comptime constant evaluation; §9's three-profile model and C ABI ownership conventions; §10's error codes and diagnostic schema; §3.8.2's minimal prelude API list.
 
-以下**预留(non-normative,不阻塞 P1)**:类型级 comptime(类型产出函数,§8.4)、GPU/`kernel` 块、editions 演进细节、Unicode 标识符、raw 字符串、owned trait object(`Box[&Trait]`)、`&Trait` 动态 Send 位、`debug_assert`。
+The following is **reserved (non-normative, does not block P1)**: type-level comptime (type-producing functions, §8.4), GPU/`kernel` blocks, editions evolution details, Unicode identifiers, raw strings, owned trait objects (`Box[&Trait]`), the `&Trait` dynamic Send slot, `debug_assert`.
 
-## 术语速查
+## Terminology Quick Reference
 
-| 术语 | 定义 |
+| Term | Definition |
 |---|---|
-| 档位 profile | `full` / `web` / `bare` 三档运行时配置(§9.1) |
-| 值类型 / 引用类型 | `struct` 赋值拷贝 / `class` 赋值共享(§6.1) |
-| Send | 可跨任务迁移的编译期类型属性(§7.4) |
-| 分配属性 | 函数的 `alloc`/`no_alloc` 推断属性(§6.5) |
-| 能力对象 | 显式注入的 I/O 权限值(§8.1) |
-| own 块 | 作用域所有权子集,无 GC 内存(§6.3) |
-| 钉子 | 测试集先于实现钉死的语法裁决(已并入本规范) |
+| profile | one of the three runtime configurations `full` / `web` / `bare` (§9.1) |
+| value type / reference type | `struct` copies on assignment / `class` shares on assignment (§6.1) |
+| Send | a compile-time type property allowing migration across tasks (§7.4) |
+| allocation attribute | a function's inferred `alloc`/`no_alloc` attribute (§6.5) |
+| capability object | an explicitly injected I/O permission value (§8.1) |
+| own block | a scoped ownership subset with no GC memory (§6.3) |
+| pinned ruling | a syntactic ruling pinned by the test suite ahead of the implementation (now merged into this spec) |
 
-## 修订记录
+## Revision History
 
-- **v0.3 → v0.4(2026-09-04,评审修订:表达完备性与三方一致性)**:
-  1. **函数类型**(§3.1/§4.7/EBNF):新增 `fn(Params) -> Ret` 类型语法(仅参数/返回位)——修复"闭包参数类型无法表达、前奏无法声明"的空洞;`Mutex` 拆为 `with`(只读)/`with_mut`(可变)。
-  2. **切片二分**(§3.1/§3.6/§4.2/§7.4):`T[]` 可变视图(根 `var` 可写、**恒非 Send**)/ `&T[]` 只读视图(元素 Send 即 Send),`T[] → &T[]` 隐式;`parallel.map` 入参 `&T[]`——消除"可变视图跨任务"的数据竞争漏洞。
-  3. **`&Trait` Send 保守化**(§7.4):v0.4 恒非 Send(动态 Send 位预留),保住"三检查点全部静态可判"的承诺;非 Send 静态存储独立为 **E3031**。
-  4. **`static let` 三方矛盾消解**(§6.5/§7.6):E3040 强制点收窄为 bare 档;full/web 允许 `#[pure]` 惰性初始化分配。
-  5. **关键字表修正**(§1.3):清除残留行;`as` 非关键字(`.as[U64]()` 合法);`or` 归入保留运算符字;新增预留字清单。
-  6. **换行规则补全**(§1.6):新增"下一行以 `.` 或二元运算符开头则不终止"——多行方法链(首点式)合法,行尾 `.` 非法。
-  7. **德摩根修正**(§4.4):逻辑或的正确写法是 `!(!a && !b)`(原文 `!(a && b)` 为数学错误)。
-  8. **能力判定机制**(§3.8.2/§8.3):前奏标记 `trait Cap`,能力 trait 须继承;`#[pure]` = 无 `&Cap` 调用——E4020 从此可判定;`parallel` 闭包纯度改为推断。
-  9. **前奏 API 最小清单**(§3.8.2,规范性):Option/Result/Show/Eq/Error/Cap/Arena/Mutex/Channel/Task/fmt 等 P1 必备成员;`Task[T]` 补入前奏。
-  10. **EBNF 完整化**(§1.7):`pub(pkg)` 可见性、`@derive`/属性接入类型声明、trait 超trait(`:` Bound)、`PathPattern` 去冗余;§1.8 重写 `IDENT {`(恒构造字面量)与 `IDENT [`(紧跟 `(`/`{` 即泛型实例化)消歧规则。
-  11. **E3030 可达性**(§10.1):规定解析器对 `static var` 恢复并产出 E3030(而非 E1xxx)。
-  12. **杂项**:`%` 符号随被除数(§4.5);`barer`→`bare` 笔误;ISize/USize 注释归位(§3.1);meta_check 移除未文档化 `profile` 键;测试修复——`06_concurrency.ct` Mutex 用例原断言为调度相关(52/74 恒败),改为读终态;`07_*.ct` 的 `Clock` 标注 `: Cap`。
+- **v0.3 → v0.4 (2026-09-04, review revision: expressive completeness and three-way consistency)**:
+  1. **Function types** (§3.1/§4.7/EBNF): new type syntax `fn(Params) -> Ret` (parameter/return positions only) — fixes the gap that "closure parameter types could not be expressed and the prelude could not declare them"; `Mutex` split into `with` (read-only) / `with_mut` (mutable).
+  2. **Slice dichotomy** (§3.1/§3.6/§4.2/§7.4): `T[]` mutable view (writable when the root is `var`, **never Send**) / `&T[]` read-only view (Send iff the element type is Send); `T[] → &T[]` implicit; `parallel.map` takes `&T[]` — eliminating the data-race hole of "mutable views crossing tasks".
+  3. **`&Trait` Send conservatism** (§7.4): in v0.4, always non-Send (dynamic Send slot reserved), preserving the promise that "all three checkpoints are statically decidable"; non-Send static storage split out as **E3031**.
+  4. **`static let` three-way contradiction resolved** (§6.5/§7.6): E3040's enforcement point narrowed to the bare profile; full/web allow `#[pure]` lazy-initialization allocation.
+  5. **Keyword table fixes** (§1.3): removed leftover rows; `as` is not a keyword (`.as[U64]()` is legal); `or` moved to the reserved operator words; a reserved-word list added.
+  6. **Newline rules completed** (§1.6): added "a line does not terminate if the next line starts with `.` or a binary operator" — multi-line method chains (leading-dot style) are legal, a trailing `.` at end of line is illegal.
+  7. **De Morgan fix** (§4.4): the correct spelling of logical or is `!(!a && !b)` (the original `!(a && b)` was a mathematical error).
+  8. **Capability determination mechanism** (§3.8.2/§8.3): the prelude marks `trait Cap`, and capability traits must inherit from it; `#[pure]` = no `&Cap` calls — E4020 becomes decidable; `parallel` closure purity changed to inferred.
+  9. **Minimal prelude API list** (§3.8.2, normative): the P1-essential members such as Option/Result/Show/Eq/Error/Cap/Arena/Mutex/Channel/Task/fmt; `Task[T]` added to the prelude.
+  10. **EBNF completion** (§1.7): `pub(pkg)` visibility, `@derive`/attributes wired into type declarations, trait supertraits (`:` Bound), `PathPattern` de-duplicated; §1.8 rewritten with the disambiguation rules for `IDENT {` (always a construction literal) and `IDENT [` (generic instantiation iff immediately followed by `(`/`{`).
+  11. **E3030 reachability** (§10.1): the parser must recover from `static var` and emit E3030 (rather than E1xxx).
+  12. **Miscellaneous**: the `%` sign follows the dividend (§4.5); the `barer`→`bare` typo; ISize/USize comments put in place (§3.1); meta_check drops the undocumented `profile` key; test fixes — the `06_concurrency.ct` Mutex case's original assertion was scheduler-dependent (always failing at 52/74), changed to read the final state; `Clock` in `07_*.ct` annotated `: Cap`.
 
-- **v0.4 → v0.5(2026-09-04,覆盖收尾钉子,目标 = 语言符合性测试 100%)**:
-  1. FFI 语法入规范:`extern` 进关键字表;EBNF `FnDecl` 支持 `"extern" STRING_LIT` 并允许省略函数体;§9.6 附声明示例。
-  2. 错误擦除类型钉死:前奏 `AnyError`(class,实现 Error);`context(msg) -> Result[T, AnyError]`;`?` 向 AnyError 返回型自动擦除(§5.3 "可转换"的唯一内建形态);`Error` trait 增 `prop trace: Str`;位置链改为**记录/物化两段式**(§5.3)。
-  3. 前奏补钉:`Simd[E, N].splat/lane/to_array` + 元素级白名单运算、`Str.contains`;§9.2 钉死 stdweb 最小 API(`dom.set_title/title`)。
-  4. 测试:第四批补齐 Simd/trace/stdweb 锚/FFI(c_src)/`} else {` 排版/显式 Void;`05i_deep_cause.ct` 的 `middle` 签名随 AnyError 设计修正;多文件格式新增 `c_src/` 规则(README §6)。覆盖口径分三层:语言符合性(.ct)= 100%,工具链行为归 compiler 集成测试,性能/体积归 CI 门禁。
+- **v0.4 → v0.5 (2026-09-04, covering the closing pinned rulings, target = 100% language conformance tests)**:
+  1. FFI syntax enters the spec: `extern` added to the keyword table; EBNF `FnDecl` supports `"extern" STRING_LIT` and allows omitting the function body; §9.6 adds a declaration example.
+  2. Error erasure type pinned: prelude `AnyError` (a class implementing Error); `context(msg) -> Result[T, AnyError]`; `?` auto-erases toward AnyError return types (the only built-in form of §5.3's "convertible"); the `Error` trait gains `prop trace: Str`; the location chain becomes the **record/materialize two-phase scheme** (§5.3).
+  3. Prelude patch pins: `Simd[E, N].splat/lane/to_array` plus element-wise whitelisted operations, `Str.contains`; §9.2 pins the minimal stdweb API (`dom.set_title/title`).
+  4. Tests: the fourth batch completes Simd/trace/stdweb anchors/FFI (c_src)/`} else {` formatting/explicit Void; the `middle` signature in `05i_deep_cause.ct` corrected per the AnyError design; the multi-file format gains a `c_src/` rule (README §6). Coverage is accounted in three layers: language conformance (.ct) = 100%, toolchain behavior belongs to compiler integration tests, performance/size belongs to CI gates.
 
-- **登记(2026-09-12,实现口径,非语言修订)**:§3.1.1 新增 **I64 值域(v0 实现口径)**——规范十进制文本值模型、截断除法 C99 语义(商向零取整/余数随被除数)、字面量经 I32 域解析(超宽 panic)、算术 v0 无溢出检查(超 int64 宽度双实现分歧)四点成文。实现出处 feat/i64-arith(d2f6b1d)。
+- **Registration (2026-09-12, implementation account, not a language revision)**: §3.1.1 adds the **I64 value range (v0 implementation account)**, codifying four points — the canonical decimal text value model, truncating division with C99 semantics (the quotient rounds toward zero / the remainder takes the dividend's sign), literals parsed through the I32 range (panic when too wide), and v0 arithmetic having no overflow checks (the two implementations diverge beyond int64 width). Implementation source: feat/i64-arith (d2f6b1d).
 
-- **登记(2026-09-16 提案;2026-10-02 T48 硬切落地)**:包清单格式已完成向 **CTCL(Ctron Config Language,`Ctron.ctcl`)** 的迁移——规范性定义见 `docs/superpowers/specs/2026-09-16-config-language-v1.md`;在库清单 100% 迁移,TOML 面移除(三线 E5040 迁移诊断+安装器 fail-closed 拒构)。设计动因:在库三套解析器三种语义、`//` 方言漂移实证、静默默认违背诊断宪法(详见该文 §1 证据表)。
+- **Registration (proposed 2026-09-16; hard-cut landed 2026-10-02 via T48)**: the package manifest format has completed its migration to **CTCL (Ctron Config Language, `Ctron.ctcl`)** — the normative definition is in `docs/superpowers/specs/2026-09-16-config-language-v1.md`; in-repo manifests are 100% migrated and the TOML surface is removed (E5040 migration diagnostics on all three lines + the installer refuses to build fail-closed). Design motivation: three in-repo parsers with three semantics, empirical evidence of `//` dialect drift, and silent defaults violating the diagnostic constitution (see that document's §1 evidence table).

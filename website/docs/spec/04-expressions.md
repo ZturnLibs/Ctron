@@ -1,56 +1,57 @@
-<!-- 站点同步件:源头 docs/spec/,勿直接编辑;漂移由 pages workflow --check 把关 -->
-<!-- 英文待翻:中文占位 -->
-# §4 表达式与控制流
+<!-- 英文译件:手维护;中文正典 = docs/spec/ 同名文件(经 tools/sync_site_spec.sh 同步至同名 .zh.md) -->
+<!-- 译件滞后于正典修订时,以中文正典为准 -->
 
-## 4.0 运算符宪法(v0.7)
+# §4 Expressions & Control Flow
 
-1. **一义一符**:每个语义恰好一个拼写。Bool 逻辑或只有 `||`;取默认只有 `or`/`.or()` 一对;永不引入同义别名或拼法糖。
-2. **符号/关键字分工律**:符号运算符 = 纯 Bool 值域组合(`&&`/`||`/`!`);关键字中缀 = 触及不可失败语义的运算(`or` 取默认)。
-3. **永不挪用律**:`&&`/`||` 永不做位运算(位运算恒走 `bit` 模块方法,§4.5);`|` 永远是闭包定界符,永不是运算符。
-4. **角色分离律**:`||` 的"零参闭包/逻辑或"是一个 token 的两个语法角色,由语法位置唯一判定(§4.7),不是语义多义。
+## 4.0 Operator Constitution (v0.7)
 
-## 4.1 绑定
+1. **One meaning, one symbol**: exactly one spelling per semantic. Bool logical or is only `||`; default-taking is only the `or`/`.or()` pair; synonymous aliases or spelling sugar are never introduced.
+2. **Symbol/keyword division of labor**: symbolic operators = pure Bool-domain combination (`&&`/`||`/`!`); keyword infix = operations touching infallible semantics (`or` takes the default).
+3. **Never repurposed**: `&&`/`||` never perform bitwise operations (bitwise always goes through `bit` module methods, §4.5); `|` is always the closure delimiter, never an operator.
+4. **Role separation**: the "zero-argument closure / logical or" duality of `||` is two syntactic roles of one token, uniquely determined by syntactic position (§4.7), not semantic ambiguity.
 
-- `let pattern [: Type] = expr` 不可变绑定;`var` 可变绑定;**必须初始化**(无未初始化读取)。对 `let` 绑定的重赋值(含 `+=` 族)= **E2080**(v0.9,C 宿主已强制;本门判据 = 赋值左目的最内层绑定为 `let` 局部——`var`/形参/闭包形参/for·match 模式绑定不在本门)。
-- 绑定模式:标识符、`_`(丢弃)、元组模式 `let (a, b) = pair`。
-- 遮蔽允许(§2.4)。
+## 4.1 Bindings
 
-## 4.2 赋值
+- `let pattern [: Type] = expr` immutable binding; `var` mutable binding; **must be initialized** (no uninitialized reads). Reassigning a `let` binding (including the `+=` family) = **E2080** (v0.9, already enforced in the C host; this gate's criterion = the innermost binding of the assignment's left-hand target being a `let` local — `var`/parameters/closure parameters/for·match pattern bindings are not covered by this gate).
+- Binding patterns: identifiers, `_` (discard), tuple patterns `let (a, b) = pair`.
+- Shadowing allowed (§2.4).
 
-- `= 与 += -= *= /= %=` 是**语句**,不是表达式(禁止 `if (a = b)` 类误读)。
-- 合法目标:`var` 绑定、经可变访问路径的 `var` 字段、**切片/数组元素(仅当切片绑定根为 `var`;`&T[]` 只读视图恒不可写)**。可变性判定:目标路径的**根绑定**必须为 `var`,且沿途字段声明为 `var`(类引用穿越详见 §7.5)。
+## 4.2 Assignment
 
-## 4.3 优先级(低 → 高)
+- `=` and `+= -= *= /= %=` are **statements**, not expressions (misreads like `if (a = b)` are forbidden).
+- Legal targets: `var` bindings, `var` fields via a mutable access path, **slice/array elements (only when the slice's binding root is `var`; `&T[]` read-only views are never writable)**. Mutability determination: the **root binding** of the target path must be `var`, and the fields along the way must be declared `var` (for traversal through class references see §7.5).
 
-| 层 | 运算符 | 结合 |
+## 4.3 Precedence (low → high)
+
+| Level | Operators | Associativity |
 |---|---|---|
-| 0 | `\|\|`(逻辑或,短路;仅 Bool) | 左 |
-| 1 | `or`(取默认) | 左 |
-| 2 | `&&` | 左 |
-| 3 | `== != < > <= >=` | **不可链** |
-| 4 | `.. ..=`(range) | 无 |
-| 5 | `+ - +% -%` | 左 |
-| 6 | `* / %` | 左 |
-| 7 | 一元 `- !` | 右 |
-| 8 | 后缀:调用 `()` 索引 `[]` 成员 `.` 类型实参 `[]` 传播 `?` | 左 |
+| 0 | `\|\|` (logical or, short-circuit; Bool only) | left |
+| 1 | `or` (default-taking) | left |
+| 2 | `&&` | left |
+| 3 | `== != < > <= >=` | **non-chaining** |
+| 4 | `.. ..=` (range) | none |
+| 5 | `+ - +% -%` | left |
+| 6 | `* / %` | left |
+| 7 | unary `- !` | right |
+| 8 | postfix: call `()` index `[]` member `.` type args `[]` propagation `?` | left |
 
-## 4.4 布尔与取默认
+## 4.4 Boolean and Default-Taking
 
-- `&&`/`||` 短路逻辑与/或,仅接受 `Bool`(否则 E2010;诊断判定对齐实现口径:仅已知非 Bool 标量类别报错,聚合/未知类型放行);`!` 逻辑非,仅接受 `Bool`(违规 E2010,判定口径同上;v0.8 明文化)。比较不可链:`a < b && b < c`。
-- **否决注记(v0.7)**:v0.6 曾以"防二义"为由不引入 `||`。经审计,零参闭包与逻辑或的冲突由语法位置完全消解(§4.0 原则 4、§4.7;`||` 在表达式起始位置为闭包参数表、中缀位置为逻辑或,两位置互斥且完备),否决理由不再成立,故引入。`or` 仍为取默认专属(§4.0 原则 1、2)。
-- `x or 默认值`:Option/Result 成功取值、失败取默认;等价 `x.or(默认值)`;两个形式并存但语义唯一(钉子)。非 Option/Result 左侧:求值后回落默认值(三线实现统一口径,v0.8 发射面对齐)。
+- `&&`/`||` are short-circuit logical and/or, accepting only `Bool` (otherwise E2010; diagnostic determination aligned with the implementation stance: only known non-Bool scalar categories report an error, aggregate/unknown types pass through); `!` is logical negation, accepting only `Bool` (violation E2010, same determination criteria; spelled out in v0.8). Comparisons do not chain: `a < b && b < c`.
+- **Veto note (v0.7)**: v0.6 had declined to introduce `||` on the grounds of "preventing ambiguity". After an audit, the conflict between zero-argument closures and logical or is fully resolved by syntactic position (§4.0 principle 4, §4.7; `||` in expression-initial position is a closure parameter list, in infix position it is logical or — the two positions are mutually exclusive and exhaustive), so the grounds for the veto no longer hold and `||` was introduced. `or` remains exclusive to default-taking (§4.0 principles 1, 2).
+- `x or default`: for Option/Result, yields the value on success and the default on failure; equivalent to `x.or(default)`; the two forms coexist with a single semantics (pinned ruling). For a left side that is not Option/Result: it is evaluated, then the default falls back (unified stance across the three implementation tracks, v0.8 emission-side aligned).
 
-## 4.5 算术
+## 4.5 Arithmetic
 
-- **二元 `+` 两侧均为 `Str` 时为拼接**(2026-09-08 修订,T2;此前仅插值为惯例)。单侧 `Str` 或其他算符(`- * / %`)遇 `Str` 仍为 E2010。
-- 默认**检查算术**:整数溢出/除零 panic(消息含 "overflow"/"division by zero");release 可由构建配置关闭溢出检查(除零永不关)。
-- 显式回绕:`+% -%`;`%` 为求余,**结果符号随被除数**(同 Rust `%`,非欧几里得模);位运算经 stdlib(`bit` 模块)。
-- 索引**永远边界检查**(safe 子集无 unchecked),越界 panic("index out of bounds")。索引表达式接受任意整数类型。
+- **Binary `+` is concatenation when both sides are `Str`** (revised 2026-09-08, T2; previously only interpolation was the convention). A single-sided `Str`, or any other operator (`- * / %`) meeting a `Str`, is still E2010.
+- **Checked arithmetic** by default: integer overflow / division by zero panic (messages contain "overflow"/"division by zero"); in release, the overflow check may be turned off via build configuration (division by zero is never disabled).
+- Explicit wrapping: `+% -%`; `%` is remainder, **the result's sign follows the dividend** (same as Rust `%`, not Euclidean modulo); bitwise operations go through the stdlib (`bit` module).
+- Indexing is **always bounds-checked** (no unchecked in the safe subset); out-of-bounds panics ("index out of bounds"). Index expressions accept any integer type.
 
-## 4.6 控制流
+## 4.6 Control Flow
 
-- **`if` 是表达式**:作为值时 `else` 必需;各分支类型必须一致(或 `Void`)。
-- **`match` 是表达式**:
+- **`if` is an expression**: when used as a value, `else` is required; branch types must agree (or be `Void`).
+- **`match` is an expression**:
 
 ```c
 match value {
@@ -59,46 +60,46 @@ match value {
 }
 ```
 
-  - 臂换行分隔;穷尽性编译期强制(E2030),枚举新增变体 → 所有非通配 match 报错。
-  - 模式:字面量、通配 `_`、绑定、变体(元组/具名字段)、元组、结构模式。
-- **循环**:`while cond`、`for pattern in iter`;range `0..n` / `0..=n` 是惰性迭代值;无 `do-while`。
-- **break / continue**(v0.7):语句,非表达式,不携带值;绑定**同函数体内**最近的 enclosing 循环。三道静态门:**E2070** 循环外;**E2071** 越过带 Drop impl 局部的作用域(v1 静态拒绝——C 直映发射无 cleanup 路径,RAII 合同优先;本限制按规范明文可解除,解除为纯增量);**E2072** 穿越闭包边界(闭包体是独立函数)。`scope {}` 与 `own (arena) {}` 不是循环,不参与绑定。
-- **块是表达式**:块的最后表达式为块值;`return` 退出函数,`return` 的类型为 `Never` 参与推断。
+  - Arms are separated by newlines; exhaustiveness is enforced at compile time (E2030); adding a new enum variant → every non-wildcard match errors.
+  - Patterns: literals, wildcard `_`, bindings, variants (tuple/named fields), tuples, struct patterns.
+- **Loops**: `while cond`, `for pattern in iter`; ranges `0..n` / `0..=n` are lazy iterable values; no `do-while`.
+- **break / continue** (v0.7): statements, not expressions, carry no value; they bind to the nearest enclosing loop **within the same function body**. Three static gates: **E2070** outside a loop; **E2071** crossing a scope that holds locals with a Drop impl (statically rejected in v1 — direct-to-C emission has no cleanup path, and the RAII contract takes precedence; this restriction may be lifted per the spec's explicit wording, and lifting it is purely additive); **E2072** crossing a closure boundary (a closure body is a separate function). `scope {}` and `own (arena) {}` are not loops and do not participate in binding.
+- **Blocks are expressions**: the block's final expression is the block's value; `return` exits the function, and `return` has type `Never` participating in inference.
 
-## 4.7 闭包
+## 4.7 Closures
 
 ```c
-|x| x + 1            // 单表达式体
-|| expr              // 零参
-|var a| { ...; a }   // 可变参数 + 块体,块值为返回值
+|x| x + 1            // single-expression body
+|| expr              // zero arguments
+|var a| { ...; a }   // mutable parameter + block body; the block's value is the return value
 |x: I32| -> I32 { x * 2 }
 ```
 
-- **零参闭包与 `||` 的角色分离(v0.7)**:`||` 出现在**表达式起始位置**(无左操作数,如实参位、赋值右侧起始)→ 零参闭包参数表;出现在**中缀位置**(已有左操作数)→ 逻辑或(§4.3 第 0 层)。两位置互斥且完备,词法器产出统一 token。
-- 闭包捕获 = **创建时拷贝绑定值**(T27 裁决终态,2026-09-30;full 档与 arena 档同语义)。闭包创建后,外层绑定的再赋值对闭包**不可见**(创建时快照即规范语义)。可变共享仅经显式单元:`Mutex[T]`/`Atomic[T]`/`Global[T]`(E3070 = 该规则的语义执行,非警告);own 块内闭包禁用。业内对齐:Java/Kotlin effectively-final 同构;按引用捕获留作 GC 成熟后的能力扩展位(§6.2,与终态不冲突)。
-- 闭包的类型是函数类型 `fn(Params) -> Ret`(§3.1)——接受闭包的参数以函数类型声明,如 `Mutex.with_mut(f: fn(var T) -> R)`;闭包字面量在期望函数类型的上下文中自动适配。
-- 闭包 Send 判定:闭包(及函数类型的值)在 **spawn 处按字面捕获逐个检查**(E3010);经 channel/静态存储传递时,函数类型的值视为捕获不可知 → **非 Send**(§7.4)。
+- **Role separation of zero-argument closures and `||` (v0.7)**: `||` appearing in **expression-initial position** (no left operand, e.g. an argument position or the start of an assignment's right-hand side) → zero-argument closure parameter list; appearing in **infix position** (a left operand already present) → logical or (§4.3 level 0). The two positions are mutually exclusive and exhaustive, and the lexer emits a single unified token.
+- Closure capture = **binding values are copied at creation** (T27 ruling, final state, 2026-09-30; the full profile and the arena profile share the same semantics). After a closure is created, reassignment of the outer binding is **invisible** to the closure (the creation-time snapshot is the normative semantics). Mutable sharing goes only through explicit cells: `Mutex[T]`/`Atomic[T]`/`Global[T]` (E3070 = the semantic enforcement of this rule, not a warning); closures are disabled inside `own` blocks. Industry alignment: isomorphic to Java/Kotlin effectively-final; capture-by-reference is reserved as a capability extension slot once the GC matures (§6.2; does not conflict with the final state).
+- A closure's type is the function type `fn(Params) -> Ret` (§3.1) — parameters accepting closures are declared with function types, e.g. `Mutex.with_mut(f: fn(var T) -> R)`; closure literals adapt automatically in contexts expecting a function type.
+- Closure Send determination: closures (and values of function type) are checked capture-by-capture against the literal **at the spawn site** (E3010); when passed through a channel / static storage, values of function type are treated as capture-agnostic → **not Send** (§7.4).
 
-## 4.8 UFCS(统一调用语法)
+## 4.8 UFCS (Uniform Function Call Syntax)
 
-- `recv.m(a)` 首先解析为"以 `recv` 为第一实参的函数/方法";解析顺序:**类型自身固有方法 → 当前可见 trait 的 impl 方法**(§3.4)→ 前奏。
-- `21.double()` ≡ `double(21)`;链式调用可读、不引入 OOP 继承。
+- `recv.m(a)` first resolves to "a function/method taking `recv` as its first argument"; resolution order: **the type's own inherent methods → impl methods of currently visible traits** (§3.4) → the prelude.
+- `21.double()` ≡ `double(21)`; chained calls are readable and introduce no OOP inheritance.
 
-## 4.9 scope / own 表达式
+## 4.9 scope / own expressions
 
-- `scope { |s| ... }`:结构化并发作用域表达式,块值为表达式值(§7.2)。
-- `own (arena) { ... }`:所有权模式块,块值受出块规则约束(§6.3)。
+- `scope { |s| ... }`: a structured-concurrency scope expression; the block's value is the expression's value (§7.2).
+- `own (arena) { ... }`: an ownership-mode block; the block's value is subject to the block-exit rules (§6.3).
 
-## 4.10 `test` 块
+## 4.10 `test` blocks
 
-- `test "名称" { ... }` 顶层声明;仅在 `ctron test` 下编译运行;块值忽略。
-- 前奏断言:`assert(cond)`、`assert_eq(a, b)`、`assert_ne(a, b)`(`T: Eq + Show`);`expect(msg)`(§5.2)。
-- 断言失败 = panic,消息含期望/实际值的 `Show` 表示——AI 可读的失败输出。
+- `test "name" { ... }` top-level declaration; compiled and run only under `ctron test`; the block's value is ignored.
+- Prelude assertions: `assert(cond)`, `assert_eq(a, b)`, `assert_ne(a, b)` (`T: Eq + Show`); `expect(msg)` (§5.2).
+- Assertion failure = panic, with the message containing the `Show` representation of the expected/actual values — AI-readable failure output.
 
-## 4.11 字符串插值(语义)
+## 4.11 String Interpolation (semantics)
 
-`"hi {name} x{n}"` 脱糖为片段 `fmt` 拼接(一次 `String` 构造,分配属性 alloc);片段支持字段/方法链,不支持语句与嵌套 `{}`。
+`"hi {name} x{n}"` desugars into fragment concatenation via `fmt` (a single `String` construction; allocation attribute alloc); fragments support field/method chains, not statements or nested `{}`.
 
-## 4.12 与测试集的对应
+## 4.12 Correspondence with the test corpus
 
-`tests/01_basics.ct`(运算/控制流/UFCS)、`tests/02_option_result.ct`(match/`?`)、`tests/06_concurrency.ct`(闭包/scope)、`tests/01_overflow.panic.ct`(检查算术)。
+`tests/01_basics.ct` (operators/control flow/UFCS), `tests/02_option_result.ct` (match/`?`), `tests/06_concurrency.ct` (closures/scope), `tests/01_overflow.panic.ct` (checked arithmetic).

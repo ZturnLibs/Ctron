@@ -1,50 +1,51 @@
-<!-- 站点同步件:源头 docs/spec/,勿直接编辑;漂移由 pages workflow --check 把关 -->
-<!-- 英文待翻:中文占位 -->
-# §2 名字与模块
+<!-- 英文译件:手维护;中文正典 = docs/spec/ 同名文件(经 tools/sync_site_spec.sh 同步至同名 .zh.md) -->
+<!-- 译件滞后于正典修订时,以中文正典为准 -->
 
-## 2.1 结构模型
+# §2 Names & Modules
 
-- **包(package)**:分发与版本单位,根清单为 `Ctron.toml`(→ 迁移至 **CTCL** `Ctron.ctcl`,见下 2.7 修订注);包名 = 清单 `name`,全小写。
-- **模块(module)**:一个 `.ct` 文件 = 一个模块;**目录 = 命名空间模块**,与文件树一一对应。模块路径 = 包内相对路径。
-- 符号的完整路径形如 `包名.模块路径.符号`——物理可 grep(P8)。
+## 2.1 Structural Model
 
-## 2.2 导入
+- **Package**: the distribution and versioning unit, whose root manifest is `Ctron.toml` (→ migrated to **CTCL** `Ctron.ctcl`, see the 2.7 revision note below); the package name = the manifest's `name`, all lowercase.
+- **Module**: one `.ct` file = one module; **a directory = a namespace module**, in one-to-one correspondence with the file tree. A module path = a package-relative path.
+- A symbol's full path looks like `pkg.module_path.symbol` — physically grep-able (P8).
 
-- `use 包名.模块.符号;` 显式具名导入;**禁止通配导入**(`use m.*`)与**禁止重导出**(模块不得把导入的符号再 `pub`)。
-- 组导入:`use net.{TcpListener, Request}`(可尾逗号)。
-- 路径一律**从包根起**(Go 式全限定),无相对导入、无 `super/self` 路径模块。`self` 仅用于 impl 内类型指代(§1.7)。
-- **命名空间(2026-09-23;物理 2026-09-30 库根布局)**:`std.*` = 标准库核心;**域包挂顶层命名空间**——`net` / `http` / `tls` / `db` / `ffi`(随发域,物理 `lib/<域>`,装机 `~/.ctron/lib/<域>`)+ `web` / `gui` / `s3` / `pkg`(registry 上游,物理 `pkgs/<域>`,装机 `~/.ctron/pkgs/<域>`)。`use net.{...}` 解析库根门面 `lib/net.ct`,`use net.bind.{...}` 解析 `lib/net/bind.ct`——段映射与 `std.*` 分支逐段镜像。
-- **非 std 首段解析链**:①目录相对(项目本地包,既有语义)→ ②库根(= std 根父目录 `lib/`)→ ③site root(①`CTRON_SITEPATH` ②库根同级 `pkgs/` 推导;registry 用户装包)→ ④`deps/<包>.ctart` 工件回落(闭源分发,S2a)。全链未命中保持静默收集,驱动层附加 W8902 安装出路;最终 E2020 兜底。规范锚:`docs/superpowers/specs/2026-09-23-domain-namespace-design.md` + `2026-09-30-libroot-layout-design.md`。
+## 2.2 Imports
 
-## 2.3 可见性
+- `use pkg.module.symbol;` is an explicit named import; **wildcard imports are forbidden** (`use m.*`) and **re-exports are forbidden** (a module must not re-`pub` imported symbols).
+- Group imports: `use net.{TcpListener, Request}` (a trailing comma is allowed).
+- Paths always start **from the package root** (Go-style fully qualified); there are no relative imports and no `super/self` path modules. `self` is used only for type reference inside impl (§1.7).
+- **Namespaces (2026-09-23; physical lib-root layout 2026-09-30)**: `std.*` = standard library core; **domain packages hang off the top-level namespace** — `net` / `http` / `tls` / `db` / `ffi` (shipped domains; physical `lib/<domain>`, installed at `~/.ctron/lib/<domain>`) plus `web` / `gui` / `s3` / `pkg` (registry upstream; physical `pkgs/<domain>`, installed at `~/.ctron/pkgs/<domain>`). `use net.{...}` resolves the lib-root facade `lib/net.ct`, and `use net.bind.{...}` resolves `lib/net/bind.ct` — the segment mapping mirrors the `std.*` branch segment by segment.
+- **Non-std first-segment resolution chain**: ① directory-relative (project-local packages, existing semantics) → ② lib root (the `lib/` directory that parents the std root) → ③ site root (derived from ① `CTRON_SITEPATH` and ② the `pkgs/` directory next to the lib root; registry-installed user packages) → ④ `deps/<pkg>.ctart` artifact fallback (closed-source distribution, S2a). If the whole chain misses, collection stays silent and the driver layer adds W8902 as the installation remedy; E2020 is the final fallback. Normative anchors: `docs/superpowers/specs/2026-09-23-domain-namespace-design.md` + `2026-09-30-libroot-layout-design.md`.
 
-| 级别 | 语法 | 可见范围 |
+## 2.3 Visibility
+
+| Level | Syntax | Visible scope |
 |---|---|---|
-| 模块私有(默认) | (无标记) | 仅本模块文件 |
-| 包内 | `pub(pkg)` | 同包所有模块 |
-| 公开 | `pub` | 任何导入方 |
+| Module-private (default) | (no marker) | this module's file only |
+| Package-wide | `pub(pkg)` | all modules in the same package |
+| Public | `pub` | any importer |
 
-- 适用于:类型、字段、函数、常量、静态、trait 项。
-- 字段可见性独立于类型可见性;未 `pub` 的字段在包外不可读写(结构化构造字面量同样受限)。
+- Applies to: types, fields, functions, constants, statics, trait items.
+- Field visibility is independent of type visibility; fields not marked `pub` cannot be read or written outside the package (structured construction literals are restricted the same way).
 
-## 2.4 名字解析
+## 2.4 Name Resolution
 
-- 解析顺序(作用域链):局部块 → 模块顶层 → `use` 导入集 → 前奏(§3.8)。
-- **遮蔽允许**:同块内后声明的 `let/var` 遮蔽外层同名绑定;同一块内禁止重复声明同名。
-- 未解析名 → E2020。
+- Resolution order (scope chain): local block → module top level → the `use` import set → the prelude (§3.8).
+- **Shadowing is allowed**: a later `let/var` in the same block shadows an outer binding of the same name; duplicate declarations of the same name within one block are forbidden.
+- An unresolved name → E2020.
 
-## 2.5 trait 孤儿规则(coherence)
+## 2.5 Trait Orphan Rule (coherence)
 
-- `impl T for X` 合法**当且仅当** trait `T` 或类型 `X` 至少一个定义于当前包;无例外、无泛型参数豁免。违反 → E5010。
-- 推导:前奏类型的能力缺口必须在包内新类型上解决(新类型模式),或等待 stdlib 演进。
+- `impl T for X` is legal **if and only if** at least one of the trait `T` or the type `X` is defined in the current package; no exceptions, no generic-parameter exemptions. Violation → E5010.
+- Corollary: capability gaps on prelude types must be solved on new types within the package (the newtype pattern), or by waiting for stdlib evolution.
 
-## 2.6 循环依赖
+## 2.6 Cyclic Dependencies
 
-- **包间与模块间循环依赖均禁止**(E5020)。这是编译速度否决权(P4)的语言级保证:解析与检查可单遍、增量缓存可按模块失效。
+- **Cyclic dependencies are forbidden both between packages and between modules** (E5020). This is the language-level guarantee behind the compile-speed veto (P4): parsing and checking can be single-pass, and incremental caches can be invalidated per module.
 
-## 2.7 包元数据(`Ctron.ctcl`)
+## 2.7 Package Metadata (`Ctron.ctcl`)
 
-> **修订注(2026-09-16 提案;2026-10-02 T48 硬切落地)**:清单格式已由 TOML 方言(`Ctron.toml`)完成向 **CTCL(Ctron Config Language,`Ctron.ctcl`)** 的迁移。规范性定义以 [`docs/superpowers/specs/2026-09-16-config-language-v1.md`](https://github.com/ZturnLibs/Ctron/blob/main/docs/superpowers/specs/2026-09-16-config-language-v1.md) 为准(块式文法、fail-closed 注册表、`caps = ["fs"]` 列表形、deps 三互斥形、三线解析器契约)。TOML 面已移除:三线读到遗留 `Ctron.toml` 一律给 E5040 迁移诊断(逐字一致),安装器 `ctron build` 项目模式 fail-closed 拒构;在库清单已 100% 迁移(104 份),`ctron new` 仅产 `.ctcl`。下方 TOML 示例仅作历史记录。
+> **Revision note (proposed 2026-09-16; hard-cut landed 2026-10-02 via T48)**: the manifest format has completed its migration from the TOML dialect (`Ctron.toml`) to **CTCL (Ctron Config Language, `Ctron.ctcl`)**. The normative definition is [`docs/superpowers/specs/2026-09-16-config-language-v1.md`](https://github.com/ZturnLibs/Ctron/blob/main/docs/superpowers/specs/2026-09-16-config-language-v1.md) (the block-style grammar, the fail-closed registry, the `caps = ["fs"]` list form, the three mutually exclusive deps forms, the three-line parser contract). The TOML surface has been removed: when any of the three lines reads a legacy `Ctron.toml`, it always emits the E5040 migration diagnostic (verbatim identical), and the installer's `ctron build` project mode refuses to build fail-closed; in-repo manifests are 100% migrated (104 files) and `ctron new` emits only `.ctcl`. The TOML example below is kept as historical record only.
 
 ```toml
 [package]
@@ -52,31 +53,31 @@ name    = "myapp"
 version = "0.1.0"
 
 [deps]
-ctron-http = "1.2"          # 严格 semver;lockfile 固定
+ctron-http = "1.2"          # strict semver; pinned by the lockfile
 
-[caps]                      # 能力声明(§8.2):越权使用 = 编译错误
+[caps]                      # capability declarations (§8.2): use beyond grants = compile error
 fs.read = true
 net.listen = true
 net.connect = true
 net.resolve = true
 db.connect = true
 
-[profile]                   # 档位与目标(§9)
+[profile]                   # profile and target (§9)
 default = "full"
 ```
 
-- 依赖解析:严格 semver + lockfile(内容寻址);工作区 workspace 支持。
-- 能力声明是包级**上限**:程序实际使用的能力集 ⊆ 声明集,超出 → E4010。
+- Dependency resolution: strict semver + lockfile (content-addressed); workspace support.
+- Capability declarations are the package-level **ceiling**: the set of capabilities the program actually uses must be ⊆ the declared set; exceeding it → E4010.
 
-> **落地注(2026-10-06 T49)**:依赖解析 v0 已实装——`Ctron.lock`(内容寻址:
-> `lock {}` + `pkg "名" { version/source/path|git/rev/digest }`,CTCL 规范形态,
-> `ctron-dep` 生成,二跑逐字节稳定;解析优先序 = lock 钉定 → 已安装 `pkgs/` → registry);
-> workspace(`workspace {}` 根标记 + `member "名" { path }` 键控块,四线注册);
-> `ctron publish/add/lock` 本地 registry 面(纯目录协议 `CTRON_REGPATH`/`~/.ctron/registry`,
-> 零网络;publish 单文件包 + 版本不可覆盖);解析链② = dep 表探针(§2.2 链序①目录相对
-> 之后),⑤ = `deps/<pkg>.ctart` 回落位保留待 S2a。设计:
+> **Landing note (2026-10-06 T49)**: dependency resolution v0 is implemented — `Ctron.lock` (content-addressed:
+> `lock {}` + `pkg "name" { version/source/path|git/rev/digest }`, the CTCL canonical form,
+> generated by `ctron-dep`, byte-stable across two runs; resolution priority = lock pinning → installed `pkgs/` → registry);
+> workspace (the `workspace {}` root marker + `member "name" { path }` keyed blocks, registered across all four lines);
+> `ctron publish/add/lock` with a local registry surface (the pure directory protocol `CTRON_REGPATH`/`~/.ctron/registry`,
+> zero network; publish for single-file packages + versions are immutable); resolution chain ② = the deps-table probe (after §2.2 chain step ① directory-relative),
+> and ⑤ = the `deps/<pkg>.ctart` fallback slot, reserved pending S2a. Design:
 > docs/superpowers/plans/2026-10-06-t49-lockfile-workspace-add-publish.md
 
-## 2.8 与测试集的对应
+## 2.8 Correspondence with the Test Suite
 
-孤儿/循环依赖的可执行反例属多文件用例,P1 起由 `tests/modules/` 承载(测试格式已定义于 `tests/README.md`)。
+Executable counterexamples for the orphan rule/cyclic dependencies are multi-file cases, carried by `tests/modules/` from P1 on (the test format is defined in `tests/README.md`).
