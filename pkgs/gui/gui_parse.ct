@@ -193,6 +193,7 @@ fn gt_new() -> GuiTree {
         vreg_pn: List[I32](),
         vc_prop: List[Str](),
         vc_expr: List[Str](),
+        props_dflt: List[Str](),
         vc_ps: List[I32](),
         vc_pn: List[I32](),
         env_n: List[Str](),
@@ -989,6 +990,38 @@ fn gt_props_names(seg: Str, t: GuiTree) -> I32 {
                 }
                 if pe > psi {
                     t.props.push(byte_slice(pn, psi, pe))
+                    // W2.5a:默认值平行推入(型段首个 `=` 后 trim 原文;无 = 空)
+                    var pt: Str = byte_slice(unit, ui + 1, unit.len)
+                    var dv: Str = ""
+                    var qi: I32 = 0
+                    while qi < pt.len {
+                        if byte_at(pt, qi) == 61 {
+                            dv = byte_slice(pt, qi + 1, pt.len)
+                            qi = pt.len
+                        }
+                        qi += 1
+                    }
+                    var ds: I32 = 0
+                    var de: I32 = dv.len
+                    while ds < de {
+                        var dc: I32 = byte_at(dv, ds)
+                        if dc == 32 || dc == 9 {
+                            ds += 1
+                        } else {
+                            break
+                        }
+                    }
+                    while de > ds {
+                        var dc2: I32 = byte_at(dv, de - 1)
+                        if dc2 == 32 || dc2 == 9 {
+                            de -= 1
+                        } else {
+                            break
+                        }
+                    }
+                    t.props_dflt.push(byte_slice(dv, ds, de))
+                } else {
+                    t.props_dflt.push("")
                 }
                 ui = unit.len
             }

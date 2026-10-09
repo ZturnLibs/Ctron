@@ -1,3 +1,12 @@
+> **W2.5a 批已落地(2026-10-09,prop 默认值;规格 §5.4 前半)。**
+> 签名 `名: 型 = 常量`(常量限编译期字面/可折叠;型文法无等号故型首 `=` 即默认分隔符):
+> 编译侧 gui_props_typed 剥默认段(合成签名防污染)+ gui_props_dflts 平行提取(vr_pd 穿线
+> gui_ck_elem,缺 prop 门按段号豁免——段号=cos2 前 0x01 计数,走查仅末段到位的既有形态
+> 已实证);运行侧 gt_props_names 平行注册 props_dflt + 展开垫点(gui_render「垫未提供」)
+> 垫常量(引号串剥引号)。opt 事件随 W2.5b ev 表同批。夹具 s95_defaults(test_view+d_render
+> 双省略/覆盖断言);decls 锁 521→522。
+>
+
 > **std/hashmap W1 批已落地(2026-10-09,spec dd65d9b3/plan 84a79ce9;HMapS[V]/HMapI[V] 可变哈希映射入册)。**
 > 开放寻址+线性探查+Box 载体写穿别名共享(宪章 3a 附则随批入 README:可变容器
 > 与函数式族并存,tier:alloc 申报)。put 插入均摊 O(1)(负载 3/4 倍增)/覆盖写 O(n)

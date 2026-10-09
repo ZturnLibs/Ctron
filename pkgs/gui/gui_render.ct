@@ -163,7 +163,19 @@ fn rt_emit(t: GuiTree, bind: fn(List[Str]) -> Void, itemvar: Str, item: Str, id:
             }
             if provided == false {
                 t.env_n.push(dp)
-                t.env_v.push("")
+                // W2.5a:默认垫值——注册表平行段(引号串剥引号;无默认垫空)
+                var dv: Str = ""
+                if vps + dpi < t.props_dflt.len {
+                    dv = t.props_dflt[vps + dpi]
+                }
+                if dv.len >= 2 {
+                    if byte_at(dv, 0) == 34 {
+                        if byte_at(dv, dv.len - 1) == 34 {
+                            dv = byte_slice(dv, 1, dv.len - 1)
+                        }
+                    }
+                }
+                t.env_v.push(dv)
             }
             dpi += 1
         }

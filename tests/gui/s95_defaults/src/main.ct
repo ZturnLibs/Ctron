@@ -1,0 +1,48 @@
+// tests/gui/s95_defaults —— W2.5a 验收:prop 默认值(签名 `名: 型 = 常量`)。
+// 实例省略 → 展开期垫默认常量;覆盖 → 实参胜。双 TagRow 断言两渲染。
+// 装配走 W2 新面:test_view 合成 + d_render 零闭包重绘。
+use gui.{d_expect_text, d_render}
+
+struct Model {
+    var rows: List[Str]
+}
+
+fn make() -> Model {
+    var tl = List[Str]()
+    tl.push("R1")
+    return Model { rows: tl }
+}
+
+view TagRow (title: Str = "分组", rows: List[Str]) {
+  <vbox class="tr">
+    <label class="tt">{title}</label>
+    <each r in={rows}>
+      <label class="rr">{r}</label>
+    </each>
+  </vbox>
+}
+
+view Root (m: Model) {
+  <vbox class="root">
+    <TagRow rows={m.rows}/>
+    <TagRow title="自定义分组" rows={m.rows}/>
+    <label class="done">DONE95</label>
+  </vbox>
+}
+
+style root { direction: column gap: 8 padding: 16 }
+style tr { direction: column gap: 4 bg: SURFACE padding: 8 }
+style tt { fg: TEXT size: 15 h: 22 }
+style rr { fg: TEXT_MUTED size: 13 h: 20 }
+style done { fg: ACCENT size: 14 h: 22 }
+
+fn main() -> I32 {
+    return test_view(Root(m: make()), 320, 240, |t, actc, k| {
+        d_render(t)
+        d_expect_text(t, "分组")
+        d_expect_text(t, "自定义分组")
+        d_expect_text(t, "R1")
+        d_expect_text(t, "DONE95")
+        println("S95-DEFAULTS-GREEN")
+    })
+}

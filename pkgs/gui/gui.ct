@@ -43,6 +43,7 @@ pub struct GuiTree {
     var vreg_pn: List[I32]
     var vc_prop: List[Str]
     var vc_expr: List[Str]
+    var props_dflt: List[Str]
     var vc_ps: List[I32]
     var vc_pn: List[I32]
     var env_n: List[Str]

@@ -1727,7 +1727,9 @@ fn gui_bx_dotted(e: Str, out: List[Str], subs: List[Str]) {
     }
 }
 
-// 8c-4 地基:props 形参类型提取——"( m: Model, n: Box[T] )" 拆 名:型原文
+// 8c-4 地基:props 形参类型提取——"( m: Model, n: Box[T] )" 拆 名:型原文。
+// W2.5a:型内 ` = 常量` 默认段剥除(型首 `=` 即默认分隔符,型文法无等号;
+// 否则合成签名被默认文本污染)
 fn gui_props_typed(d5: Str, names: List[Str], types: List[Str]) -> I32 {
     if d5.len > 2 {
         var seg: Str = byte_slice(d5, 2, d5.len - 2)
@@ -1746,12 +1748,51 @@ fn gui_props_typed(d5: Str, names: List[Str], types: List[Str]) -> I32 {
                 if byte_at(unit, ui) == 58 {
                     var pn: Str = byte_slice(unit, 0, ui)
                     var pt: Str = byte_slice(unit, ui + 1, unit.len)
+                    var qi: I32 = 0
+                    while qi < pt.len {
+                        if byte_at(pt, qi) == 61 {
+                            pt = byte_slice(pt, 0, qi)
+                            qi = pt.len
+                        }
+                        qi += 1
+                    }
                     names.push(gui_trim(pn))
                     types.push(gui_trim(pt))
                     ui = unit.len
                 }
                 ui += 1
             }
+            pi += 1
+        }
+    }
+    return 0
+}
+
+// W2.5a:props 默认值提取(与 gui_props_names 平行同频)——unit 内首个 `=`
+// 之后 gui_trim 原文(引号串保留引号,垫值侧剥);无 `=` = 空串
+fn gui_props_dflts(d5: Str, out: List[Str]) -> I32 {
+    if d5.len > 2 {
+        var seg: Str = byte_slice(d5, 2, d5.len - 2)
+        var pi: I32 = 0
+        while pi < seg.len {
+            var ps: I32 = pi
+            while pi < seg.len {
+                if byte_at(seg, pi) == 44 {
+                    break
+                }
+                pi += 1
+            }
+            var unit: Str = byte_slice(seg, ps, pi)
+            var dv: Str = ""
+            var ui: I32 = 0
+            while ui < unit.len {
+                if byte_at(unit, ui) == 61 {
+                    dv = gui_trim(byte_slice(unit, ui + 1, unit.len))
+                    ui = unit.len
+                }
+                ui += 1
+            }
+            out.push(dv)
             pi += 1
         }
     }
@@ -2126,7 +2167,7 @@ fn gui_ck_view_vis(tag: Str, vr_nm: List[Str], vr_file: List[Str], vr_pub: List[
     return -1
 }
 
-fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], fna: List[I32], gdiags: List[Str], gwarns: List[Str], depth: I32, sawin: Atomic[I32], indep: Bool, props: List[Str], ptyps: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str], pscope: List[Str], vr_nm: List[Str], vr_pp: List[Str], vr_file: List[Str], vr_pub: List[Str], vfid: Str, imp_from: List[Str], imp_to: List[Str], iscomp: Bool, fbox: List[Str]) -> I32 {
+fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], fna: List[I32], gdiags: List[Str], gwarns: List[Str], depth: I32, sawin: Atomic[I32], indep: Bool, props: List[Str], ptyps: List[Str], stns: List[Str], sfk: List[Str], stv: List[Str], pscope: List[Str], vr_nm: List[Str], vr_pp: List[Str], vr_pd: List[Str], vr_file: List[Str], vr_pub: List[Str], vfid: Str, imp_from: List[Str], imp_to: List[Str], iscomp: Bool, fbox: List[Str]) -> I32 {
     var bad: I32 = 0
     if depth > 8 {
         gdiags.push("E8100: 嵌套超限(限深 8)")
@@ -2263,6 +2304,17 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
             while cpi2 < vr_nm.len {
                 if vr_nm[cpi2] == tag {
                     var cp3: Str = vr_pp[cpi2]
+                    var cpd: Str = vr_pd[cpi2]
+                    var pdl = List[Str]()
+                    var dx: I32 = 0
+                    var dstart: I32 = 0
+                    while dx <= cpd.len {
+                        if dx == cpd.len || byte_at(cpd, dx) == 1 {
+                            pdl.push(byte_slice(cpd, dstart, dx))
+                            dstart = dx + 1
+                        }
+                        dx += 1
+                    }
                     var ci2: I32 = 0
                     var cos2: I32 = 0
                     while ci2 <= cp3.len {
@@ -2278,10 +2330,25 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
                                     gi2 += 1
                                 }
                                 if got == 0 {
+                                    // W2.5a:带默认 prop 缺省豁免(展开期垫常量);
+                                    // 段号 = cos2 前 0x01 计数(走查仅末段到位)
+                                    var segno: I32 = 0
+                                    var z9: I32 = 0
+                                    while z9 < cos2 {
+                                        if byte_at(cp3, z9) == 1 {
+                                                    }
+                                        z9 += 1
+                                    }
+                                    var dv: Str = ""
+                                    if segno < pdl.len {
+                                        dv = pdl[segno]
+                                    }
                                     // GUI-27:门不过时缺 prop 亦静默(E8100 已入列)
                                     if vok >= 0 {
-                                        gdiags.push("E8100: 实例缺 prop " + want + "(组件 " + tag + ")")
-                                        bad = -1
+                                        if dv == "" {
+                                            gdiags.push("E8100: 实例缺 prop " + want + "(组件 " + tag + ")")
+                                            bad = -1
+                                        }
                                     }
                                 }
                             }
@@ -2332,7 +2399,7 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
                             cur.store(cur.load() + 1)
                         }
                     }
-                    var cb2: I32 = gui_ck_elem(tks, cur, sn, fns, fna, gdiags, gwarns, depth + 1, sawin, indep, props, ptyps, stns, sfk, stv, cscope, vr_nm, vr_pp, vr_file, vr_pub, vfid, imp_from, imp_to, iscomp, fbox)
+                    var cb2: I32 = gui_ck_elem(tks, cur, sn, fns, fna, gdiags, gwarns, depth + 1, sawin, indep, props, ptyps, stns, sfk, stv, cscope, vr_nm, vr_pp, vr_pd, vr_file, vr_pub, vfid, imp_from, imp_to, iscomp, fbox)
                     if cb2 < 0 {
                         bad = -1
                     }
@@ -2686,7 +2753,7 @@ fn gui_ck_elem(tks: List[Str], cur: Atomic[I32], sn: List[Str], fns: List[Str], 
                     }
                 }
                 cur.store(cur.load() + 1)
-                var cb: I32 = gui_ck_elem(tks, cur, sn, fns, fna, gdiags, gwarns, depth + 1, sawin, indep, props, ptyps, stns, sfk, stv, cscope, vr_nm, vr_pp, vr_file, vr_pub, vfid, imp_from, imp_to, iscomp, fbox)
+                var cb: I32 = gui_ck_elem(tks, cur, sn, fns, fna, gdiags, gwarns, depth + 1, sawin, indep, props, ptyps, stns, sfk, stv, cscope, vr_nm, vr_pp, vr_pd, vr_file, vr_pub, vfid, imp_from, imp_to, iscomp, fbox)
                 if cb < 0 {
                     bad = -1
                 }
@@ -2777,6 +2844,7 @@ fn gui_check_file(file: List[Str], gdiags: List[Str], gwarns: List[Str], indep: 
     // 实例实参名核对/缺失 prop 门依据;视图可居后被用模块(跨文件)亦可本文件
     var vr_nm = List[Str]()
     var vr_pp = List[Str]()
+    var vr_pd = List[Str]()
     // GUI-27:可见性平行表(d[7]=fileid d[8]=pub;无槽=通配 "")
     var vr_file = List[Str]()
     var vr_pub = List[Str]()
@@ -2810,6 +2878,10 @@ fn gui_check_file(file: List[Str], gdiags: List[Str], gwarns: List[Str], indep: 
                 if vd.len > 5 {
                     gui_props_names(vd[5], pp2)
                 }
+                var pd2 = List[Str]()
+                if vd.len > 5 {
+                    gui_props_dflts(vd[5], pd2)
+                }
                 var joined: Str = ""
                 var pj: I32 = 0
                 while pj < pp2.len {
@@ -2820,6 +2892,16 @@ fn gui_check_file(file: List[Str], gdiags: List[Str], gwarns: List[Str], indep: 
                     pj += 1
                 }
                 vr_pp.push(joined)
+                var pjn: Str = ""
+                var pj2: I32 = 0
+                while pj2 < pd2.len {
+                    if pj2 > 0 {
+                        pjn = pjn + utf8_enc(1)
+                    }
+                    pjn = pjn + pd2[pj2]
+                    pj2 += 1
+                }
+                vr_pd.push(pjn)
             }
         }
         vri += 1
@@ -2905,7 +2987,7 @@ fn gui_check_file(file: List[Str], gdiags: List[Str], gwarns: List[Str], indep: 
                 }
                 // GUI-27:本视图所属 fileid(可见性基准;无槽=通配 "")
                 var vfid: Str = gui_blk_fileid(d)
-                gui_ck_elem(tks, cur, sn, fns, fna, gdiags, gwarns, 1, sawin, indep, vprops, vptyps, stns, sfk, stv, emptyscope, vr_nm, vr_pp, vr_file, vr_pub, vfid, imp_from, imp_to, iscomp, fbox)
+                gui_ck_elem(tks, cur, sn, fns, fna, gdiags, gwarns, 1, sawin, indep, vprops, vptyps, stns, sfk, stv, emptyscope, vr_nm, vr_pp, vr_pd, vr_file, vr_pub, vfid, imp_from, imp_to, iscomp, fbox)
                 }
             } else {
                 if d[1] == "style" {
