@@ -381,6 +381,21 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
         }
         return e4("k", env, v6(now_ms_text()), out)
     }
+    // 时钟 ns 面(loom 内化批2;now_ms 同径走 _text → v6 宽域标记;ns 值 ~1.9e18 超 I32 界,直 v6i 有标签域风险)
+    if seq2(nm, "mono_ns") {
+        if vals.len != 0 {
+            panic("mono_ns arity")
+            return e4("a", env, vV2(), out)
+        }
+        return e4("k", env, v6(mono_ns_text()), out)
+    }
+    if seq2(nm, "wall_ns") {
+        if vals.len != 0 {
+            panic("wall_ns arity")
+            return e4("a", env, vV2(), out)
+        }
+        return e4("k", env, v6(wall_ns_text()), out)
+    }
     if seq2(nm, "ctron_entry") {
         if vals.len != 0 {
             panic("ctron_entry arity")

@@ -1390,6 +1390,12 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         if callee == "read_bytes_at" { return "ctron_read_bytes_at(" + ct_call_args(ag, 1, env, file, "") + ")" }
         if callee == "now_ms" { return "ctron_now_ms()" }
         if callee == "now_ms_text" { return "ctron_now_ms_text()" }
+        // 时钟 ns 面(loom 内化批2/F 先例 now_ms 同径):mono = 单调(CLOCK_MONOTONIC,时长测量);
+        // wall = 墙钟 ns 精度(CLOCK_REALTIME;now_ms 只有 ms)。_text 变体供解释器宽域标记(v6 入口)。
+        if callee == "mono_ns" { return "ctron_mono_ns()" }
+        if callee == "mono_ns_text" { return "ctron_mono_ns_text()" }
+        if callee == "wall_ns" { return "ctron_wall_ns()" }
+        if callee == "wall_ns_text" { return "ctron_wall_ns_text()" }
         if callee == "byte_at" { return "ctron_byte_at(" + ct_call_args(ag, 1, env, file, "") + ")" }
         if callee == "byte_slice" { return "ctron_byte_slice(" + ct_call_args(ag, 1, env, file, "") + ")" }
         // Str 编组(§9.6 v0.6):C 侧 char* 深拷入 arena(Ctron-owned;解释器侧恒等)

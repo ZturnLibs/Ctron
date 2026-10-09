@@ -1156,6 +1156,43 @@ val eval_expr(rt* R, cexpr* e) {
                 v.bits = 64;
                 return v;
             }
+            // 时钟 ns 面(loom 内化批2;mono = 单调,wall = ns 精度墙钟;now_ms 同径双形态)
+            if (!strcmp(nm, "mono_ns_text")) {
+                struct timespec ts;
+                clock_gettime(CLOCK_MONOTONIC, &ts);
+                long long ns = (long long)ts.tv_sec * 1000000000LL + ts.tv_nsec;
+                char buf[32];
+                snprintf(buf, sizeof(buf), "%lld", ns);
+                return v_str_own(R, ctron_arena_strndup(R, buf, strlen(buf)));
+            }
+            if (!strcmp(nm, "mono_ns")) {
+                struct timespec ts;
+                clock_gettime(CLOCK_MONOTONIC, &ts);
+                long long ns = (long long)ts.tv_sec * 1000000000LL + ts.tv_nsec;
+                val v = {0};
+                v.k = V_INT;
+                v.i = (__int128)ns;
+                v.bits = 64;
+                return v;
+            }
+            if (!strcmp(nm, "wall_ns_text")) {
+                struct timespec ts;
+                clock_gettime(CLOCK_REALTIME, &ts);
+                long long ns = (long long)ts.tv_sec * 1000000000LL + ts.tv_nsec;
+                char buf[32];
+                snprintf(buf, sizeof(buf), "%lld", ns);
+                return v_str_own(R, ctron_arena_strndup(R, buf, strlen(buf)));
+            }
+            if (!strcmp(nm, "wall_ns")) {
+                struct timespec ts;
+                clock_gettime(CLOCK_REALTIME, &ts);
+                long long ns = (long long)ts.tv_sec * 1000000000LL + ts.tv_nsec;
+                val v = {0};
+                v.k = V_INT;
+                v.i = (__int128)ns;
+                v.bits = 64;
+                return v;
+            }
             if (!strcmp(nm, "utf8_enc")) {
                 if (e->nelems != 1) rt_abort(R, RT_ERROR, "utf8_enc 实参");
                 val cv = eval_expr(R, e->elems[0]);

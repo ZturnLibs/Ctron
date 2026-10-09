@@ -16,7 +16,7 @@ fn sbx_banned_call(nm: Str) -> Bool {
     if or2(seq2(nm, "print"), or2(seq2(nm, "println"), seq2(nm, "eprint"))) { return true }
     if or2(seq2(nm, "read_file"), seq2(nm, "read_dir")) { return true }
     if or2(seq2(nm, "fs_exists"), or2(seq2(nm, "fs_write"), or2(seq2(nm, "fs_delete"), seq2(nm, "fs_mkdir")))) { return true }
-    if or2(seq2(nm, "now_ms"), seq2(nm, "now_ms_text")) { return true }
+    if or2(seq2(nm, "now_ms"), or2(seq2(nm, "now_ms_text"), or2(seq2(nm, "mono_ns"), or2(seq2(nm, "mono_ns_text"), or2(seq2(nm, "wall_ns"), seq2(nm, "wall_ns_text")))))) { return true }
     if or2(seq2(nm, "str_from_c"), or2(seq2(nm, "errno"), or2(seq2(nm, "dlopen"), or2(seq2(nm, "dlclose"), seq2(nm, "dlsym"))))) { return true }
     return false
 }

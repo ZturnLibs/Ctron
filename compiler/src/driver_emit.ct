@@ -154,6 +154,12 @@ println("static ctron_list* ctron_list_new(void) \{ ctron_list* l = (ctron_list*
             println("static int ctron_fs_delete(const char* path) \{ return remove(path) == 0; }")
             println("static int64_t ctron_now_ms(void) \{ struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts); return (long long)ts.tv_sec * 1000LL + ts.tv_nsec / 1000000LL; }")
             println("static const char* ctron_now_ms_text(void) \{ struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts); long long ms = (long long)ts.tv_sec * 1000LL + ts.tv_nsec / 1000000LL; char* r = (char*)ct_gc_alloc(32); snprintf(r, 32, \"%lld\", ms); return r; }")
+            // 时钟 ns 面(loom 内化批2):mono = CLOCK_MONOTONIC(时长测量);wall = ns 精度墙钟;
+            // _text 变体 = 解释器宽域标记入口(now_ms 同径;19 位十进制 + NUL ≤ 32 缓冲)
+            println("static int64_t ctron_mono_ns(void) \{ struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return (long long)ts.tv_sec * 1000000000LL + ts.tv_nsec; }")
+            println("static const char* ctron_mono_ns_text(void) \{ struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); long long ns = (long long)ts.tv_sec * 1000000000LL + ts.tv_nsec; char* r = (char*)ct_gc_alloc(32); snprintf(r, 32, \"%lld\", ns); return r; }")
+            println("static int64_t ctron_wall_ns(void) \{ struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts); return (long long)ts.tv_sec * 1000000000LL + ts.tv_nsec; }")
+            println("static const char* ctron_wall_ns_text(void) \{ struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts); long long ns = (long long)ts.tv_sec * 1000000000LL + ts.tv_nsec; char* r = (char*)ct_gc_alloc(32); snprintf(r, 32, \"%lld\", ns); return r; }")
             println("typedef int64_t ct_i;")
             println("typedef struct \{ int variant; ct_i v; } ct_res;")
             // T25 &Trait 胖指针(§3.5):{data, vtable} 值传递
