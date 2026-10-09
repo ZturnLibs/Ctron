@@ -36,11 +36,11 @@ fn tp_hexv(c: I32) -> I64 {
 
 // 单段 hex 校验+全零探测(from,to 为 lane 下标,值区)。返回 -1 段含非法,
 // 否则返回"零 nibble 计数"。
-fn tp_seg_scan(buf: &I64[], from: I64, to: I64) -> I64 {
+fn tp_seg_scan(buf: &U8[], from: I64, to: I64) -> I64 {
     var zeros = 0
     var i = from
     while i < to {
-        let h = tp_hexv(buf[i].as[I32]())
+        let h = tp_hexv(buf[i].as[I64]().as[I32]())
         if h < 0 {
             return 0 - 1
         }
@@ -57,13 +57,13 @@ fn tp_seg_len_ok(n: I64) -> Bool {
 }
 
 // lane 值区解析(定长 55;分隔 '-' 在 2/35/52)
-fn tp_parse_l(buf: &I64[], from: I64, to: I64) -> TrCtx {
+fn tp_parse_l(buf: &U8[], from: I64, to: I64) -> TrCtx {
     if to - from != 55 {
         return TrCtx { rc: tp_rc_bad(), ver: 0, tid: "", sid: "", fl: 0 }
     }
     // version 两位
-    let hv0 = tp_hexv(buf[from].as[I32]())
-    let hv1 = tp_hexv(buf[from + 1].as[I32]())
+    let hv0 = tp_hexv(buf[from].as[I64]().as[I32]())
+    let hv1 = tp_hexv(buf[from + 1].as[I64]().as[I32]())
     if (hv0 < 0) || (hv1 < 0) {
         return TrCtx { rc: tp_rc_bad(), ver: 0, tid: "", sid: "", fl: 0 }
     }
@@ -72,7 +72,7 @@ fn tp_parse_l(buf: &I64[], from: I64, to: I64) -> TrCtx {
         return TrCtx { rc: tp_rc_bad(), ver: 0, tid: "", sid: "", fl: 0 }
     }
     // 分隔
-    if (buf[from + 2] != 45) || (buf[from + 35] != 45) || (buf[from + 52] != 45) {
+    if (buf[from + 2].as[I64]() != 45) || (buf[from + 35].as[I64]() != 45) || (buf[from + 52].as[I64]() != 45) {
         return TrCtx { rc: tp_rc_bad(), ver: 0, tid: "", sid: "", fl: 0 }
     }
     // tid(3..35)32 hex 非全零
@@ -92,8 +92,8 @@ fn tp_parse_l(buf: &I64[], from: I64, to: I64) -> TrCtx {
         return TrCtx { rc: tp_rc_bad(), ver: 0, tid: "", sid: "", fl: 0 }
     }
     // flags(53..55)
-    let hf0 = tp_hexv(buf[from + 53].as[I32]())
-    let hf1 = tp_hexv(buf[from + 54].as[I32]())
+    let hf0 = tp_hexv(buf[from + 53].as[I64]().as[I32]())
+    let hf1 = tp_hexv(buf[from + 54].as[I64]().as[I32]())
     if (hf0 < 0) || (hf1 < 0) {
         return TrCtx { rc: tp_rc_bad(), ver: 0, tid: "", sid: "", fl: 0 }
     }
@@ -102,14 +102,14 @@ fn tp_parse_l(buf: &I64[], from: I64, to: I64) -> TrCtx {
     var i = from + 3
     while i < from + 35 {
         // nibble(经 hexv)索引表,原始 ASCII 码会越界读邻接静态区
-        let nib = tp_hexv(buf[i].as[I32]())
+        let nib = tp_hexv(buf[i].as[I64]().as[I32]())
         tid = tid + byte_slice(hl, nib.as[I32](), nib.as[I32]() + 1)
         i += 1
     }
     var sid = ""
     i = from + 36
     while i < from + 52 {
-        let nib = tp_hexv(buf[i].as[I32]())
+        let nib = tp_hexv(buf[i].as[I64]().as[I32]())
         sid = sid + byte_slice(hl, nib.as[I32](), nib.as[I32]() + 1)
         i += 1
     }
@@ -121,10 +121,10 @@ pub fn tp_parse_s(s: Str) -> TrCtx {
     if s.len != 55 {
         return TrCtx { rc: tp_rc_bad(), ver: 0, tid: "", sid: "", fl: 0 }
     }
-    var tmp: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var tmp: U8[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     var i: I32 = 0
     while i < s.len {
-        tmp[i.as[I64]()] = byte_at(s, i).as[I64]()
+        tmp[i.as[I64]()] = byte_at(s, i)
         i += 1
     }
     return tp_parse_l(tmp, 0, s.len.as[I64]())
@@ -132,7 +132,7 @@ pub fn tp_parse_s(s: Str) -> TrCtx {
 
 // 序列化 55 字节直填(返回新 pos;越界 -1)。tid/sid 须为合法 hex 串
 // (本模块产出的 TrCtx 恒满足;外部拼串的校验 = 逐字节 hex 查表失败即 -1)。
-pub fn tp_ser(buf: &I64[], cap: I64, pos: I64, t: TrCtx) -> I64 {
+pub fn tp_ser(buf: &U8[], cap: I64, pos: I64, t: TrCtx) -> I64 {
     let hl = "0123456789abcdef"
     if pos + 55 > cap {
         return 0 - 1
@@ -187,8 +187,8 @@ pub fn tp_ser(buf: &I64[], cap: I64, pos: I64, t: TrCtx) -> I64 {
     }
     buf[p] = 45
     p += 1
-    buf[p] = byte_at(hl, hi.as[I32]()).as[I64]()
-    buf[p + 1] = byte_at(hl, lo.as[I32]()).as[I64]()
+    buf[p] = byte_at(hl, hi.as[I32]())
+    buf[p + 1] = byte_at(hl, lo.as[I32]())
     return p + 2
 }
 
@@ -197,13 +197,13 @@ pub fn tp_ser_len() -> I64 { return 55 }
 
 // 请求头提取:行首锚精确小写 "traceparent:"(12 字节)→ 值区经 tp_parse_l。
 // 无头 = absent;有头坏值 = bad。n = 头区总长(含 CRLF)。
-pub fn tp_from_req(buf: &I64[], n: I64) -> TrCtx {
+pub fn tp_from_req(buf: &U8[], n: I64) -> TrCtx {
     let needle = "traceparent:"
     let nl = needle.len
     var i: I64 = 0
     while i < n {
         // 行首判定:i == 0 或前一字节为 \n
-        if (i == 0) || (buf[i - 1] == 10) {
+        if (i == 0) || (buf[i - 1].as[I64]() == 10) {
             // 前缀匹配(大小写敏感)
             var ok = true
             var j: I32 = 0
@@ -216,11 +216,11 @@ pub fn tp_from_req(buf: &I64[], n: I64) -> TrCtx {
             if ok {
                 // 冒号后跳空格
                 var vs = i + nl.as[I64]()
-                while (vs < n) && (buf[vs] == 32) {
+                while (vs < n) && (buf[vs].as[I64]() == 32) {
                     vs += 1
                 }
                 var ve = vs
-                while (ve < n) && (buf[ve] != 13) && (buf[ve] != 10) {
+                while (ve < n) && (buf[ve].as[I64]() != 13) && (buf[ve].as[I64]() != 10) {
                     ve += 1
                 }
                 return tp_parse_l(buf, vs, ve)

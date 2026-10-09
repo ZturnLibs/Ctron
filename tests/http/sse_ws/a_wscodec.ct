@@ -3,7 +3,7 @@
 // 行为面 x_ws_e2e。
 use http.ws.{ ws_frame_encode, ws_step, ws_st_new, ws_accept_key, ws_close_payload, ws_close_protocol_error, ws_is_control, wr_rc, wr_err, wr_consumed, wr_produced, wr_fin, wr_opcode }
 
-fn wc_hex_fill(buf: &I64[], hex: Str) -> I64 {
+fn wc_hex_fill(buf: &U8[], hex: Str) -> I64 {
     var i: I32 = 0
     var k: I32 = 0
     while k + 1 < hex.len {
@@ -30,10 +30,10 @@ fn wc_hex_fill(buf: &I64[], hex: Str) -> I64 {
     return i.as[I64]()
 }
 
-fn wc_expect_str(buf: &I64[], off: I64, want: Str) -> I64 {
+fn wc_expect_str(buf: &U8[], off: I64, want: Str) -> I64 {
     var i: I32 = 0
     while i < want.len {
-        if buf[off + i.as[I64]()] != byte_at(want, i).as[I64]() {
+        if buf[off + i.as[I64]()] != byte_at(want, i) {
             return 0
         }
         i += 1
@@ -42,8 +42,8 @@ fn wc_expect_str(buf: &I64[], off: I64, want: Str) -> I64 {
 }
 
 test "ws fixture rfc 6455 5.7 hello vectors" {
-    var fr: I64[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    var dst: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var fr: U8[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var dst: U8[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     // 服务端→客户端无掩码 "Hello":81 05 48 65 6c 6c 6f(§5.1 示例)
     let n1 = wc_hex_fill(fr, "810548656c6c6f")
     let r1 = ws_step(fr, n1, 0, ws_st_new(0), dst, 0, 64)
@@ -57,28 +57,28 @@ test "ws fixture rfc 6455 5.7 hello vectors" {
 }
 
 test "ws fixture ping close byte corpus" {
-    var fr: I64[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    var dst: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var fr: U8[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var dst: U8[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     // 掩码 ping(键 00000001;载荷 "hi"):89 82 00 00 00 01 <hi^00 hi^01>
-    var cp: I64[2] = [0, 0]
+    var cp: U8[2] = [0, 0]
     let n3 = wc_hex_fill(fr, "8982000000016869")
     let r3 = ws_step(fr, n3, 0, ws_st_new(1), dst, 0, 64)
     assert(wr_rc(r3) == 1 && wr_opcode(r3) == 9 && wr_produced(r3) == 2)
-    assert(dst[0] == 104 && dst[1] == 105)
+    assert(dst[0].as[I64]() == 104 && dst[1].as[I64]() == 105)
     // 掩码 close 码 1002(键 00000001 → 掩码字节序 00 00 00 01):88 82 00 00 00 01 03 ea
     let n4 = wc_hex_fill(fr, "88820000000103ea")
     let r4 = ws_step(fr, n4, 0, ws_st_new(1), dst, 0, 64)
     assert(wr_rc(r4) == 1 && wr_opcode(r4) == 8)
-    assert(dst[0] == 3 && dst[1] == 234)
+    assert(dst[0].as[I64]() == 3 && dst[1].as[I64]() == 234)
     // 1002 常量与编码一致性
     ws_close_payload(ws_close_protocol_error(), cp)
-    assert(cp[0] == 3 && cp[1] == 234)
+    assert(cp[0].as[I64]() == 3 && cp[1].as[I64]() == 234)
     assert(ws_is_control(9) == 1 && ws_is_control(1) == 0)
 }
 
 test "ws fixture fragmentation corpus 5.4" {
-    var fr: I64[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    var dst: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var fr: U8[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var dst: U8[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     // RFC §5.7 分片示例形:text FIN=0 "Hel" + cont FIN=1 "o" 的三片变体
     let n = wc_hex_fill(fr, "010348656c00016c80016f")
     var st = ws_st_new(0)
@@ -114,7 +114,7 @@ test "ws fixture fragmentation corpus 5.4" {
 
 test "ws fixture accept key lane form" {
     // §4.2.2 示例的 lane 直取形(报文切片 → accept,零 Str 转换)
-    var kb: I64[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var kb: U8[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     let kn = wc_hex_fill(kb, "78334a4a484d62444c31457a4c6b68394742685844773d3d")
     // hex = "x3JJHMbDL1EzLkh9GBhXDw==" 的 ASCII 字节(上 hex_fill 按对解码,
     // 此处直接断言与 Str 面一致)

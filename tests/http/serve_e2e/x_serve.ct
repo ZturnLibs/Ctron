@@ -31,20 +31,20 @@ const ROUTES: Str = "GET /hi|POST /echo|GET /file|GET /chain"
 // ---- 夹具助手(fx_ 前缀;合并命名空间 E5030 纪律) ----
 
 // Str → lane(填充;返长)
-fn fx_fill(buf: &I64[], s: Str) -> I64 {
+fn fx_fill(buf: &U8[], s: Str) -> I64 {
     var i: I32 = 0
     while i < s.len {
-        buf[i] = byte_at(s, i).as[I64]()
+        buf[i] = byte_at(s, i)
         i += 1
     }
     return s.len.as[I64]()
 }
 
 // lane 段 ↔ Str 等值
-fn fx_eq_bytes(buf: &I64[], off: I64, want: Str) -> I64 {
+fn fx_eq_bytes(buf: &U8[], off: I64, want: Str) -> I64 {
     var i: I32 = 0
     while i < want.len {
-        if buf[off + i.as[I64]()] != byte_at(want, i).as[I64]() {
+        if buf[off + i.as[I64]()] != byte_at(want, i) {
             return 0
         }
         i += 1
@@ -53,7 +53,7 @@ fn fx_eq_bytes(buf: &I64[], off: I64, want: Str) -> I64 {
 }
 
 // lane 段含子串(头区 Content-Type 断言面)
-fn fx_has(buf: &I64[], a: I64, b: I64, s: Str) -> I64 {
+fn fx_has(buf: &U8[], a: I64, b: I64, s: Str) -> I64 {
     if s.len.as[I64]() > b - a {
         return 0
     }
@@ -88,7 +88,7 @@ fn fx_push(out: List[I32], s: Str) {
 }
 
 // 读到对端关(响应读取;server Connection: close → eof 即完整)
-fn fx_read_all(fd: I64, buf: &I64[], cap: I64, scr: &I64[]) -> I64 {
+fn fx_read_all(fd: I64, buf: &U8[], cap: I64, scr: &U8[]) -> I64 {
     var n: I64 = 0
     var going: I32 = 1
     while going == 1 {
@@ -99,7 +99,7 @@ fn fx_read_all(fd: I64, buf: &I64[], cap: I64, scr: &I64[]) -> I64 {
             var i: I64 = 0
             while i < r {
                 if n + i < cap {
-                    buf[n + i] = scr[i]
+                    buf[n + i] = scr[i].as[I64]()
                 }
                 i += 1
             }
@@ -112,7 +112,7 @@ fn fx_read_all(fd: I64, buf: &I64[], cap: I64, scr: &I64[]) -> I64 {
 // ---- 派发器(frm 消费方面:comptime 表 + 显式分发;spawn 闭包内调用 ——
 // 无 assert/panic,恒返完整响应) ----
 fn sv_disp(m: Str, t: Str, b: Str) -> Str {
-    var tb: I64[256] = [0, 0, 0, 0]
+    var tb: U8[256] = [0, 0, 0, 0]
     let tl = fx_fill(tb, t)
     let mt = frm_match(ROUTES, fx_mcode(m), tb, 0, tl)
     let rc = fr_rc(mt)
@@ -165,9 +165,9 @@ test "sv canonical loop e2e GET POST static mw 404 405 shutdown" {
         var srv = sc.spawn(|| {
             return sv_serve_fd(lfd_box.v,|m, t, b| sv_disp(m, t, b), 65536, 0 - 1, 5000)
         })
-        var buf: I64[8192] = [0, 0, 0, 0]
-        var scr: I64[2048] = [0, 0]
-        var eb: I64[64] = [0, 0, 0, 0]
+        var buf: U8[8192] = [0, 0, 0, 0]
+        var scr: U8[2048] = [0, 0]
+        var eb: U8[64] = [0, 0, 0, 0]
         var kp = http_keep_new()
 
         // GET 命中(各腿前置 drain:服务器 Connection: close 串行口径下清陈旧
@@ -240,7 +240,7 @@ test "sv decomposed face multipart binary e2e" {
     parts.push(10)
     fx_push(parts, "\r\n--XB--\r\n")
     let blen = parts.len.as[I64]()
-    var blane: I64[512] = [0, 0, 0, 0]
+    var blane: U8[512] = [0, 0, 0, 0]
     var pi: I32 = 0
     while pi < parts.len {
         blane[pi] = parts[pi].as[I64]()
@@ -256,8 +256,8 @@ test "sv decomposed face multipart binary e2e" {
     // —— 服务端(同进程串行:分解直调面,缓冲 lane 在本作用域)——
     let afd_box = Box[Box64](Box64 { v: 0 - 1 })
     assert(client_accept(lfd_box.v, afd_box) == 0)
-    var rbuf: I64[8192] = [0, 0, 0, 0]
-    var scr: I64[2048] = [0, 0]
+    var rbuf: U8[8192] = [0, 0, 0, 0]
+    var scr: U8[2048] = [0, 0]
     let sr = sv_read_req(afd_box.v, rbuf, 8192, scr, 2048, 5000)
     assert(sv_rc(sr) == 1)
     assert(sv_bkind(sr) == 0)
@@ -294,8 +294,8 @@ test "sv decomposed face multipart binary e2e" {
     client_close(afd_box.v)
 
     // —— 客户端读响应(parse 响应面)——
-    var qbuf: I64[2048] = [0, 0, 0, 0]
-    var qscr: I64[2048] = [0, 0]
+    var qbuf: U8[2048] = [0, 0, 0, 0]
+    var qscr: U8[2048] = [0, 0]
     let qn = fx_read_all(cfd_box.v, qbuf, 2048, qscr)
     assert(qn > 0)
     let rh = http_parse_head(qbuf, qn, http_limits_default())
@@ -331,8 +331,8 @@ test "sv bounded loop err mapping 400 413" {
     assert(src == 0)
 
     // 各连接响应(服务端已 close → 读到 eof 即完整)
-    var qbuf: I64[2048] = [0, 0, 0, 0]
-    var qscr: I64[2048] = [0, 0]
+    var qbuf: U8[2048] = [0, 0, 0, 0]
+    var qscr: U8[2048] = [0, 0]
     let n1 = fx_read_all(c1.v, qbuf, 2048, qscr)
     assert(n1 > 0)
     let h1 = http_parse_head(qbuf, n1, http_limits_default())

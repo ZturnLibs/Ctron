@@ -315,11 +315,11 @@ pub fn client_connect(host: Str, port: I64, out_fd: Box[Box64]) -> I64 {
 }
 
 // 读:>0 n / 0 eof / <0 败(超时亦 <0);单次至多搬运 min(cap, 4096)。
-pub fn client_read_t(fd: I64, buf: &I64[], cap: I64, timeout_ms: I64) -> I64 {
+pub fn client_read_t(fd: I64, buf: &U8[], cap: I64, timeout_ms: I64) -> I64 {
     return ctron_net_read_t(fd, buf, cap, timeout_ms)
 }
 
-pub fn client_write(fd: I64, buf: &I64[], n: I64) -> I64 {
+pub fn client_write(fd: I64, buf: &U8[], n: I64) -> I64 {
     return ctron_net_write(fd, buf, n)
 }
 
@@ -360,7 +360,7 @@ pub fn client_hash_host(host: Str) -> I64 {
     var h: I64 = 5381
     var i: I32 = 0
     while i < host.len {
-        h = (h % 1000000007) * 33 + byte_at(host, i).as[I64]()
+        h = (h % 1000000007) * 33 + byte_at(host, i)
         h = h % 1000000007
         i += 1
     }
@@ -463,11 +463,11 @@ pub fn client_loc_resolve(loc: Str, base_host: Str, base_port: I64) -> HttpLoc {
 // ---- 内部助手 ----
 
 // lane 切片 → Str(printable ASCII;含 0x20..0x7e;非法 → "")—— Location 值域
-fn cx_slice_str(src: &I64[], a: I64, b: I64) -> Str {
+fn cx_slice_str(src: &U8[], a: I64, b: I64) -> Str {
     var out = ""
     var i = a
     while i < b {
-        let c = src[i]
+        let c = src[i].as[I64]()
         if c < 32 || c > 126 || c == 123 {
             return ""
         }
@@ -495,7 +495,7 @@ fn cx_rd(rc: I64, n: I64, blen: I64, left: I64) -> CxRead {
 }
 
 // 追加一读(经 scratch;lane 无偏移读面 —— 登记绕行)
-fn cx_read_append(fd: I64, buf: &I64[], n: I64, cap: I64, scr: &I64[], scap: I64, timeout_ms: I64) -> I64 {
+fn cx_read_append(fd: I64, buf: &U8[], n: I64, cap: I64, scr: &U8[], scap: I64, timeout_ms: I64) -> I64 {
     let r = ctron_net_read_t(fd, scr, scap, timeout_ms)
     if r < 0 {
         return -1
@@ -505,14 +505,14 @@ fn cx_read_append(fd: I64, buf: &I64[], n: I64, cap: I64, scr: &I64[], scap: I64
         if n + i >= cap {
             return -2
         }
-        buf[n + i] = scr[i]
+        buf[n + i] = scr[i].as[I64]()
         i += 1
     }
     return r
 }
 
 // 响应读取:头(parse 增量重扫)+ 体(CL / chunked 就地分框;1.0 无 CL 读到 EOF)
-fn cx_read_resp(fd: I64, buf: &I64[], cap: I64, scr: &I64[], scap: I64, timeout_ms: I64) -> CxRead {
+fn cx_read_resp(fd: I64, buf: &U8[], cap: I64, scr: &U8[], scap: I64, timeout_ms: I64) -> CxRead {
     let lim = http_limits_default()
     var n: I64 = 0
     var need_head = 1
@@ -673,7 +673,7 @@ pub fn rr_fd(r: HttpResp) -> I64 { return r.fd }
 // err 码:1 连接败 / 2 发送败 / 3 接收败(干净)/ 4 接收败(有字节或帧坏)/
 // 5 解析 / 6 Location 坏 / 7 重定向超限。重试一次仅限【复用连接】上的发送
 // 败或零字节读败(对端已关语义);有部分响应字节绝不重发。
-pub fn client_request(io: HttpNet, method: Str, host: Str, port: I64, path: Str, extra: Str, body: &I64[], blen: I64, buf: &I64[], cap: I64, scr: &I64[], timeout_ms: I64, kp: HttpKeep) -> HttpResp {
+pub fn client_request(io: HttpNet, method: Str, host: Str, port: I64, path: Str, extra: Str, body: &U8[], blen: I64, buf: &U8[], cap: I64, scr: &U8[], timeout_ms: I64, kp: HttpKeep) -> HttpResp {
     var resp = HttpResp { rc: -1, err: 0, status: -1, ver: -1, keep: 0, nredir: 0, reuses: 0, head_end: 0, body_off: 0, body_len: 0, fd: -1 }
     var cache = kp.cache
     var bru = kp.bru

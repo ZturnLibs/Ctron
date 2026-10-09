@@ -147,7 +147,7 @@ fi
 # ── http/client.ct inline tests(P4-C;emit 专臂,net/bind 子树 W8052)──
 if [ -x "$EMIT" ]; then
     if "$EMIT" run "$ROOT/lib/http/client.ct" > "$T/std_client.e.c" 2>"$T/std_client.e.err" \
-       && cc -O1 -w -o "$T/std_client.e.bin" "$T/std_client.e.c" 2>"$T/std_client.e.cc.err" \
+       && cc -O1 -w -o "$T/std_client.e.bin" "$T/std_client.e.c" "$ROOT/lib/net/c_src/ctron_net.c" 2>"$T/std_client.e.cc.err" \
        && "$T/std_client.e.bin" > "$T/std_client.e.out" 2>&1; then
         pass=$((pass+1)); echo "  PASS http/client.ct (inline, emit)"
     else
@@ -160,7 +160,7 @@ fi
 #    err→状态映射;socket 面归 serve_e2e/x_serve 双 RT 矩阵)──
 if [ -x "$EMIT" ]; then
     if "$EMIT" run "$ROOT/lib/http/frm/serve.ct" > "$T/std_serve.e.c" 2>"$T/std_serve.e.err" \
-       && cc -O1 -w -o "$T/std_serve.e.bin" "$T/std_serve.e.c" 2>"$T/std_serve.e.cc.err" \
+       && cc -O1 -w -o "$T/std_serve.e.bin" "$T/std_serve.e.c" "$ROOT/lib/net/c_src/ctron_net.c" 2>"$T/std_serve.e.cc.err" \
        && "$T/std_serve.e.bin" > "$T/std_serve.e.out" 2>&1; then
         pass=$((pass+1)); echo "  PASS http/frm/serve.ct (inline, emit)"
     else

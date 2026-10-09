@@ -110,7 +110,7 @@ pub fn sv_bkind(r: SvRead) -> I64 { return r.bkind }
 
 // 增量头读(parse 每读一块重扫;cx_read_resp 同构,请求面):
 // 头完 rc=1;畸形 rc=-1(err);超缓冲 rc=-4;对端 IO 败 rc=-2;净 eof rc=-3。
-pub fn sv_read_req(fd: I64, buf: &I64[], cap: I64, scr: &I64[], scap: I64, tmo_ms: I64) -> SvRead {
+pub fn sv_read_req(fd: I64, buf: &U8[], cap: I64, scr: &U8[], scap: I64, tmo_ms: I64) -> SvRead {
     var out = sv_read_new()
     let lim = http_limits_default()
     var n: I64 = 0
@@ -142,7 +142,7 @@ pub fn sv_read_req(fd: I64, buf: &I64[], cap: I64, scr: &I64[], scap: I64, tmo_m
                             var i: I64 = 0
                             while i < r {
                                 if n + i < cap {
-                                    buf[n + i] = scr[i]
+                                    buf[n + i] = scr[i].as[I64]()
                                 }
                                 i += 1
                             }
@@ -157,7 +157,7 @@ pub fn sv_read_req(fd: I64, buf: &I64[], cap: I64, scr: &I64[], scap: I64, tmo_m
 }
 
 // CL 体读齐(头后追加; lane 无偏移读面,scratch 转运)。败 -1。
-pub fn sv_read_body_cl(fd: I64, buf: &I64[], n0: I64, hend: I64, clen: I64, cap: I64, scr: &I64[], scap: I64, tmo_ms: I64) -> I64 {
+pub fn sv_read_body_cl(fd: I64, buf: &U8[], n0: I64, hend: I64, clen: I64, cap: I64, scr: &U8[], scap: I64, tmo_ms: I64) -> I64 {
     var n = n0
     let need = hend + clen
     while n < need {
@@ -168,7 +168,7 @@ pub fn sv_read_body_cl(fd: I64, buf: &I64[], n0: I64, hend: I64, clen: I64, cap:
         var i: I64 = 0
         while i < r {
             if n + i < cap {
-                buf[n + i] = scr[i]
+                buf[n + i] = scr[i].as[I64]()
             }
             i += 1
         }
@@ -178,11 +178,11 @@ pub fn sv_read_body_cl(fd: I64, buf: &I64[], n0: I64, hend: I64, clen: I64, cap:
 }
 
 // 体/段 lane → List[I32] 字节道(二进制安全全 0..255;mp_parse 入口载体)
-pub fn sv_body_bytes(buf: &I64[], a: I64, n: I64) -> List[I32] {
+pub fn sv_body_bytes(buf: &U8[], a: I64, n: I64) -> List[I32] {
     var out = List[I32]()
     var i: I64 = 0
     while i < n {
-        out.push(buf[a + i].as[I32]())
+        out.push(buf[a + i].as[I64]().as[I32]())
         i += 1
     }
     return out
@@ -190,11 +190,11 @@ pub fn sv_body_bytes(buf: &I64[], a: I64, n: I64) -> List[I32] {
 
 // lane 段 → Str(印刷域全有全无:任一非 0x20..0x7E 字节 → "";frm_slice_str
 // 域一致;二进制面走 sv_body_bytes —— 文本面与字节面的分界即此)
-pub fn sv_str_range(src: &I64[], a: I64, b: I64) -> Str {
+pub fn sv_str_range(src: &U8[], a: I64, b: I64) -> Str {
     var out = ""
     var i = a
     while i < b {
-        let s = sv_ch(src[i])
+        let s = sv_ch(src[i].as[I64]())
         if s == "" {
             return ""
         }
@@ -252,7 +252,7 @@ pub fn sv_status_of(err: I64) -> I64 {
 // ---- 规范循环面 ----
 
 // 单连接全周期(读头→映射→[读体]→派发→写)。返:1 服务 / 2 shutdown / 0 败(已应答或静默)。
-fn sv_conn(fd: I64, h: fn (Str, Str, Str) -> Str, body_limit: I64, tmo_ms: I64, buf: &I64[], cap: I64, scr: &I64[], scap: I64) -> I32 {
+fn sv_conn(fd: I64, h: fn (Str, Str, Str) -> Str, body_limit: I64, tmo_ms: I64, buf: &U8[], cap: I64, scr: &U8[], scap: I64) -> I32 {
     let r = sv_read_req(fd, buf, cap, scr, scap, tmo_ms)
     let rc = sv_rc(r)
     if rc != 1 {
@@ -304,7 +304,7 @@ fn sv_conn(fd: I64, h: fn (Str, Str, Str) -> Str, body_limit: I64, tmo_ms: I64, 
 }
 
 // 循环核(nmax < 0 = 不限)。监听 fd 由调用方关。
-fn sv_run(lfd: I64, h: fn (Str, Str, Str) -> Str, body_limit: I64, nmax: I32, tmo_ms: I64, buf: &I64[], cap: I64, scr: &I64[], scap: I64) -> I32 {
+fn sv_run(lfd: I64, h: fn (Str, Str, Str) -> Str, body_limit: I64, nmax: I32, tmo_ms: I64, buf: &U8[], cap: I64, scr: &U8[], scap: I64) -> I32 {
     var served: I32 = 0
     var unbounded: I32 = 0
     if nmax < 0 {
@@ -336,8 +336,8 @@ fn sv_run(lfd: I64, h: fn (Str, Str, Str) -> Str, body_limit: I64, nmax: I32, tm
 // 实际端口后交入;spawn 闭包捕获只剩标量 fd —— e2e 双 RT 矩阵即此形)。
 // 本面不关监听(调用方所有权);缓冲内置 8KB/2KB。返码同 sv_serve_n。
 pub fn sv_serve_fd(lfd: I64, h: fn (Str, Str, Str) -> Str, body_limit: I64, nmax: I32, tmo_ms: I64) -> I32 {
-    var buf: I64[8192] = [0, 0, 0, 0]
-    var scr: I64[2048] = [0, 0]
+    var buf: U8[8192] = [0, 0, 0, 0]
+    var scr: U8[2048] = [0, 0]
     return sv_run(lfd, h, body_limit, nmax, tmo_ms, buf, 8192, scr, 2048)
 }
 
@@ -388,19 +388,19 @@ test "sv_ch table printable full domain with brace" {
 }
 
 test "sv_str_range printable whole-or-nothing" {
-    var lane: I64[8] = [72, 101, 108, 108, 111, 0, 0, 0] // "Hello"
+    var lane: U8[8] = [72, 101, 108, 108, 111, 0, 0, 0] // "Hello"
     assert(sv_str_range(lane, 0, 5) == "Hello")
     // 高位字节 → 全有全无 ""(二进制面分界)
-    var bin: I64[4] = [65, 200, 66, 0]
+    var bin: U8[4] = [65, 200, 66, 0]
     assert(sv_str_range(bin, 0, 3) == "")
     // '{' 与 '|}~' 域内无损
-    var j: I64[4] = [123, 124, 125, 126]
+    var j: U8[4] = [123, 124, 125, 126]
     assert(sv_str_range(j, 0, 4) == "\{|}~")
     assert(sv_str_range(lane, 0, 0) == "")
 }
 
 test "sv_body_bytes binary-safe full byte domain" {
-    var lane: I64[6] = [137, 80, 78, 71, 13, 10] // PNG 魔数含高位与 CR LF
+    var lane: U8[6] = [137, 80, 78, 71, 13, 10] // PNG 魔数含高位与 CR LF
     let b = sv_body_bytes(lane, 0, 6)
     assert(b.len == 6)
     assert(b[0] == 137)
