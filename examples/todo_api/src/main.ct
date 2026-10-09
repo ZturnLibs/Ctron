@@ -52,7 +52,7 @@ fn eqs(a: Str, b: Str) -> Bool {
 }
 
 // —— lane → Str(printable;示例体/target/token 均可印 ASCII)——
-fn lane_str(buf: &I64[], a: I64, b: I64) -> Str {
+fn lane_str(var buf: U8[], a: I64, b: I64) -> Str {
     var out = ""
     var i = a
     while i < b {
@@ -67,13 +67,13 @@ fn lane_str(buf: &I64[], a: I64, b: I64) -> Str {
 }
 
 // lane target 段与 want 等值
-fn tgt_is(buf: &I64[], ts: I64, tl: I64, want: Str) -> Bool {
+fn tgt_is(var buf: U8[], ts: I64, tl: I64, want: Str) -> Bool {
     if tl != want.len {
         return false
     }
     var i: I64 = 0
     while i < tl {
-        if buf[ts + i] != byte_at(want, i.as[I32]()).as[I64]() {
+        if buf[ts + i] != byte_at(want, i.as[I32]()) {
             return false
         }
         i += 1
@@ -82,14 +82,14 @@ fn tgt_is(buf: &I64[], ts: I64, tl: I64, want: Str) -> Bool {
 }
 
 // 头区找行首 needle,返回值首(a);未现 = -1(大小写敏感,探针用规范形)
-fn hfind(buf: &I64[], n: I64, needle: Str) -> I64 {
+fn hfind(var buf: U8[], n: I64, needle: Str) -> I64 {
     let nl = needle.len.as[I64]()
     var i: I64 = 0
     while i + nl <= n {
         var ok = true
         var j: I64 = 0
         while j < nl {
-            if buf[i + j] != byte_at(needle, j.as[I32]()).as[I64]() {
+            if buf[i + j] != byte_at(needle, j.as[I32]()) {
                 ok = false
                 break
             }
@@ -104,10 +104,10 @@ fn hfind(buf: &I64[], n: I64, needle: Str) -> I64 {
 }
 
 // Str 落 lane(响应写出)
-fn fill(buf: &I64[], s: Str) -> I64 {
+fn fill(var buf: U8[], s: Str) -> I64 {
     var i: I32 = 0
     while i < s.len {
-        buf[i] = byte_at(s, i).as[I64]()
+        buf[i] = byte_at(s, i)
         i += 1
     }
     return s.len.as[I64]()
@@ -155,7 +155,7 @@ fn cslot(code: Str) -> I64 {
 // CORS + 安全头(示例级:*;套件级全貌见 frm cors/sechdr 各自语料)
 const XCORS: Str = "Access-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, DELETE, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type, Authorization\r\nX-Content-Type-Options: nosniff\r\n"
 
-fn respond(cnt: &I64[], net: StdNet, fd: I64, buf: &I64[], code: Str, ctype: Str, body: Str) {
+fn respond(cnt: &I64[], net: StdNet, fd: I64, var buf: U8[], code: Str, ctype: Str, body: Str) {
     let resp = "HTTP/1.1 " + code + "\r\n" + XCORS + "Content-Type: " + ctype + "\r\n" + "Content-Length: " + dstr(body.len.as[I64]()) + "\r\n" + "Connection: close\r\n" + "\r\n" + body
     let m = fill(buf, resp)
     net_write(net, fd, buf, m)
@@ -187,7 +187,7 @@ fn main() {
     var next_id: I64 = 1
     var served: I64 = 0
     var stop = 0
-    var cnt: I64[16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var cnt: U8[16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
     while stop == 0 {
         let afd_box = Box[Box64](Box64 { v: 0 })
@@ -198,8 +198,8 @@ fn main() {
         served += 1
 
         // —— 读头(增量;lane 定长 4096,fixture 已证尺寸)——
-        var buf: I64[4096] = [0, 0, 0, 0]
-        var scr: I64[2048] = [0, 0, 0, 0]
+        var buf: U8[4096] = [0, 0, 0, 0]
+        var scr: U8[2048] = [0, 0, 0, 0]
         var n: I64 = 0
         var ms: I64 = 0
         var ml: I64 = 0
