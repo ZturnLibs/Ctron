@@ -1,0 +1,10 @@
+// proc/bind.ct —— ctron_proc.c 垫片 extern 面(lib/proc;CW-F3b 2026-10-09)
+// 纪律(net/crypto/fio bind 同款):参数表单行;blob = var U8[](NUL 分隔 argv 块,
+// 首段 = 程序路径,逻辑长度 n 显式传);可见性 = `pub extern`。
+// rc 口径:run 族 = 退出码(-1 fork/chdir/管道败,127 exec 失败);spawn_bg = pid/-1;
+// wait = 退出码(信号杀 = -1)。
+pub extern "c" fn ctron_proc_run(cwd: Str, bin: Str, arg: Str, var out: U8[]) -> I32
+pub extern "c" fn ctron_proc_run_argv(cwd: Str, var blob: U8[], n: I64, var out: U8[]) -> I32
+pub extern "c" fn ctron_proc_spawn_bg(cwd: Str, bin: Str, arg: Str, err_path: Str) -> I64
+pub extern "c" fn ctron_proc_kill(pid: I64) -> I32
+pub extern "c" fn ctron_proc_wait(pid: I64) -> I32

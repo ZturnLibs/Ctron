@@ -1,0 +1,82 @@
+// proc.ct —— 零 shell 进程控制门面(lib/proc;CW-F3b 2026-10-09)
+// 定位:fork+execv 直跑(无 shell、无字符串拼接命令行——零注入面);前台捕获形
+// (run/run_argv:stdout 经管道收集,wait 内联)与后台形(spawn_bg:daemon 语义,
+// 不 wait,stdout→/dev/null,stderr→err_path 落盘取证——loom daemon 传承)。
+// 与内建/其他 lib 分工:本包只管进程生命周期;网络进程通信归 net,文件重定向
+// 归 fio。门面形态:免费函数,零 Cap trait 零 caps。e2e = tests/proc。
+// argv blob 构造助手:words_to_blob(空格分词,词内禁空格——测试/固定 token 面);
+// 含空格路径的调用方应自拼 NUL 块(byte_at/str_bytes,fio 面)。
+use proc.bind.{ctron_proc_run, ctron_proc_run_argv, ctron_proc_spawn_bg, ctron_proc_kill, ctron_proc_wait}
+
+// 前台:"<bin> run <arg>"(stdout 捕获进 out;返回退出码,-1 = fork/chdir/管道败)
+pub fn run(cwd: Str, bin: Str, arg: Str, var out: U8[]) -> I32 {
+    return ctron_proc_run(cwd, bin, arg, out)
+}
+
+// 前台通用 argv 形(blob = NUL 分隔参数块,首段 = 程序路径;同上 rc 口径)
+pub fn run_argv(cwd: Str, var blob: U8[], n: I64, var out: U8[]) -> I32 {
+    return ctron_proc_run_argv(cwd, blob, n, out)
+}
+
+// 后台(daemon 形;err_path 空串 = stderr 亦入 /dev/null):返回 pid(-1 败)
+pub fn spawn_bg(cwd: Str, bin: Str, arg: Str, err_path: Str) -> I64 {
+    return ctron_proc_spawn_bg(cwd, bin, arg, err_path)
+}
+
+// SIGTERM;返回 kill() rc(0 = 送达)
+pub fn kill_pid(pid: I64) -> I32 {
+    return ctron_proc_kill(pid)
+}
+
+// 阻塞收尸;返回退出码(信号杀 = -1)
+pub fn wait_pid(pid: I64) -> I32 {
+    return ctron_proc_wait(pid)
+}
+
+// ---- inline tests(纯 Ctron 面:argv blob 构造助手;行为面见 tests/proc) ----
+
+test "words_to_blob shape" {
+    var blob: U8[64] = [0, 0, 0, 0, 0, 0, 0, 0]
+    let n = words_to_blob("/bin/echo hi", blob)
+    // "/bin/echo\0hi\0" = 9 + 1 + 2 + 1 = 13
+    assert_eq(n, 13)
+    assert_eq(blob[0], 47)
+    assert_eq(blob[9], 0)
+    assert_eq(blob[10], 104)
+    assert_eq(blob[12], 0)
+}
+
+// 空格分词 → NUL 分隔 argv 块(词内禁空格);返回逻辑字节数(-1 = 容量不足)
+pub fn words_to_blob(words: Str, var blob: U8[]) -> I32 {
+    var n: I32 = 0
+    var cur = ""
+    var i: I32 = 0
+    while i <= words.len {
+        var bv: I64 = 10
+        if i < words.len {
+            bv = byte_at(words, i)
+            if bv < 0 { bv = bv + 256 }
+        }
+        if bv == 10 || bv == 32 {
+            if cur.len > 0 {
+                var j: I32 = 0
+                while j < cur.len {
+                    var cb: I64 = byte_at(cur, j)
+                    if cb < 0 { cb = cb + 256 }
+                    if n >= blob.len { return -1 }
+                    blob[n] = cb.as[U8]()
+                    n = n + 1
+                    j = j + 1
+                }
+                if n >= blob.len { return -1 }
+                blob[n] = 0.as[U8]()
+                n = n + 1
+            }
+            cur = ""
+        } else {
+            cur = cur + utf8_enc(bv)
+        }
+        i = i + 1
+    }
+    return n
+}
