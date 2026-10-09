@@ -817,6 +817,180 @@ pub fn jk_bool(entries: List[List[Str]], path: Str) -> Str {
         }
     }
 }
+
+// ============ 查询索引(JIx;std-0.9) ============
+// qtag/qval 每查询对条目表线性扫描;同文档多字段消费(请求体绑定等热路径)
+// 建一次索引 O(n log n),此后逐查询 O(log n)。零 use 自洽:路径字节序稳定
+// 归并排序 + 最左二分,不引 map/hashmap 依赖(本模块叶性口径不动,见
+// tests/json_fidelity/run.sh 头注;hashmap Box 泛型元素值位读写在册红)。
+// 语义与 qtag/qval 全同:缺路径空串/容器值空串/重复键首现胜出(稳定排序
+// 相等取左保原序,最左二分命中即首现条目)。
+// since: std-0.9 stability: experimental
+
+// 索引:按路径升序的条目行(原 [路径, 标签, 值] 三元;首现语义见区块头注)
+pub struct JIx {
+    let ix: List[List[Str]]
+}
+
+// 路径字节序比较(a < b;前缀短者小)
+fn jix_lt(a: Str, b: Str) -> Bool {
+    var n = a.len
+    if b.len < n {
+        n = b.len
+    }
+    var i: I32 = 0
+    while i < n {
+        var ca = byte_at(a, i)
+        var cb = byte_at(b, i)
+        if ca < cb {
+            return true
+        }
+        if ca > cb {
+            return false
+        }
+        i += 1
+    }
+    return a.len < b.len
+}
+
+// 稳定归并排序(对 a[lo..hi) 按行首路径升序;tmp 与 a 等长为工作副本;
+// 右半不严格小于左半即取左 = 相等保原相对序 = 重复键首现排前)
+fn jix_ms(a: List[List[Str]], tmp: List[List[Str]], lo: I32, hi: I32) {
+    if hi - lo < 2 {
+        return
+    }
+    var mid = lo + (hi - lo) / 2
+    jix_ms(a, tmp, lo, mid)
+    jix_ms(a, tmp, mid, hi)
+    var i = lo
+    var j = mid
+    var k = lo
+    while k < hi {
+        var take_left = false
+        if i < mid {
+            if j >= hi {
+                take_left = true
+            } else {
+                if !jix_lt(a[j][0], a[i][0]) {
+                    take_left = true
+                }
+            }
+        }
+        if take_left {
+            tmp[k] = a[i]
+            i += 1
+        } else {
+            tmp[k] = a[j]
+            j += 1
+        }
+        k += 1
+    }
+    k = lo
+    while k < hi {
+        a[k] = tmp[k]
+        k += 1
+    }
+}
+
+// 建索引:条目表 → JIx(O(n log n);行引用原条目三元,不复制载荷)
+pub fn jix_new(es: List[List[Str]]) -> JIx {
+    var a = List[List[Str]]()
+    var i: I32 = 0
+    while i < es.len {
+        a.push(es[i])
+        i += 1
+    }
+    var tmp = List[List[Str]]()
+    i = 0
+    while i < a.len {
+        tmp.push(a[i])
+        i += 1
+    }
+    jix_ms(a, tmp, 0, a.len)
+    return JIx { ix: a }
+}
+
+// 最左二分:命中返回行号;未命中返回 -1
+// (下界式:中元素 < path 才右移,等值落左半 ⇒ 重复键命中首现行)
+fn jix_find(x: JIx, path: Str) -> I32 {
+    var lo: I32 = 0
+    var hi: I32 = x.ix.len
+    while lo < hi {
+        var mid = lo + (hi - lo) / 2
+        if jix_lt(x.ix[mid][0], path) {
+            lo = mid + 1
+        } else {
+            hi = mid
+        }
+    }
+    if lo < x.ix.len {
+        if x.ix[lo][0] == path {
+            return lo
+        }
+    }
+    return 0 - 1
+}
+
+// 索引查询:路径对应的标签(空串 = 不存在;与 qtag 同口径)
+pub fn jix_tag(x: JIx, path: Str) -> Str {
+    var p = jix_find(x, path)
+    if p < 0 {
+        return ""
+    }
+    return x.ix[p][1]
+}
+
+// 索引查询:路径对应的值(标量原文;容器/缺路径空串;与 qval 同口径)
+pub fn jix_val(x: JIx, path: Str) -> Str {
+    var p = jix_find(x, path)
+    if p < 0 {
+        return ""
+    }
+    return x.ix[p][2]
+}
+
+// 索引类型化读取:I64(kind 三分/frac/range 同 jget_i64)
+pub fn jix_i64(x: JIx, path: Str) -> Result[I64, Str] {
+    var bad = jtagk(jix_tag(x, path), path, "n")
+    if bad != "" {
+        return Err(bad)
+    }
+    var r = jint64(jix_val(x, path))
+    if r.k != 0 {
+        return Err(jmkerr(jkname(r.k), path))
+    }
+    return Ok(r.v)
+}
+
+// 索引类型化读取:F64(量级窗/精度口径同 jget_f64)
+pub fn jix_f64(x: JIx, path: Str) -> Result[F64, Str] {
+    var bad = jtagk(jix_tag(x, path), path, "n")
+    if bad != "" {
+        return Err(bad)
+    }
+    var r = jf64(jix_val(x, path))
+    if r.k != 0 {
+        return Err(jmkerr(jkname(r.k), path))
+    }
+    return Ok(r.v)
+}
+
+// 索引类型化读取:Bool(同 jget_bool)
+pub fn jix_bool(x: JIx, path: Str) -> Result[Bool, Str] {
+    var bad = jtagk(jix_tag(x, path), path, "b")
+    if bad != "" {
+        return Err(bad)
+    }
+    var v = jix_val(x, path)
+    if v == "true" {
+        return Ok(true)
+    }
+    if v == "false" {
+        return Ok(false)
+    }
+    return Err(jmkerr("syn", path))
+}
+
 // ============ 写出半边(2026-09-23 自 json_write.ct 并入;助手先于调用者) ============
 // 路径展平 DOM(wesc 转义逆操作 + jw_keys)按条目 DFS 重放为 JSON 文本
 // since: std-0.3(并入面)stability: experimental
@@ -1201,4 +1375,118 @@ test "jw_ent helper shape" {
     assert_eq(e[0], "$.x")
     assert_eq(e[1], "s")
     assert_eq(e[2], "v")
+}
+
+test "jix basic queries" {
+    let r = parse("\{\"name\":\"张三\",\"age\":30,\"tags\":[\"a\",\"b\"]}")
+    let es = match r {
+        Ok(v) => v
+        Err(m) => {
+            println(m)
+            return 1
+        }
+    }
+    let x = jix_new(es)
+    assert_eq(jix_tag(x, "$"), "o")
+    assert_eq(jix_val(x, "$.name"), "张三")
+    assert_eq(jix_val(x, "$.age"), "30")
+    assert_eq(jix_tag(x, "$.tags"), "a")
+    assert_eq(jix_val(x, "$.tags.1"), "b")
+    assert_eq(jix_val(x, "$.nope"), "")
+    assert_eq(jix_tag(x, "$.nope"), "")
+}
+
+test "jix typed reads and error kinds" {
+    let r = parse("\{\"i\":7,\"s\":\"x\",\"f\":1.5,\"b\":true}")
+    let es = match r {
+        Ok(v) => v
+        Err(m) => {
+            println(m)
+            return 1
+        }
+    }
+    let x = jix_new(es)
+    let n = match jix_i64(x, "$.i") {
+        Ok(v) => v
+        Err(_) => {
+            return 1
+        }
+    }
+    assert_eq(n, 7)
+    var k1 = ""
+    match jix_i64(x, "$.s") {
+        Ok(_) => {
+            k1 = "ok"
+        }
+        Err(e) => {
+            k1 = jerr_kind(e)
+        }
+    }
+    assert_eq(k1, "type")
+    var k2 = ""
+    match jix_i64(x, "$.f") {
+        Ok(_) => {
+            k2 = "ok"
+        }
+        Err(e) => {
+            k2 = jerr_kind(e)
+        }
+    }
+    assert_eq(k2, "frac")
+    var k3 = ""
+    match jix_i64(x, "$.nope") {
+        Ok(_) => {
+            k3 = "ok"
+        }
+        Err(e) => {
+            k3 = jerr_kind(e)
+        }
+    }
+    assert_eq(k3, "noent")
+    let f = match jix_f64(x, "$.f") {
+        Ok(v) => v
+        Err(_) => {
+            return 1
+        }
+    }
+    assert(f == 1.5)
+    let b = match jix_bool(x, "$.b") {
+        Ok(v) => v
+        Err(_) => {
+            return 1
+        }
+    }
+    assert(b)
+}
+
+test "jix duplicate keys first wins parity with qval" {
+    let r = parse("\{\"a\":\"1\",\"a\":\"2\"}")
+    let es = match r {
+        Ok(v) => v
+        Err(m) => {
+            println(m)
+            return 1
+        }
+    }
+    assert_eq(qval(es, "$.a"), "1")
+    let x = jix_new(es)
+    assert_eq(jix_val(x, "$.a"), "1")
+}
+
+test "jix empty entries and unsorted paths" {
+    var es0 = List[List[Str]]()
+    let x0 = jix_new(es0)
+    assert_eq(jix_val(x0, "$"), "")
+    let r = parse("\{\"z\":1,\"m\":2,\"a\":3}")
+    let es = match r {
+        Ok(v) => v
+        Err(m) => {
+            println(m)
+            return 1
+        }
+    }
+    let x = jix_new(es)
+    assert_eq(jix_val(x, "$.z"), "1")
+    assert_eq(jix_val(x, "$.m"), "2")
+    assert_eq(jix_val(x, "$.a"), "3")
 }

@@ -7,6 +7,16 @@
 JSON parsing per RFC 8259: `parse` flattens a document into `[path, tag, value]` entries queried via `qtag`/`qval`; `esc`/`junesc` handle JSON string escaping. The write half (former `std.json_write`, merged 2026-09-23) replays entries back to JSON text via `write_json`.
 <!-- /hand:desc -->
 
+## pub struct
+
+**struct JIx**
+
+索引:按路径升序的条目行(原 [路径, 标签, 值] 三元;首现语义见区块头注)
+
+| Field | Type |
+|---|---|
+| `ix` | `List[List[Str]]` |
+
 ## pub fn
 
 | Signature | Returns | Description |
@@ -26,6 +36,12 @@ JSON parsing per RFC 8259: `parse` flattens a document into `[path, tag, value]`
 | `jk_i64(entries: List[List[Str]], path: Str)` | `Str` | kind 查询:"ok" 或 noent/null/type/frac/range/syn(载荷原文经 jget_* Err) |
 | `jk_f64(entries: List[List[Str]], path: Str)` | `Str` | kind 查询(jget_f64 同径不取值):"ok" 或 noent/null/type/frac/range/syn |
 | `jk_bool(entries: List[List[Str]], path: Str)` | `Str` | kind 查询(jget_bool 同径不取值):"ok" 或 noent/null/type/syn |
+| `jix_new(es: List[List[Str]])` | `JIx` | 建索引:条目表 → JIx(O(n log n);行引用原条目三元,不复制载荷) |
+| `jix_tag(x: JIx, path: Str)` | `Str` | 索引查询:路径对应的标签(空串 = 不存在;与 qtag 同口径) |
+| `jix_val(x: JIx, path: Str)` | `Str` | 索引查询:路径对应的值(标量原文;容器/缺路径空串;与 qval 同口径) |
+| `jix_i64(x: JIx, path: Str)` | `Result[I64, Str]` | 索引类型化读取:I64(kind 三分/frac/range 同 jget_i64) |
+| `jix_f64(x: JIx, path: Str)` | `Result[F64, Str]` | 索引类型化读取:F64(量级窗/精度口径同 jget_f64) |
+| `jix_bool(x: JIx, path: Str)` | `Result[Bool, Str]` | 索引类型化读取:Bool(同 jget_bool) |
 | `wesc(s: Str)` | `Str` | ============ 写出半边(2026-09-23 自 json_write.ct 并入;助手先于调用者) ============<br>路径展平 DOM(wesc 转义逆操作 + jw_keys)按条目 DFS 重放为 JSON 文本<br>since: std-0.3(并入面)stability: experimental<br>口径:输入为 json.ct parse 产物(父先子后 DFS 条目,路径以 "." 分段,<br>根为 "$");键与字符串值写出时经 wesc 重转义;数字/布尔/null 按原文 |
 | `jw_depth(path: Str)` | `I32` | 路径深度 = '.' 计数(根 "$" 为 0) |
 | `jw_keys(entries: List[List[Str]], path: Str)` | `List[Str]` | 枚举 path 的直接成员名(对象=键序列,数组=下标序列"0","1",…) |
