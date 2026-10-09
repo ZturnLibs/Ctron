@@ -55,10 +55,10 @@ trait/impl 的 doc 恒空串(驱动 S0 设计)。
 `<!-- hand:desc -->` 界定的手写简介区再生成时保留:
 
 ```bash
-python3 tools/std_doc.py                                   # std 26 页 + index
+python3 tools/std_doc.py                                   # std 全部模块页 + index
 python3 tools/std_doc.py --domain net --domain http ...    # 域包页
 python3 tools/std_doc.py --pkg gui --pkg web ...           # registry 包页
-python3 tools/std_doc.py --check                           # 门禁:81 页+index 逐字节对拍(CI 红=漂移)
+python3 tools/std_doc.py --check                           # 门禁:全部生成页+index 逐字节对拍(CI 红=漂移)
 ```
 
 **改了 std/域包源码注释 ⇒ 复跑生成器随批提交**;改 `lib/std/*.ct` 还须同步
