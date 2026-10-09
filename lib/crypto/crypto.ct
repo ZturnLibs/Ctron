@@ -1,0 +1,112 @@
+// crypto.ct —— 原生密码学门面(lib/crypto;OpenSSL 后端,CW-F1a 2026-10-09)
+// 定位:与 std/crypto(纯 Ctron 参考实现,§12)显式分层——本包 = 性能杠杆面
+// (纯 Ctron 受位运算/宽整型语义债卡,G1 ≥200MB/s 验收线打不到);命名后缀 _fast
+// 与 std.crypto.sha256_hex 区分,两轨同值(std 向量互证,loom selftest 双轨锚)。
+// 门面形态:免费函数面(net.ct 同款,非 trait 方法——trait 方法调用不可发射);
+// 纯计算面,无 Cap trait → 无 caps 声明(E4010 只审 use std.<key>.<Name> + &Name 形参)。
+// 密钥文件落盘(0600/O_EXCL)归消费方(loom 侧 rawio/sig 门面组合)。
+// e2e:tests/crypto(RFC 6234 向量 + ed25519 roundtrip + 篡改负例 + rand 非退化)。
+use crypto.bind.{ctron_crypto_sha256, ctron_crypto_sha256_raw, ctron_crypto_hmac_sha256, ctron_crypto_ed25519_keypair_hex, ctron_crypto_ed25519_sign_hex, ctron_crypto_ed25519_verify_hex, ctron_crypto_rand_bytes}
+
+// hex 数字(I64 值域 0..15 → 单字符;loom clock.ct 同款)
+fn hex_digit(v: I64) -> Str {
+    if v < 10 { return v.to_string() }
+    if v == 10 { return "a" }
+    if v == 11 { return "b" }
+    if v == 12 { return "c" }
+    if v == 13 { return "d" }
+    if v == 14 { return "e" }
+    return "f"
+}
+
+// 32B 摘要视图 → 64 hex 串(U8 读负值修正;loom clock.ct 原样 port)
+fn digest_hex(var digest: U8[]) -> Str {
+    var hex = ""
+    var i: I32 = 0
+    while i < 32 {
+        var b = digest[i]
+        if b < 0 { b = b + 256 }
+        var hi = b / 16
+        var lo = b - hi * 16
+        hex = hex + hex_digit(hi) + hex_digit(lo)
+        i = i + 1
+    }
+    return hex
+}
+
+// SHA-256(hex 出;与 std/crypto 纯实现同值,快路径)
+pub fn sha256_hex_fast(s: Str) -> Str {
+    var digest: U8[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    ctron_crypto_sha256(s, s.len, digest)
+    return digest_hex(digest)
+}
+
+// SHA-256 over 字节平面(逻辑长度 n 显式;视图容量 ≠ 逻辑长度;data 只读非 var——loom 同款 ABI 先例)
+pub fn sha256_hex_raw(data: U8[], n: I64) -> Str {
+    var digest: U8[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    ctron_crypto_sha256_raw(data, n, digest)
+    return digest_hex(digest)
+}
+
+// HMAC-SHA-256(hex 出)
+pub fn hmac_hex_fast(key: Str, data: Str) -> Str {
+    var digest: U8[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    ctron_crypto_hmac_sha256(key, key.len, data, data.len, digest)
+    return digest_hex(digest)
+}
+
+// ed25519 签名(hex 出;垫片视图内容 = 128 ASCII hex 字符,按字符直构——
+// 与散列族不同:那边视图 = 32 原始字节需 hex 化,这边垫片已 hex 化(loom_sig.c 传承)。
+// 失败返 ""——调用方判空)
+pub fn ed25519_sign_hex(privhex: Str, msg: Str) -> Str {
+    var sig: U8[128] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var r = ctron_crypto_ed25519_sign_hex(privhex, msg, msg.len, sig)
+    if r != 128 { return "" }
+    var out = ""
+    var i: I32 = 0
+    while i < 128 {
+        var b = sig[i]
+        if b < 0 { b = b + 256 }
+        out = out + utf8_enc(b)
+        i = i + 1
+    }
+    return out
+}
+
+// ed25519 验签:1 有效 / 0 无效(-1 失败)
+pub fn ed25519_verify_hex(pubhex: Str, msg: Str, sighex: Str) -> I32 {
+    return ctron_crypto_ed25519_verify_hex(pubhex, msg, msg.len, sighex)
+}
+
+// 密钥对(纯计算;priv/pub 视图各写 64 ASCII hex 字节,无尾随换行;
+// 文件格式化与 0600/O_EXCL 落盘归消费方):1 成 / 0 败
+pub fn ed25519_keypair_hex(var priv_hex: U8[], var pub_hex: U8[]) -> I32 {
+    return ctron_crypto_ed25519_keypair_hex(priv_hex, pub_hex)
+}
+
+// 真实熵(out 视图 n 字节):1 成 / 0 败(std/rand 确定性域外的事,宪章 8)
+pub fn rand_bytes(var out: U8[]) -> I32 {
+    return ctron_crypto_rand_bytes(out)
+}
+
+// ---- inline tests(纯 Ctron 面:hex 助手;extern 行为面见 tests/crypto) ----
+
+test "hex digit domain" {
+    assert_eq(hex_digit(0), "0")
+    assert_eq(hex_digit(9), "9")
+    assert_eq(hex_digit(10), "a")
+    assert_eq(hex_digit(15), "f")
+}
+
+test "digest hex length and shape" {
+    var d: U8[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let h = digest_hex(d)
+    assert_eq(h.len, 64)
+    assert_eq(byte_at(h, 0), 48)
+    assert_eq(byte_at(h, 63), 48)
+    d[0] = 255
+    d[31] = 160
+    let h2 = digest_hex(d)
+    assert_eq(byte_slice(h2, 0, 2), "ff")
+    assert_eq(byte_slice(h2, 62, 64), "a0")
+}

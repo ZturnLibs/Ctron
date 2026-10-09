@@ -1,0 +1,75 @@
+// crypto —— 原生密码学回环验收(lib/crypto;CW-F1a)
+// 钉住:SHA-256 RFC 6234 三向量(abc/空/448 位串)、字节平面 raw 面与 Str 面同值、
+// HMAC-SHA-256 RFC 4231 case 2(ASCII 键)、ed25519 签验 roundtrip + 篡改消息/签名负例、
+// 真实熵非退化(两抽不同)。CI 纪律:纯计算,零网络零 fs(tests/net 同口径的回环约束)。
+// 与 std/crypto 纯实现的关系:同值不同速——向量即双轨互证锚(loom selftest 亦持)。
+use crypto.{sha256_hex_fast, sha256_hex_raw, hmac_hex_fast, ed25519_keypair_hex, ed25519_sign_hex, ed25519_verify_hex, rand_bytes}
+
+test "sha256 rfc6234 vectors" {
+    assert_eq(sha256_hex_fast("abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+    assert_eq(sha256_hex_fast(""), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+    assert_eq(sha256_hex_fast("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"), "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1")
+}
+
+test "sha256 raw view == str face" {
+    // "abc" 字节平面 + 显式逻辑长度 3 → 与 Str 面同摘要(视图容量 16 ≠ 逻辑长度,原语纪律)
+    var b: U8[16] = [0, 0, 0, 0, 0, 0, 0, 0]
+    b[0] = 97
+    b[1] = 98
+    b[2] = 99
+    assert_eq(sha256_hex_raw(b, 3), sha256_hex_fast("abc"))
+    // n=0(空载荷;视图指针不触)
+    assert_eq(sha256_hex_raw(b, 0), sha256_hex_fast(""))
+}
+
+test "hmac rfc4231 case2" {
+    assert_eq(hmac_hex_fast("Jefe", "what do ya want for nothing?"), "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843")
+}
+
+test "ed25519 sign/verify roundtrip + tamper negatives" {
+    var priv: U8[64] = [0, 0, 0, 0, 0, 0, 0, 0]
+    var pubk: U8[64] = [0, 0, 0, 0, 0, 0, 0, 0]
+    assert(ed25519_keypair_hex(priv, pubk) == 1)
+    // 视图 → hex 串:视图内容已是 ASCII hex 字符(48..102),按字符直构
+    // (keypair 面无尾随换行,文件格式化归消费方)
+    var ph = ""
+    var uh = ""
+    var i: I32 = 0
+    while i < 64 {
+        var pb = priv[i]
+        var ub = pubk[i]
+        if pb < 0 { pb = pb + 256 }
+        if ub < 0 { ub = ub + 256 }
+        ph = ph + utf8_enc(pb)
+        uh = uh + utf8_enc(ub)
+        i = i + 1
+    }
+    assert(ph.len == 64)
+    assert(uh.len == 64)
+    let msg = "evidence body 001"
+    let sig = ed25519_sign_hex(ph, msg)
+    assert(sig.len == 128)
+    assert(ed25519_verify_hex(uh, msg, sig) == 1)
+    // 篡改消息 → 无效(0/-1 均非 1)
+    assert(ed25519_verify_hex(uh, msg + "x", sig) != 1)
+    // 篡改签名(首字符翻位)→ 无效
+    var bad = "0" + byte_slice(sig, 1, 128)
+    if byte_at(sig, 0) == 48 { bad = "1" + byte_slice(sig, 1, 128) }
+    assert(ed25519_verify_hex(uh, msg, bad) != 1)
+    // 非法 hex 面 → -1(参数错路径)
+    assert(ed25519_verify_hex("zz" + byte_slice(uh, 2, 64), msg, sig) == -1)
+}
+
+test "rand non-degenerate" {
+    var a: U8[32] = [0, 0, 0, 0, 0, 0, 0, 0]
+    var b: U8[32] = [0, 0, 0, 0, 0, 0, 0, 0]
+    assert(rand_bytes(a) == 1)
+    assert(rand_bytes(b) == 1)
+    var diff = false
+    var i: I32 = 0
+    while i < 32 {
+        if a[i] != b[i] { diff = true }
+        i = i + 1
+    }
+    assert(diff)
+}

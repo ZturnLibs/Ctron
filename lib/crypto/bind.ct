@@ -1,0 +1,15 @@
+// crypto/bind.ct —— ctron_crypto.c 垫片 extern 面(lib/crypto;CW-F1a 2026-10-09)
+// 纪律(net/bind.ct 同款):参数表单行(C 宿主解析器);缓冲 = var U8[](前缀形参)
+// 字节平面视图(发射 ctron_view_w8u 按值;ABI 镜像纪律见 c_src/ctron_crypto.c 头注);
+// 可见性 = `pub extern`(loader 的 use 可见性检查仅认 FnExt+pub 尾槽,parse_pkg.ct:285;
+// sem 对 extern 无 trusted 检查,纪律语义由本注释承载)。crypto.ct 经
+// use crypto.bind.{...} 链入,符号随合并进单一命名空间(§11.2 同构)。
+// rc 口径:散列族 void(32B 恒出);ed25519 = loom_sig.c 原语义(1/0/-1;sign 返 128/-1);
+// keypair 视图写 64 ASCII hex 字节无尾随换行(文件格式化归消费方)。
+pub extern "c" fn ctron_crypto_sha256(data: Str, n: I64, var out: U8[])
+pub extern "c" fn ctron_crypto_sha256_raw(data: U8[], n: I64, var out: U8[])
+pub extern "c" fn ctron_crypto_hmac_sha256(key: Str, klen: I64, data: Str, n: I64, var out: U8[])
+pub extern "c" fn ctron_crypto_ed25519_keypair_hex(var priv_hex: U8[], var pub_hex: U8[]) -> I32
+pub extern "c" fn ctron_crypto_ed25519_sign_hex(privhex: Str, msg: Str, n: I64, var out: U8[]) -> I64
+pub extern "c" fn ctron_crypto_ed25519_verify_hex(pubhex: Str, msg: Str, n: I64, sighex: Str) -> I32
+pub extern "c" fn ctron_crypto_rand_bytes(var out: U8[]) -> I32
