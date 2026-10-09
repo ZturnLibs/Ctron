@@ -27,6 +27,32 @@ plugins:
         - locale: zh
           name: 中文
           build: true
+          nav_translations:
+            Home: 首页
+            Getting Started: 快速开始
+            Setup & First Build: 安装与首次构建
+            Ten-Minute Tour: 十分钟上手
+            Language Spec: 语言规范
+            Overview: 总览
+            1 Lexical & Grammar: 1 词法与语法
+            2 Names & Modules: 2 名字与模块
+            3 Type System: 3 类型系统
+            4 Expressions & Control Flow: 4 表达式与控制流
+            5 Error Model: 5 错误模型
+            6 Memory Model: 6 内存模型
+            7 Concurrency: 7 并发
+            8 Effects & Comptime: 8 效果系统与 comptime
+            9 Profiles & Interop: 9 档位与互操作
+            10 Diagnostics & Conformance: 10 诊断契约与符合性
+            11 Networking: 11 网络
+            12 Database Access: 12 数据库
+            Std Reference: 标准库参考
+            Domain Packages: 域包
+            Registry Packages: 注册表包
+            Examples: 示例
+            Server: 服务器指南
+            Agent Guide: Agent 指南
+            Download: 下载
 nav:
   - Home: index.md
   - Getting Started:
@@ -34,18 +60,18 @@ nav:
       - Ten-Minute Tour: tour.md
   - Language Spec:
       - Overview: spec/README.md
-      - 1 词法与语法: spec/01-lexical-grammar.md
-      - 2 名字与模块: spec/02-names-modules.md
-      - 3 类型系统: spec/03-types.md
-      - 4 表达式与控制流: spec/04-expressions.md
-      - 5 错误模型: spec/05-errors.md
-      - 6 内存模型: spec/06-memory.md
-      - 7 并发: spec/07-concurrency.md
-      - 8 效果系统与 comptime: spec/08-effects-comptime.md
-      - 9 档位与互操作: spec/09-profiles-ffi.md
-      - 10 诊断契约与符合性: spec/10-diagnostics-conformance.md
-      - 11 网络: spec/11-net.md
-      - 12 数据库: spec/12-db.md
+      - 1 Lexical & Grammar: spec/01-lexical-grammar.md
+      - 2 Names & Modules: spec/02-names-modules.md
+      - 3 Type System: spec/03-types.md
+      - 4 Expressions & Control Flow: spec/04-expressions.md
+      - 5 Error Model: spec/05-errors.md
+      - 6 Memory Model: spec/06-memory.md
+      - 7 Concurrency: spec/07-concurrency.md
+      - 8 Effects & Comptime: spec/08-effects-comptime.md
+      - 9 Profiles & Interop: spec/09-profiles-ffi.md
+      - 10 Diagnostics & Conformance: spec/10-diagnostics-conformance.md
+      - 11 Networking: spec/11-net.md
+      - 12 Database Access: spec/12-db.md
   - Std Reference:
       - Overview: std/README.md
       - config: std/config.md
