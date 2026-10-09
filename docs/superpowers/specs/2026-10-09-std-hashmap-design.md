@@ -128,6 +128,14 @@ Hash trait（W3 触发件）。
 | 波次 | 内容 | 验收 |
 |---|---|---|
 | W1（本 spec） | 探针 P1/P2 + `std/hashmap.ct` + 宪章 3a + 全部门禁 | §7 清单 |
-| W2 | 场景替换：http client keep-alive 多槽、web 路由/headers、todo_api 平行 List 消灭 | 对应 e2e 全绿 |
+| W2（已落地 60ffdc6b + a453f30a，2026-10-09） | http client keep-alive 多槽（HttpKeep 自持 KeepMap 引擎）+ todo_api hmi 双 Map 换装；**web headers 裁决不做**（HTTP 头有序可重名，`List[Pair]` 语义正确） | c0_pure 双臂绿；bru 递进断言逐字保持；todo_api e2e 候 U8 迁移批补跑（存量红，HEAD worktree 同死实证） |
 | W3（触发件） | Hash trait + 发射面 trait 方法调用 → 二代 `K: Hash + Eq` bound 面 + SipHash | COVERAGE 记账 |
-| 触发件 | deque / 位集 / BTreeMap | 各自消费面出现时 |
+| 触发件 | deque / 位集 / BTreeMap；http 缓存换装 `Box[HMapS[I64]]`（候 trans 线补结构体 Box 字段跨模块 typedef 闭包 + typedef 依赖序） | 各自消费面/前置出现时 |
+
+### W2 实施批新增登记（发射面形状债，详见 COVERAGE 2026-10-09 W2 批）
+
+1. 结构体 Box 字段**跨模块**类型闭包缺失（t_HMapS 悬空；同模块免疫探针实证）；
+2. 发射 typedef 按**声明序**非依赖序（序错悬空）；
+3. 裸 V 返回于非泛型宿主值位 E2010 + V 不参与实参位推断（E2060）——泛型容器
+   值面给非泛型宿主须配具体型面；seed/emit 宽严反向第三例；
+4. V=struct 经 Box push 强转指针（Todo 值 Map 不可行 → 双 Map 形）。

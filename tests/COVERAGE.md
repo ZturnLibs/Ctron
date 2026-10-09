@@ -1,3 +1,27 @@
+> **std/hashmap W2 批已落地(2026-10-09,http keep 多槽 60ffdc6b + todo_api hmi 换装 a453f30a;spec §9 W2 行回写)。**
+> 范围重估:web headers **不做**(HTTP 头有序且可重名,List[Pair] 语义正确;路由=
+> 模式匹配非精确键)。A 面:http client keep-alive 单槽四标量胞退役 → HttpKeep
+> 多槽(cache=Box[KeepMap],键 "host:port",容量 8 FIFO 逐出;bru 复用计数语义
+> 不变;跨 host 不再关旧连;101 直通改经 HttpResp.fd 交付);bru 递进断言
+> 0→2→4→6→7→7 多槽下逐字保持;x_client_e2e 为活验收;c0_pure 双臂绿。
+> **发射面形状债四枚(W2 探针钉边)**:①结构体 Box 字段【跨模块】类型闭包缺失
+> (t_HMapS/t_Box64 typedef 不随 t_HttpKeep 发出;同模块免疫探针钉边)→ 绕行
+> =引擎同模块自持(KeepMap/KeepCell,零 std.hashmap use,E5020 毒图连根规避);
+> 退役条件=trans 线补跨模块收集,届时换 Box[HMapS[I64]]+hmsi_*(hashmap.ct
+> 已按 YAGNI 不预置该面);②发射 typedef 按声明序非依赖序(非 pub 结构体不入
+> 消费单元闭包;序错悬空,c0_pure 两犯)→ pub + 声明序前于使用者;③裸 V 返回
+> 于非泛型宿主值位(var-init/赋值 RHS/return)E2010 + V 不参与实参位推断
+> (E2060「未出现于实参位」;发射臂同码绿,seed/emit 宽严反向第三例)→ 泛型
+> 容器值面给非泛型宿主须配具体型面或出参盒,消费形状=条件位比较/实参位/成员
+> 链(hm_2m 探针双臂逐字=条件位 has/get+实参位 get 全绿);④V=struct 经 Box
+> push 强转指针((const char*)(long)(t_v),vs 探针)→ Todo 值 Map 不可行,双 Map
+> 形(hmi_new[Str]+hmi_new[I64])。B 面:todo_api 平行三 List[Str](注释自认绕
+> 发射债)→ hmi 双 Map(id 升 I64 键,DELETE 全量重建块销,O(1) 删);run.sh
+> 存量红=aa6fad0d U8 平面化迁移尾巴(respond→net_write view_6 vs w8u,HEAD
+> worktree 同死实证;hmi 段发射零错误),e2e 运行时验收候 http 泳道 U8 迁移批
+> 补跑。smoke 235/1(单红=decls 锁 521 vs 实测 524,对端 GUI W2.5 在飞未提交
+> 态,与本批无关;本批零 compiler/src)。
+>
 > **W2.5a 批已落地(2026-10-09,prop 默认值;规格 §5.4 前半)。**
 > 签名 `名: 型 = 常量`(常量限编译期字面/可折叠;型文法无等号故型首 `=` 即默认分隔符):
 > 编译侧 gui_props_typed 剥默认段(合成签名防污染)+ gui_props_dflts 平行提取(vr_pd 穿线
