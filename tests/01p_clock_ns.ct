@@ -1,0 +1,15 @@
+// 01p_clock_ns —— 时钟 ns 内建面(F-内化批2;mono_ns 单调 / wall_ns ns 精度墙钟)
+// 口径:比较断言,无乘除(ns 值 ~1.9e18;F11 = 解释臂乘法 ≥2^31 不保证,除法同避;
+// 大数比较有 std/time "now wall clock"(1.6e12)先例);mono 相邻两读不回退;wall 在
+// 2020 epoch 后。双形态说明:mono_ns/wall_ns 为值面(I64);_text 变体是解释器宽域
+// 标记的内部伴生(now_ms_text 同径),非用户面。
+test "mono_ns monotonic non-decreasing" {
+    var t1: I64 = mono_ns()
+    var t2: I64 = mono_ns()
+    assert(t2 >= t1)
+}
+
+test "wall_ns after 2020 epoch" {
+    var w: I64 = wall_ns()
+    assert(w > 1577836800000000000)
+}

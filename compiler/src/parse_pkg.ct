@@ -53,7 +53,7 @@ fn pkg_is_prelude_sym(nm: Str) -> Bool {
     if or2(seq2(nm, "assert_eq"), or2(seq2(nm, "assert_ne"), seq2(nm, "expect"))) { return true }
     if or2(seq2(nm, "fmt"), or2(seq2(nm, "byte_at"), or2(seq2(nm, "byte_slice"), seq2(nm, "char_len")))) { return true }
     if or2(seq2(nm, "read_file"), or2(seq2(nm, "read_dir"), or2(seq2(nm, "fs_exists"), or2(seq2(nm, "fs_write"), or2(seq2(nm, "fs_delete"), or2(seq2(nm, "fs_mkdir"), or2(seq2(nm, "read_file_bytes"), or2(seq2(nm, "bytes_len"), or2(seq2(nm, "bytes_at"), or2(seq2(nm, "bytes_slice"), or2(seq2(nm, "bytes_to_str"), or2(seq2(nm, "read_bytes_len"), seq2(nm, "read_bytes_at"))))))))))))) { return true }
-    if or2(seq2(nm, "now_ms"), or2(seq2(nm, "now_ms_text"), seq2(nm, "str_from_c"))) { return true }
+    if or2(seq2(nm, "now_ms"), or2(seq2(nm, "now_ms_text"), or2(seq2(nm, "mono_ns"), or2(seq2(nm, "mono_ns_text"), or2(seq2(nm, "wall_ns"), or2(seq2(nm, "wall_ns_text"), seq2(nm, "str_from_c"))))))) { return true }
     if seq2(nm, "Env") { return true }
     if or2(seq2(nm, "Some"), or2(seq2(nm, "None"), or2(seq2(nm, "Ok"), seq2(nm, "Err")))) { return true }
     return false

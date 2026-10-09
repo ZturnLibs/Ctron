@@ -150,7 +150,9 @@ for case in sorted(glob.glob(os.path.join(TESTS, "modules", "*"))):
             em = os.path.join(td, "out.c")
             binp = os.path.join(td, "app")
             emit_bin = CC.replace("ctron-cc", "ctron-emit")
-            p1 = sp.run([emit_bin, "run", entry], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60, cwd=ROOT)
+            # 与行为分支同口径显式传 std 根(FFI 分支曾依赖 shell 环境的 ambient
+            # CTRON_STDPATH——无导出环境里 cbox 三例假红;门禁密闭性修复,F-内化批2 发现)
+            p1 = sp.run([emit_bin, "run", entry], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60, cwd=ROOT, env={**os.environ, "CTRON_STDPATH": os.path.join(ROOT, "lib", "std")})
             if p1.returncode != 0:
                 ok, why = False, f"emit 失败: {first_line(p1.stdout + p1.stderr)}"
             else:
@@ -196,7 +198,9 @@ def ffi_emit_run(case, entry, mk, kind):
         em = os.path.join(td, "out.c")
         binp = os.path.join(td, "app")
         emit_bin = CC.replace("ctron-cc", "ctron-emit")
-        p1 = sp2.run([emit_bin, "run", entry], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60, cwd=ROOT)
+        # 与 run() 行为分支同口径显式传 std 根(ffi_emit_run 曾依赖 ambient
+        # CTRON_STDPATH——无导出环境 cbox 三例假红;门禁密闭性修复,F-内化批2)
+        p1 = sp2.run([emit_bin, "run", entry], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60, cwd=ROOT, env={**os.environ, "CTRON_STDPATH": os.path.join(ROOT, "lib", "std")})
         if p1.returncode != 0:
             return False, f"emit 失败: {first_line(p1.stdout + p1.stderr)}"
         open(em, "w").write(p1.stdout)
