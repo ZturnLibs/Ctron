@@ -111,3 +111,62 @@ int32_t ctron_proc_wait(int64_t pid) {
     waitpid((pid_t)pid, &st, 0);
     return WIFEXITED(st) ? WEXITSTATUS(st) : -1;
 }
+
+// git 桥等工具面原语:PATH 查找(execvp)+ stdin 重定向 + 可选捕获。
+// blob = NUL 分隔 argv 块(首段 = 程序名,execvp 按 PATH 解析;argv 上限 12);
+// stdin_path 空串 = 继承,非空 = 其内容重定向进 stdin(fast-import 流式面);
+// capture = 0 → 不建管道,子进程 stdout 继承(rc 型工具面——截断管道会 SIGPIPE 误杀
+// 长输出的 push/fetch,loom_git.c 传承语义);capture > 0 → 管道捕获至 out 容量,
+// *out_len = 实捕字节数。返回进程退出码(-1 = fork/chdir/管道/exec 链败,127 = exec 失败)。
+typedef struct { int64_t v; } ProcBox64;
+
+int32_t ctron_proc_run_argv_p(const char* cwd, ctron_view_w8u blob, int64_t n, const char* stdin_path, int64_t capture, ctron_view_w8u out, ProcBox64* out_len) {
+    char* argv[13];
+    int argc = 0;
+    int64_t i = 0;
+    while (i < n && argc < 12) {
+        argv[argc++] = (char*)(blob.d + i);
+        while (i < n && blob.d[i] != 0) { i++; }
+        i++;
+    }
+    if (argc == 0) { return -1; }
+    argv[argc] = NULL;
+    int pipefd[2];
+    int have_pipe = (capture > 0 && out.d != NULL && out.n > 0);
+    if (have_pipe && pipe(pipefd) != 0) { return -1; }
+    pid_t pid = fork();
+    if (pid < 0) {
+        if (have_pipe) { close(pipefd[0]); close(pipefd[1]); }
+        return -1;
+    }
+    if (pid == 0) {
+        if (cwd[0] != 0 && chdir(cwd) != 0) { _exit(126); }
+        if (stdin_path[0] != 0) {
+            int fd = open(stdin_path, O_RDONLY);
+            if (fd < 0) { _exit(127); }
+            dup2(fd, 0);
+            close(fd);
+        }
+        if (have_pipe) {
+            dup2(pipefd[1], 1);
+            close(pipefd[0]);
+            close(pipefd[1]);
+        }
+        execvp(argv[0], argv);
+        _exit(127);
+    }
+    if (have_pipe) { close(pipefd[1]); }
+    int64_t total = 0;
+    if (have_pipe) {
+        while (total < out.n) {
+            ssize_t r = read(pipefd[0], out.d + total, (size_t)(out.n - total));
+            if (r <= 0) { break; }
+            total += r;
+        }
+        close(pipefd[0]);
+    }
+    int st = 0;
+    waitpid(pid, &st, 0);
+    if (out_len != NULL) { out_len->v = have_pipe ? total : 0; }
+    return WIFEXITED(st) ? WEXITSTATUS(st) : -1;
+}

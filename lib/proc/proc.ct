@@ -33,6 +33,10 @@ pub fn wait_pid(pid: I64) -> I32 {
     return ctron_proc_wait(pid)
 }
 
+// 工具面原语 ctron_proc_run_argv_p 不设门面转发:普通 fn 的 &ProcBox64 引用形参
+// 不可发射(Ref+Named → 非法 C,net Task 6 在册;&T 仅 extern 声明位可用)——
+// 消费方直用 proc.bind(git 桥先例 = loom gitx.ct)。
+
 // ---- inline tests(纯 Ctron 面:argv blob 构造助手;行为面见 tests/proc) ----
 
 test "words_to_blob shape" {

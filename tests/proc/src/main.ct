@@ -3,6 +3,8 @@
 // exec 失败 127(不存在路径)、cwd 切换、spawn_bg 后台 + kill + wait(信号杀 = -1)、
 // words_to_blob 纯面已在 lib inline。CI 纪律:仅本机 /bin 工具,零网络。
 use proc.{run_argv, spawn_bg, kill_pid, wait_pid, words_to_blob}
+use proc.bind.{ctron_proc_run_argv_p, ProcBox64}
+use fio.{write_raw}
 
 test "run_argv captures stdout and rc" {
     var blob: U8[64] = [0, 0, 0, 0, 0, 0, 0, 0]
@@ -47,4 +49,43 @@ test "spawn_bg + kill + wait (signaled = -1)" {
     // 信号杀路径:/bin/sleep 以 run 形跑会被内联 wait 卡 60s——略;
     // kill 对已收尸 pid = -1(ESRCH)可作轻锚
     assert(kill_pid(pid) == -1)
+}
+
+test "run_argv_p: PATH lookup + stdin redirect + capture count" {
+    // stdin 载荷落盘 → /usr/bin/cat 换 PATH 名 "cat"(execvp 验证)→ 捕获回读
+    var payload: U8[12] = [115, 116, 100, 105, 110, 45, 101, 50, 101, 10, 0, 0]
+    let pin = "/tmp/ctron-proc-stdin.txt"
+    assert(write_raw(pin, payload, 10) == 1)
+    var blob: U8[16] = [0, 0, 0, 0, 0, 0, 0, 0]
+    var n: I32 = 0
+    n = blob_push_word(blob, n, "cat")
+    assert(n > 0)
+    var out: U8[16] = [0, 0, 0, 0, 0, 0, 0, 0]
+    var plen = ProcBox64 { v: 0 }
+    let rc = ctron_proc_run_argv_p("", blob, n.as[I64](), pin, 1, out, plen)
+    assert(rc == 0)
+    assert(plen.v == 10)
+    assert(out[0] == 115)
+    assert(out[9] == 10)
+    // capture=0 面:stdout 继承(不建管道;rc 型语义)——cat 无 stdout 消费也正常退出
+    var plen0 = ProcBox64 { v: 0 }
+    assert(ctron_proc_run_argv_p("", blob, n.as[I64](), pin, 0, out, plen0) == 0)
+    assert(plen0.v == 0)
+    fs_delete(pin)
+}
+
+// 词追加(NUL 结尾);返回新 n(-1 = 容量不足)
+fn blob_push_word(var blob: U8[], n: I32, word: Str) -> I32 {
+    var i: I32 = 0
+    while i < word.len {
+        if n >= blob.len { return -1 }
+        var bv: I64 = byte_at(word, i)
+        if bv < 0 { bv = bv + 256 }
+        blob[n] = bv.as[U8]()
+        n = n + 1
+        i = i + 1
+    }
+    if n >= blob.len { return -1 }
+    blob[n] = 0.as[U8]()
+    return n + 1
 }

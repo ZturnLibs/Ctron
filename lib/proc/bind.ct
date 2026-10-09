@@ -8,3 +8,12 @@ pub extern "c" fn ctron_proc_run_argv(cwd: Str, var blob: U8[], n: I64, var out:
 pub extern "c" fn ctron_proc_spawn_bg(cwd: Str, bin: Str, arg: Str, err_path: Str) -> I64
 pub extern "c" fn ctron_proc_kill(pid: I64) -> I32
 pub extern "c" fn ctron_proc_wait(pid: I64) -> I32
+
+// 工具面原语(git 桥等):execvp(PATH 查找)+ stdin 重定向 + 可选捕获。
+// capture = 0 → stdout 继承(rc 型面;截断管道会 SIGPIPE 误杀长输出——不建管道);
+// capture > 0 → 捕获至 out 容量,out_len 回实捕字节数(&ProcBox64 裸指针出参,
+// net.bind Box64 同款镜像 ABI 纪律;struct 声明留本文件)。
+pub struct ProcBox64 {
+    var v: I64
+}
+pub extern "c" fn ctron_proc_run_argv_p(cwd: Str, var blob: U8[], n: I64, stdin_path: Str, capture: I64, var out: U8[], out_len: &ProcBox64) -> I32
