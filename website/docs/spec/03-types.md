@@ -121,7 +121,7 @@ trait:Show Eq Error Cap Clone Hash Iter
 | `AnyError` | 前奏错误擦除类型(class,实现 Error):`context` 的返回错误类型;`?` 向 AnyError 自动擦除(§5.4) |
 | `Cap` | 空标记 trait:**能力 trait 必须继承它**(`trait Clock: Cap`),`#[pure]` 检查以此判定(§8.3);具体类型**无需也无法**单独实现 Cap——它只标注 trait 的类别 |
 | 数值类型 | `as[T]()`(显式转换,窄化=截断,§3.6);`abs()` `min(a,b)` `max(a,b)` |
-| `Simd[E, N]` | `Simd[E, N].splat(v)`;`lane(i) -> E`;`to_array() -> E[N]`;`+ - * /` 元素级(运算符白名单,§3.1/§9.5) |
+| `Simd[E, N]` | `Simd[E, N].splat(v)`;`lane(i) -> E`;`to_array() -> E[N]`;`+ - * /` 元素级(运算符白名单,§3.1/§9.5)。**自举侧现状(T51 注,2026-10-03)**:v0 = 语义模拟(解释)/标量模拟(发射,P1-C2 堆视图 `ctron_view`),元素级循环由后端编译器自动向量化兑现(clang -O2 实证 NEON width 4;gcc 需 -O3);寄存器驻留与 intrinsics 直发为志向,评估见 `docs/simd-vectorization-analysis.md` |
 | `Str` / `String` | `len`(字节)`char_len`(字符);`slice(range)`(字节切片,须落字符边界,§3.3);`contains(s)`;`to_string()`(分配,§6.5);`iter()` |
 | `T[]` / `&T[]` | `len`(prop);`iter()`;索引 `[i]`(§4.5) |
 | `List[T]` | `new()` `push(v)` `pop()` `len`(prop);索引 |

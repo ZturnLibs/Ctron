@@ -19,6 +19,7 @@
 | E2070 | break/continue 出现在循环外 | §4.2(v0.7) | `compiler-rust/tests/fixtures/04e_break_outside.neg.ct` |
 | E2071 | break/continue 需越过带 Drop 局部的作用域(v1 静态拒绝,规范明文可解除) | §4.2(v0.7) | `compiler-rust/tests/fixtures/04e_break_drop.neg.ct` |
 | E2072 | break/continue 穿越闭包边界 | §4.2(v0.7) | `compiler-rust/tests/fixtures/04e_break_closure.neg.ct` |
+| E2080 | 对不可变绑定赋值(`let` 局部;`var`/形参/闭包形参/for·match 模式绑定不在本门——豁免面收窄留后续修订) | §4.0(v0.9) | `tests/04g_let_assign.neg.ct`(三线:自举 cc/C 宿主/R 线) |
 | E3010 | spawn 捕获非 Send | §7.4 | `06_spawn_nonsend.neg.ct` |
 | E3020 | channel 收发非 Send 类型 | §7.4 | `06_channel_nonsend.neg.ct` |
 | E3030 | `static var` 不存在(解析器对 `static var` 做恢复并专门产出本码,而非 E1xxx——对 AI 迭代友好) | §7.6 | `06_static_var.neg.ct` |
@@ -26,7 +27,7 @@
 | E3040 | no_alloc 上下文出现 GC/String 分配 | §6.5 | `05_own_alloc.neg.ct` / `08_bare_alloc.neg.ct` |
 | E3050 | own 块 move/borrow 违规(含 use-after-move) | §6.3 | `05_own_move.neg.ct` |
 | E3060 | own 块内对 GC 值可变借用 | §6.3 | `05e_own_gc_mut.neg.ct` |
-| E3070 | 闭包可变捕获未显式 `Mutex[T]` 包装 | §4.7(v0.6 草案) | `roadmap/r3a_capture_var.neg.ct` |
+| E3070 | 闭包可变捕获未显式 `Mutex[T]` 包装 | §4.7(T27 终态) | `roadmap/r3a_capture_var.neg.ct` |
 | E4010 | 能力使用超出 manifest 声明 | §8.2 | `modules/caps` + `modules/caps_fs` |
 | E4020 | `#[pure]` 含副作用 | §8.3 | `07_pure.neg.ct` |
 | E4030 | `#[no_spawn]` 上下文 spawn | §8.3 | `08b_nospawn.neg.ct` |
@@ -38,12 +39,18 @@
 | W8050 | extern "c" 未标记 `#[trusted]`(信任边界) | §9.6(v0.6) | `compiler/test/fx_trusted_neg.ct` + `tests/ffi/no_trusted.lint.ct` |
 | W8051 | repr(c) struct 含非 C-ABI 字段 | §9.6(v0.6) | `tests/ffi/repr_unsafe_field.lint.ct` |
 | W8052 | extern 形参/返回非 C-ABI 类型 | §9.6(v0.6) | `tests/ffi/ext_nonabi_param.lint.ct` |
+| W9001 | fn 顶层语句数超限(官方 lint 样例码;第三方 W9xxx 须经清单 plugin 块 codes 声明后使用,诊断文案由插件自带) | §10.6(T52) | `tests/plugins/lint_demo/src/main.ct` |
 | W8053 | extern 返回 fn 类型(v0.6 警示;v0.7 返回向合法化,**dormant**,码位保留) | §9.6(v0.6/v0.7) | —(dormant) |
 | E5010 | trait 孤儿规则违规 | §2.5 | `modules/orphan` |
 | E5020 | 循环依赖 | §2.6 | `modules/circular` |
 | E5030 | use 导入同名 decl(曾"首个胜出"静默遮蔽,现拦截) | §2.6 | 预留:多文件 use 用例 |
+| E5054 | 依赖工件摘要不符(需求 digest ≠ 实际 self_digest;闭源分发 D8-2 L2 记录-比对,替代静默错版本) | 闭源分发 spec D8 | `compiler/test/smoke.sh` 3p 腿 |
+| E5055 | 工件摘要未验(meta 缺 self_digest 或 dep.digest 记录;fail-closed 拒载) | 闭源分发 spec D8 | `compiler/test/smoke.sh` 3p 腿 |
+| E5056 | 轨迹复放不符(黄金轨迹期望 ≠ 工件行为;闭源分发 S3 信任协议;当前载体=ctron pkg verify --deep 工具面,加载期腿预留) | 闭源分发 spec D3/§5 | `compiler/test/smoke.sh` 3u 腿 |
+| E5057 | attest 与工件不符(artifact_digest/trace_count 漂移或伪造;闭源分发 S4-② 发布公证;载体=ctron pkg verify --deep 工具面) | 闭源分发 spec §5.4 | `compiler/test/smoke.sh` 3x 腿 |
 | E6010 | comptime 预算超限 | §8.4 | `roadmap/r6f_comptime_budget.neg.ct` + `modules/comptime_budget` |
 | E6020 | comptime 副作用/不确定 | §8.4 | 预留 |
+| E5060 | 插件未声明/插件包加载失败/接口面不符(nodecl/load/iface 子码;T52 插件沙箱) | §8.3/§10.6(T52) | `tests/plugins/no_decl/src/main.ct`(nodecl) |
 | E6040 | 单态化实例预算超限(§8.5:泛型 fn 显式特化 + 泛型 struct 实例 > 上限,建议 `&Trait` 化;CTRON_MONO_BUDGET 可调,默认 8192;v0 计显式 TypeArgs 位,推断位随 §3.9.1 ex_ty 登记并入) | §8.5(v0.9) | `compiler/test/fx_mono_budget_neg.ct`(smoke emit 臂) |
 | E6030 | comptime 反射泛型运行时类型(parametricity) | §8.4 | 预留 → **封闭性承载**(2026-09-28 论证:语言无反射算子/ceval 值域仅整型/类型名不可作值,违规不可达;类型级 comptime 或反射 API 引入时须补实检,见 tests/COVERAGE.md T06 条) |
 | W8010 | struct 含可变类引用字段(拷贝浅共享) | §6.1 | `03_shallow_copy.lint.ct` |
@@ -100,6 +107,8 @@
 ## 10.6 插件扩展点(诊断相关)
 
 - lint 插件:输入类型化 HIR,输出带注册码的诊断(码段 W9xxx 预留给第三方);沙箱执行、确定性、可缓存(§8 插件原则)。
+
+> **修订注(2026-10-03,T52 v1 落库)**:lint 插件 = 普通 Ctron 包,约定入口 `ctron_lint(LintUnit) -> List[LintDiag]`;输入 = 声明级投影(fn 签名/语句计数/嵌套深度;**HIR 暴露宽度 v1 裁决 = 窄面投影,不暴露编译器内部 AST**,表达式级面列 v2 裁决)。**第三方码纪律「先进表再使用」对第三方的投影 = 码先进消费清单 plugin 块 `codes`,后使用**(codes 外码丢弃并告警);官方样例码 W9001 进诊断目录。确定性为硬锚(双跑逐字一致);诊断缓存(内容寻址)列 v2。执行点 = check 驱动 sem 全绿后,W 级不置 rc。
 - 第三方码必须落在 W9xxx;E 段为语言保留。
 
 ## 10.7 冻结清单回顾

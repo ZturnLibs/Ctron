@@ -68,6 +68,15 @@ default = "full"
 - 依赖解析:严格 semver + lockfile(内容寻址);工作区 workspace 支持。
 - 能力声明是包级**上限**:程序实际使用的能力集 ⊆ 声明集,超出 → E4010。
 
+> **落地注(2026-10-06 T49)**:依赖解析 v0 已实装——`Ctron.lock`(内容寻址:
+> `lock {}` + `pkg "名" { version/source/path|git/rev/digest }`,CTCL 规范形态,
+> `ctron-dep` 生成,二跑逐字节稳定;解析优先序 = lock 钉定 → 已安装 `pkgs/` → registry);
+> workspace(`workspace {}` 根标记 + `member "名" { path }` 键控块,四线注册);
+> `ctron publish/add/lock` 本地 registry 面(纯目录协议 `CTRON_REGPATH`/`~/.ctron/registry`,
+> 零网络;publish 单文件包 + 版本不可覆盖);解析链② = dep 表探针(§2.2 链序①目录相对
+> 之后),⑤ = `deps/<pkg>.ctart` 回落位保留待 S2a。设计:
+> docs/superpowers/plans/2026-10-06-t49-lockfile-workspace-add-publish.md
+
 ## 2.8 与测试集的对应
 
 孤儿/循环依赖的可执行反例属多文件用例,P1 起由 `tests/modules/` 承载(测试格式已定义于 `tests/README.md`)。
