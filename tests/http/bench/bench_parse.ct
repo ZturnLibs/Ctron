@@ -13,17 +13,17 @@
 use http.parse.{ http_parse_head, http_limits_default, http_rc, http_head_end, http_nheaders, http_clen, http_body_kind, http_ver, http_status_of, http_method_len, http_target_len, http_is_resp }
 use net.{ Net_probe }
 
-fn bc_fill(buf: &I64[], s: Str) -> I64 {
+fn bc_fill(buf: &U8[], s: Str) -> I64 {
     var i: I32 = 0
     while i < s.len {
-        buf[i] = byte_at(s, i).as[I64]()
+        buf[i] = byte_at(s, i)
         i += 1
     }
     return s.len.as[I64]()
 }
 
 // 语料字节 digest(与 bench_pico.c 同算法:全语料单流,h = (h*31 + b + idx) % 1000000007)
-fn bc_digest(b1: &I64[], n1: I64, b2: &I64[], n2: I64, b3: &I64[], n3: I64) -> I64 {
+fn bc_digest(b1: &U8[], n1: I64, b2: &U8[], n2: I64, b3: &U8[], n3: I64) -> I64 {
     var h: I64 = 17
     var idx: I64 = 0
     var i: I64 = 0

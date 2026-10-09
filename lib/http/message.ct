@@ -5,7 +5,7 @@
 //      故 CL 分框助手收标量槽,不收 HttpHead)。IO 粘合(经 net 门面写道)
 //      归框架波次,net_write_str 原语一行即接。名字面前缀 msg_* / chunk_*,
 //      与 parse.ct 的 http_* 在 use 合并后的单命名空间并存不撞(E5030 守卫)。
-//   ② 构造面 = Str 拼接头块(T2 已收账的 + 语义);分框面 = &I64[] 字节道
+//   ② 构造面 = Str 拼接头块(T2 已收账的 + 语义);分框面 = &U8[] 字节道
 //      零拷贝进出;无闭包、无 Drop 局部、无方法调用、无 trait —— while 体
 //      仅标量局部((f)/(g) 纪律)。
 //   ③ chunked 解码 = 可重入状态机(RFC 9112 §7.1):chunk_step 以
@@ -212,14 +212,14 @@ fn ck_hexval(c: I64) -> I64 {
 }
 
 // 行扫描(回卷契约):自 start 找 CRLF → CR 位;需更多 → -1;裸 CR → -2
-fn ck_find_crlf(src: &I64[], n: I64, start: I64) -> I64 {
+fn ck_find_crlf(src: &U8[], n: I64, start: I64) -> I64 {
     var i = start
     while i < n {
-        if src[i] == 13 {
+        if src[i].as[I64]() == 13 {
             if i + 1 >= n {
                 return -1
             }
-            if src[i + 1] == 10 {
+            if src[i + 1].as[I64]() == 10 {
                 return i
             }
             return -2
@@ -235,7 +235,7 @@ fn ck_find_crlf(src: &I64[], n: I64, start: I64) -> I64 {
 // 乘前 2^59-1 界门(防 I64 溢出 panic/回绕——FFFFFFFFFFFFFFFE 远程 DoS
 // 收口,2026-09-21 终审)+ CR 处 1e18 界门(负值防御冗余档)。
 // 回卷提交界 = 未竟行起点(③ 契约)。
-pub fn chunk_step(src: &I64[], n: I64, pos: I64, st: ChunkSt, dst: &I64[], dfill: I64, dcap: I64) -> ChunkRet {
+pub fn chunk_step(src: &U8[], n: I64, pos: I64, st: ChunkSt, dst: &U8[], dfill: I64, dcap: I64) -> ChunkRet {
     var i = pos
     var out: I64 = 0
     var phase = st.phase
@@ -250,12 +250,12 @@ pub fn chunk_step(src: &I64[], n: I64, pos: I64, st: ChunkSt, dst: &I64[], dfill
             var ext = 0
             var done = 0
             while i < n && done == 0 {
-                let c = src[i]
+                let c = src[i].as[I64]()
                 if c == 13 {
                     if i + 1 >= n {
                         return ck_ret(0, 0, lstart - pos, out, phase, remain)
                     }
-                    if src[i + 1] != 10 {
+                    if src[i + 1].as[I64]() != 10 {
                         return ck_ret(-1, 3, i - pos, out, phase, remain)
                     }
                     if digits == 0 {
@@ -338,7 +338,7 @@ pub fn chunk_step(src: &I64[], n: I64, pos: I64, st: ChunkSt, dst: &I64[], dfill
                 }
                 var j: I64 = 0
                 while j < k {
-                    dst[dfill + out + j] = src[i + j]
+                    dst[dfill + out + j] = src[i + j].as[I64]()
                     j += 1
                 }
                 out += k
@@ -360,7 +360,7 @@ pub fn chunk_step(src: &I64[], n: I64, pos: I64, st: ChunkSt, dst: &I64[], dfill
                     if i + 1 >= n {
                         return ck_ret(0, 0, lstart - pos, out, phase, remain)
                     }
-                    if src[i] != 13 || src[i + 1] != 10 {
+                    if src[i].as[I64]() != 13 || src[i + 1].as[I64]() != 10 {
                         return ck_ret(-1, 3, i - pos, out, phase, remain)
                     }
                     i += 2
@@ -397,10 +397,10 @@ pub fn chunk_step(src: &I64[], n: I64, pos: I64, st: ChunkSt, dst: &I64[], dfill
 
 // ---- inline tests(纯面自检;行为面见 tests/http/corpus) ----
 
-fn mi_fill(buf: &I64[], s: Str) -> I64 {
+fn mi_fill(buf: &U8[], s: Str) -> I64 {
     var i: I32 = 0
     while i < s.len {
-        buf[i] = byte_at(s, i).as[I64]()
+        buf[i] = byte_at(s, i)
         i += 1
     }
     return s.len.as[I64]()
@@ -432,8 +432,8 @@ test "msg builders" {
 }
 
 test "chunk decode single and multi" {
-    var src: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    var dst: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var src: U8[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var dst: U8[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     let body = "3\r\nabc\r\n0\r\n\r\n"
     let n = mi_fill(src, body)
     var st = chunk_st_new()
@@ -456,13 +456,13 @@ test "chunk decode single and multi" {
         st = ChunkSt { phase: cr_phase(r), remain: cr_remain(r), err: 0 }
     }
     assert(total == 3)
-    assert(dst[0] == 97 && dst[1] == 98 && dst[2] == 99)
+    assert(dst[0].as[I64]() == 97 && dst[1].as[I64]() == 98 && dst[2].as[I64]() == 99)
     assert(pos == 13)
 }
 
 test "chunk decode extensions trailer and sharded" {
-    var src: I64[96] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    var dst: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var src: U8[96] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var dst: U8[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     let body = "2;a=b\r\nhi\r\n3\r\nbye\r\n0\r\nX-Sum: 5\r\n\r\n"
     let n = mi_fill(src, body)
     var st = chunk_st_new()
@@ -486,13 +486,13 @@ test "chunk decode extensions trailer and sharded" {
     }
     assert(done == 1)
     assert(total == 5)
-    assert(dst[0] == 104 && dst[1] == 105 && dst[2] == 98 && dst[3] == 121 && dst[4] == 101)
+    assert(dst[0].as[I64]() == 104 && dst[1].as[I64]() == 105 && dst[2].as[I64]() == 98 && dst[3].as[I64]() == 121 && dst[4].as[I64]() == 101)
     assert(pos == n)
 }
 
 test "chunk decode bad framing rejected" {
-    var src: I64[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    var dst: I64[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var src: U8[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var dst: U8[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     // 坏 hex
     let n1 = mi_fill(src, "z\r\nabc\r\n0\r\n\r\n")
     var r = chunk_step(src, n1, 0, chunk_st_new(), dst, 0, 32)

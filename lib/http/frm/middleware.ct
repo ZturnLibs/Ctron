@@ -101,7 +101,7 @@ pub fn frm_ctx_d0(c: FrmCtx) -> I64 { return c.d0 }
 pub fn frm_ctx_d1(c: FrmCtx) -> I64 { return c.d1 }
 
 // 参数槽 → 原始切片 Str(终端 handler 侧便捷面;组合层持 buf 时常用)
-pub fn frm_ctx_param(buf: &I64[], c: FrmCtx, k: I64) -> Str {
+pub fn frm_ctx_param(buf: &U8[], c: FrmCtx, k: I64) -> Str {
     let s = frm_ctx_ps(c, k)
     let l = frm_ctx_pl(c, k)
     if l <= 0 {

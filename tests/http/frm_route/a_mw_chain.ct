@@ -16,10 +16,10 @@ use http.frm.router.{ frm_mcode_buf, frm_rc_match }
 // —— comptime 路由表(D-P6-1 消费方侧形;const 引用恒在 test 块内)——
 const ROUTES: Str = "GET /users|GET /users/:id|POST /users|DELETE /users/:id|GET /admin"
 
-fn fill(buf: &I64[], s: Str) -> I64 {
+fn fill(buf: &U8[], s: Str) -> I64 {
     var i: I32 = 0
     while i < s.len {
-        buf[i] = byte_at(s, i).as[I64]()
+        buf[i] = byte_at(s, i)
         i += 1
     }
     return s.len.as[I64]()
@@ -66,7 +66,7 @@ fn mw_pass(req: Str, h: I64, next: fn(Str, I64) -> Str) -> Str {
 }
 
 test "route id via explicit dispatch" {
-    var buf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var buf: U8[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     let n = fill(buf, "GET /users/42 HTTP/1.1\r\n\r\n")
     let head = http_parse_head(buf, n, http_limits_default())
     assert(http_rc(head) == 1)
@@ -79,7 +79,7 @@ test "route id via explicit dispatch" {
 test "chain order by handle arithmetic" {
     // 装配:outer(mid(term));h0 = 路由 id 1,term 收到 h = ((1*10+1)*10+2) = 112
     // —— 序错(内先外后)即得 211,值异即序断言
-    var buf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var buf: U8[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     let n = fill(buf, "GET /users HTTP/1.1\r\n\r\n")
     let head = http_parse_head(buf, n, http_limits_default())
     let meth = frm_mcode_buf(buf, http_method_start(head), http_method_len(head))
@@ -101,7 +101,7 @@ test "chain order by handle arithmetic" {
 
 test "short circuit skips terminal" {
     // 鉴权中间件:uid != 7 → 短路文,终端(FORBIDDEN 标记)不可达
-    var buf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var buf: U8[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     let n = fill(buf, "GET /admin HTTP/1.1\r\n\r\n")
     let head = http_parse_head(buf, n, http_limits_default())
     let req = frm_slice_str(buf, http_target_start(head), http_target_start(head) + http_target_len(head))
@@ -115,7 +115,7 @@ test "short circuit skips terminal" {
 }
 
 test "ctx carries params and data slots" {
-    var buf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var buf: U8[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     let n = fill(buf, "GET /users/42 HTTP/1.1\r\n\r\n")
     let head = http_parse_head(buf, n, http_limits_default())
     let m = frm_match(ROUTES, frm_m_get(), buf, http_target_start(head), http_target_len(head))
@@ -135,7 +135,7 @@ test "ctx carries params and data slots" {
 test "dispatch skeleton three rc faces" {
     // 派发骨架:rc 三面 → 链 / 405 / 404(终端装配最外层形状;
     // mw_outer 单层:h = id*10+1)
-    var buf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var buf: U8[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
     // 命中(GET /users/7,id 2)→ 链
     let n1 = fill(buf, "GET /users/7 HTTP/1.1\r\n\r\n")

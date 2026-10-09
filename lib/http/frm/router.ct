@@ -129,45 +129,45 @@ fn rm_mcode_str(spec: Str, a: I32, b: I32) -> I64 {
 }
 
 // 请求侧方法码(lane 切片;parse.ct method 槽直喂;全 token 比较,同上)
-pub fn frm_mcode_buf(buf: &I64[], s: I64, l: I64) -> I64 {
+pub fn frm_mcode_buf(buf: &U8[], s: I64, l: I64) -> I64 {
     if l <= 0 {
         return 0
     }
     if l == 3 {
-        if buf[s] == 71 && buf[s + 1] == 69 && buf[s + 2] == 84 {
+        if buf[s].as[I64]() == 71 && buf[s + 1].as[I64]() == 69 && buf[s + 2].as[I64]() == 84 {
             return frm_m_get()
         }
-        if buf[s] == 80 && buf[s + 1] == 85 && buf[s + 2] == 84 {
+        if buf[s].as[I64]() == 80 && buf[s + 1].as[I64]() == 85 && buf[s + 2].as[I64]() == 84 {
             return frm_m_put()
         }
         return 0
     }
     if l == 4 {
-        if buf[s] == 80 && buf[s + 1] == 79 && buf[s + 2] == 83 && buf[s + 3] == 84 {
+        if buf[s].as[I64]() == 80 && buf[s + 1].as[I64]() == 79 && buf[s + 2].as[I64]() == 83 && buf[s + 3].as[I64]() == 84 {
             return frm_m_post()
         }
-        if buf[s] == 72 && buf[s + 1] == 69 && buf[s + 2] == 65 && buf[s + 3] == 68 {
+        if buf[s].as[I64]() == 72 && buf[s + 1].as[I64]() == 69 && buf[s + 2].as[I64]() == 65 && buf[s + 3].as[I64]() == 68 {
             return frm_m_head()
         }
         return 0
     }
     if l == 5 {
-        if buf[s] == 80 && buf[s + 1] == 65 && buf[s + 2] == 84 && buf[s + 3] == 67 && buf[s + 4] == 72 {
+        if buf[s].as[I64]() == 80 && buf[s + 1].as[I64]() == 65 && buf[s + 2].as[I64]() == 84 && buf[s + 3].as[I64]() == 67 && buf[s + 4].as[I64]() == 72 {
             return frm_m_patch()
         }
-        if buf[s] == 84 && buf[s + 1] == 82 && buf[s + 2] == 65 && buf[s + 3] == 67 && buf[s + 4] == 69 {
+        if buf[s].as[I64]() == 84 && buf[s + 1].as[I64]() == 82 && buf[s + 2].as[I64]() == 65 && buf[s + 3].as[I64]() == 67 && buf[s + 4].as[I64]() == 69 {
             return frm_m_trace()
         }
         return 0
     }
     if l == 6 {
-        if buf[s] == 68 && buf[s + 1] == 69 && buf[s + 2] == 76 && buf[s + 3] == 69 && buf[s + 4] == 84 && buf[s + 5] == 69 {
+        if buf[s].as[I64]() == 68 && buf[s + 1].as[I64]() == 69 && buf[s + 2].as[I64]() == 76 && buf[s + 3].as[I64]() == 69 && buf[s + 4].as[I64]() == 84 && buf[s + 5].as[I64]() == 69 {
             return frm_m_delete()
         }
         return 0
     }
     if l == 7 {
-        if buf[s] == 79 && buf[s + 1] == 80 && buf[s + 2] == 84 && buf[s + 3] == 73 && buf[s + 4] == 79 && buf[s + 5] == 78 && buf[s + 6] == 83 {
+        if buf[s].as[I64]() == 79 && buf[s + 1].as[I64]() == 80 && buf[s + 2].as[I64]() == 84 && buf[s + 3].as[I64]() == 73 && buf[s + 4].as[I64]() == 79 && buf[s + 5].as[I64]() == 78 && buf[s + 6].as[I64]() == 83 {
             return frm_m_options()
         }
         return 0
@@ -234,7 +234,7 @@ fn rm_fail() -> RmSeg {
 
 // pattern[ps..pe) vs 路径 buf[ts..te) 逐段对走:静态段字节等长等值;
 // ':' 段捕获路径段(空段拒);段数含尾斜杠严格齐平
-fn rm_seg(spec: Str, ps: I32, pe: I32, buf: &I64[], ts: I64, te: I64) -> RmSeg {
+fn rm_seg(spec: Str, ps: I32, pe: I32, buf: &U8[], ts: I64, te: I64) -> RmSeg {
     var pi: I32 = ps
     var pj: I64 = ts
     var np: I64 = 0
@@ -255,7 +255,7 @@ fn rm_seg(spec: Str, ps: I32, pe: I32, buf: &I64[], ts: I64, te: I64) -> RmSeg {
             if pi >= pe || pj >= te {
                 return rm_fail()
             }
-            if byte_at(spec, pi) != 47 || buf[pj] != 47 {
+            if byte_at(spec, pi) != 47 || buf[pj].as[I64]() != 47 {
                 return rm_fail()
             }
             pi += 1
@@ -279,7 +279,7 @@ fn rm_seg(spec: Str, ps: I32, pe: I32, buf: &I64[], ts: I64, te: I64) -> RmSeg {
             pse += 1
         }
         var pje: I64 = pj
-        while pje < te && buf[pje] != 47 {
+        while pje < te && buf[pje].as[I64]() != 47 {
             pje += 1
         }
         if byte_at(spec, pi) == 58 {
@@ -312,7 +312,7 @@ fn rm_seg(spec: Str, ps: I32, pe: I32, buf: &I64[], ts: I64, te: I64) -> RmSeg {
             var a: I32 = pi
             var b: I64 = pj
             while a < pse {
-                if byte_at(spec, a) != buf[b] {
+                if byte_at(spec, a) != buf[b].as[I64]() {
                     return rm_fail()
                 }
                 a += 1
@@ -329,12 +329,12 @@ fn rm_seg(spec: Str, ps: I32, pe: I32, buf: &I64[], ts: I64, te: I64) -> RmSeg {
 
 // 路由匹配:spec(消费方 comptime const 表)× 方法码 × 请求目标 buf 切片
 // (parse.ct target 槽直喂;query/fragment 零拷贝缩界)。语义见头注。
-pub fn frm_match(spec: Str, meth: I64, buf: &I64[], ts: I64, tl: I64) -> FrmRoute {
+pub fn frm_match(spec: Str, meth: I64, buf: &U8[], ts: I64, tl: I64) -> FrmRoute {
     // query(63 '?')/fragment(35 '#')裁剪:缩 te 即可,零拷贝
     var te: I64 = ts + tl
     var q: I64 = ts
     while q < te {
-        let c = buf[q]
+        let c = buf[q].as[I64]()
         if c == 63 || c == 35 {
             te = q
             break
@@ -386,11 +386,11 @@ pub fn frm_match(spec: Str, meth: I64, buf: &I64[], ts: I64, tl: I64) -> FrmRout
 
 // lane 字节域 → Str(printable ASCII 门,client.ct cx_slice_str 同款已证形;
 // 123 '{' 词法域拒;越域 → "")
-pub fn frm_slice_str(src: &I64[], a: I64, b: I64) -> Str {
+pub fn frm_slice_str(src: &U8[], a: I64, b: I64) -> Str {
     var out = ""
     var i = a
     while i < b {
-        let c = src[i]
+        let c = src[i].as[I64]()
         if c < 32 || c > 126 || c == 123 {
             return ""
         }
@@ -405,7 +405,7 @@ pub fn frm_slice_str(src: &I64[], a: I64, b: I64) -> Str {
 }
 
 // 第 k 参数原始切片(未解码;k 越界/无捕获 → "";offsets 绝对指向 buf)
-pub fn frm_param(buf: &I64[], m: FrmRoute, k: I64) -> Str {
+pub fn frm_param(buf: &U8[], m: FrmRoute, k: I64) -> Str {
     let s = fr_ps(m, k)
     let l = fr_pl(m, k)
     if l <= 0 {
@@ -416,7 +416,7 @@ pub fn frm_param(buf: &I64[], m: FrmRoute, k: I64) -> Str {
 
 // 第 k 参数 percent 解码(经 std/enc;非法 → bad 哨兵 —— Option 中间值
 // 不落 let 绑定,emit 缺口绕行见头注)
-pub fn frm_param_dec(buf: &I64[], m: FrmRoute, k: I64, bad: Str) -> Str {
+pub fn frm_param_dec(buf: &U8[], m: FrmRoute, k: I64, bad: Str) -> Str {
     let raw = frm_param(buf, m, k)
     if raw == "" {
         return bad
@@ -425,7 +425,7 @@ pub fn frm_param_dec(buf: &I64[], m: FrmRoute, k: I64, bad: Str) -> Str {
 }
 
 // 第 k 参数 percent 解码可解判(1 = 可解 / 0 = 不可解;谓词出口)
-pub fn frm_param_dec_ok(buf: &I64[], m: FrmRoute, k: I64) -> I64 {
+pub fn frm_param_dec_ok(buf: &U8[], m: FrmRoute, k: I64) -> I64 {
     let raw = frm_param(buf, m, k)
     if raw == "" {
         return 0
@@ -450,7 +450,7 @@ pub fn fi_v(x: FrmI64) -> I64 { return x.v }
 // 精确命中亦裁 —— acc == 922337203685477580 且位 > 7 时 acc*10+d 越域
 // 即双臂确定性 panic(如 9223372036854775808;仅查 > 的窗在请求路径可达,
 // P4 先例 = 可达实例就地修)
-pub fn frm_param_i64(buf: &I64[], m: FrmRoute, k: I64) -> FrmI64 {
+pub fn frm_param_i64(buf: &U8[], m: FrmRoute, k: I64) -> FrmI64 {
     let s = fr_ps(m, k)
     let l = fr_pl(m, k)
     if l <= 0 {
@@ -459,7 +459,7 @@ pub fn frm_param_i64(buf: &I64[], m: FrmRoute, k: I64) -> FrmI64 {
     var acc: I64 = 0
     var i: I64 = 0
     while i < l {
-        let c = buf[s + i]
+        let c = buf[s + i].as[I64]()
         if c < 48 || c > 57 {
             return FrmI64 { rc: 0, v: 0 }
         }
@@ -477,10 +477,10 @@ pub fn frm_param_i64(buf: &I64[], m: FrmRoute, k: I64) -> FrmI64 {
 
 // ---- inline tests(纯面自检;行为语料见 tests/http/frm_route) ----
 
-fn frm_rt_fill(buf: &I64[], s: Str) -> I64 {
+fn frm_rt_fill(buf: &U8[], s: Str) -> I64 {
     var i: I32 = 0
     while i < s.len {
-        buf[i] = byte_at(s, i).as[I64]()
+        buf[i] = byte_at(s, i)
         i += 1
     }
     return s.len.as[I64]()
@@ -488,7 +488,7 @@ fn frm_rt_fill(buf: &I64[], s: Str) -> I64 {
 
 test "match static param 404 405" {
     let spec = "GET /users|GET /users/new|GET /users/:id|POST /users|HEAD /health"
-    var buf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var buf: U8[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     let n = frm_rt_fill(buf, "/users")
     let m1 = frm_match(spec, frm_m_get(), buf, 0, n)
     assert(fr_rc(m1) == 1 && fr_id(m1) == 1 && fr_np(m1) == 0)
@@ -516,7 +516,7 @@ test "match static param 404 405" {
 
 test "params typed decode" {
     let spec = "GET /u/:id|GET /n/:name|GET /deep/:a/:b/:c/:d/:e"
-    var buf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var buf: U8[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     let n1 = frm_rt_fill(buf, "/u/007")
     let m1 = frm_match(spec, frm_m_get(), buf, 0, n1)
     let v1 = frm_param_i64(buf, m1, 0)
