@@ -10,7 +10,7 @@ name: pages
 on:
   push:
     branches: [main]
-    paths: ['website/**', 'docs/spec/**', 'lib/std/**', 'tools/sync_site_spec.sh', 'tools/std_doc.py']
+    paths: ['website/**', 'docs/spec/**', 'lib/**', 'pkgs/**', 'tools/sync_site_spec.sh', 'tools/std_doc.py']
   workflow_dispatch:
 permissions: {contents: read, pages: write, id-token: write}
 concurrency: {group: pages, cancel-in-progress: false}

@@ -72,6 +72,52 @@ nav:
       - time: std/time.md
       - unicode: std/unicode.md
       - uuid: std/uuid.md
+  - Domain Packages:
+      - net:
+          - Overview: net/README.md
+          - net: net/net.md
+      - http:
+          - Overview: http/README.md
+          - client: http/client.md
+          - date: http/date.md
+          - enc: http/enc.md
+          - form: http/form.md
+          - message: http/message.md
+          - parse: http/parse.md
+          - sse: http/sse.md
+          - ws: http/ws.md
+          - frm_auth: http/frm_auth.md
+          - frm_body: http/frm_body.md
+          - frm_connect: http/frm_connect.md
+          - frm_cors: http/frm_cors.md
+          - frm_csrf: http/frm_csrf.md
+          - frm_html: http/frm_html.md
+          - frm_limit: http/frm_limit.md
+          - frm_metrics: http/frm_metrics.md
+          - frm_middleware: http/frm_middleware.md
+          - frm_openapi: http/frm_openapi.md
+          - frm_otlp: http/frm_otlp.md
+          - frm_router: http/frm_router.md
+          - frm_sechdr: http/frm_sechdr.md
+          - frm_serve: http/frm_serve.md
+          - frm_static: http/frm_static.md
+          - frm_timeout: http/frm_timeout.md
+          - frm_trace: http/frm_trace.md
+      - tls:
+          - Overview: tls/README.md
+          - tls: tls/tls.md
+      - db:
+          - Overview: db/README.md
+          - db: db/db.md
+          - pg: db/pg.md
+          - pool: db/pool.md
+          - redis: db/redis.md
+          - rowmap: db/rowmap.md
+      - ffi:
+          - Overview: ffi/README.md
+          - ffi: ffi/ffi.md
+      - rt:
+          - Overview: rt/README.md
   - Examples: examples.md
   - Server: server-guide.md
   - Download: download.md
