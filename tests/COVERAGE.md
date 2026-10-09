@@ -1,3 +1,21 @@
+> **http U8 平面化批已落地(2026-10-09,批1 c02257f2/批2 3e8b5bf9+3b95b1d9/批3 c93ec0e4;aa6fad0d 点名遗留清账)。**
+> parse/message/router/middleware/client/sse/ws/serve/connect/trace 字节道 &I64[]→
+> &U8[](约 60 处形参)+corpus 16/frm_route/fuzz/bench_parse/五 e2e 夹具同批;
+> enc/binddeflate 零耦合出局(自有 C 垫片不动);otlp/trace 值数组与自洽 pb 面不动。
+> **发射/sem 新分歧四枚(本批钉边)**:①发射器 U8 操作数跑 [0,255] 域 checked 算术
+> (ctron_w_add 系,seed=I64 域无检查)→ 纪律=U8 槽读进算术必 .as[I64]() 宽化
+> (122+ 处;u8_sign 探针 200+256 崩/宽化 456);②sem 切片检查元素盲(&U8[] 喂
+> &I64[] 形参 seed-check 过、emit 按元素型读垃圾——a_mw_chain 静默错读实证);
+> ③三套 sem 三种宽严(bootstrap 放行/C 宿主 ctron-chk 拦 mut/发射不检)→ 跨外签
+> 字节道形参必须 var U8[](可变 view),&U8[] 只读 ref:slice 不过 chk;④值数组
+> 豁免铁律三犯实证(fuzz meta 偏移/ehs·ehc·ehw 直方图计数器——盲转 U8 即
+> 50000 迭代 w_add 溢出崩;todo_api cnt 指标保 I64)。附带:run.sh client/serve
+> inline emit 段补 net 垫片链接(keep_drain 使 close 外签入可达集暴露缺链)。
+> 门:http 伞门 116/0 全绿(迁移前 106/10)+connect 3/0 首绿+corpus/frm_route/
+> fuzz 120/0 rc=0(差分与 HEAD 逐字)+todo_api e2e 22/0(hashmap W2 运行时验收
+> 兑现)+smoke 236/0。分支事故记一笔:批1 曾落对端 w25b-wip(共享树被切),
+> cherry-pick 归位 main(c02257f2)。
+>
 > **W2.5b StepA 已落地(2026-10-09,ev 声明 + 实例 on: 槽全链容忍;规格 §5.2 地基)。**
 > 签名行 `view N (props) ev 名(载荷), 名2() opt`——编译 gui_block 捕获 ev 子句入 d[5] 尾随
 > \x02EV\x02 分节(props 三解析器经 gui_props_pc 剥除;gui_props_evseg 提取备 StepB/C 合成),

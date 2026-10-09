@@ -128,7 +128,7 @@ Hash trait（W3 触发件）。
 | 波次 | 内容 | 验收 |
 |---|---|---|
 | W1（本 spec） | 探针 P1/P2 + `std/hashmap.ct` + 宪章 3a + 全部门禁 | §7 清单 |
-| W2（已落地 60ffdc6b + a453f30a，2026-10-09） | http client keep-alive 多槽（HttpKeep 自持 KeepMap 引擎）+ todo_api hmi 双 Map 换装；**web headers 裁决不做**（HTTP 头有序可重名，`List[Pair]` 语义正确） | c0_pure 双臂绿；bru 递进断言逐字保持；todo_api e2e 候 U8 迁移批补跑（存量红，HEAD worktree 同死实证） |
+| W2（已落地 60ffdc6b + a453f30a，2026-10-09） | http client keep-alive 多槽（HttpKeep 自持 KeepMap 引擎）+ todo_api hmi 双 Map 换装；**web headers 裁决不做**（HTTP 头有序可重名，`List[Pair]` 语义正确） | c0_pure 双臂绿；bru 递进断言逐字保持；**todo_api e2e 22/0 已兑现**（U8 迁移批 c93ec0e4 后复跑） |
 | W3（触发件） | Hash trait + 发射面 trait 方法调用 → 二代 `K: Hash + Eq` bound 面 + SipHash | COVERAGE 记账 |
 | 触发件 | deque / 位集 / BTreeMap；http 缓存换装 `Box[HMapS[I64]]`（候 trans 线补结构体 Box 字段跨模块 typedef 闭包 + typedef 依赖序） | 各自消费面/前置出现时 |
 
