@@ -11,7 +11,7 @@
 //   HttpResp 直返(client_request 透传,消费方经 rr_* getter 读)。
 // use 面(P1b):http.client 显式请求。
 
-use http.client.{ http_net, client_request, HttpResp, rr_rc, rr_status }
+use http.client.{ http_net, client_request, HttpResp, HttpKeep, rr_rc, rr_status }
 
 // 请求路径:/<service>/<method>
 pub fn connect_path(service: Str, method: Str) -> Str {
@@ -24,12 +24,12 @@ pub fn connect_headers() -> Str {
 }
 
 // unary 调用:返回 HttpResp(透传 client_request;消费方 rr_status/rr_body_*
-// 读取,体 = 响应 protobuf 原文)。bfd/bhh/bpt/bru = client 连接状态四盒
+// 读取,体 = 响应 protobuf 原文)。kp = client keep-alive 多槽缓存态(HttpKeep)
 // (透传,复用与重连语义随 http.client)。
-pub fn connect_unary(net: HttpNet, host: Str, port: I64, service: Str, method: Str, req: &I64[], rlen: I64, resp: &I64[], rcap: I64, scr: &I64[], timeout_ms: I64, bfd: Box[Box64], bhh: Box[Box64], bpt: Box[Box64], bru: Box[Box64]) -> HttpResp {
+pub fn connect_unary(net: HttpNet, host: Str, port: I64, service: Str, method: Str, req: &I64[], rlen: I64, resp: &I64[], rcap: I64, scr: &I64[], timeout_ms: I64, kp: HttpKeep) -> HttpResp {
     let path = connect_path(service, method)
     let extra = connect_headers()
-    return client_request(net, "POST", host, port, path, extra, req, rlen, resp, rcap, scr, timeout_ms, bfd, bhh, bpt, bru)
+    return client_request(net, "POST", host, port, path, extra, req, rlen, resp, rcap, scr, timeout_ms, kp)
 }
 
 // 状态分类:0 = 传输 IO 错;1 = HTTP 200(应用成功,proto 体);2 = 非 200

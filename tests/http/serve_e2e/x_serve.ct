@@ -168,47 +168,44 @@ test "sv canonical loop e2e GET POST static mw 404 405 shutdown" {
         var buf: I64[8192] = [0, 0, 0, 0]
         var scr: I64[2048] = [0, 0]
         var eb: I64[64] = [0, 0, 0, 0]
-        let bfd = Box[Box64](Box64 { v: 0 - 1 })
-        let bhh = Box[Box64](Box64 { v: 0 })
-        let bpt = Box[Box64](Box64 { v: 0 })
-        let bru = Box[Box64](Box64 { v: 0 })
+        var kp = http_keep_new()
 
-        // GET 命中(各腿前置 bfd.v=-1:服务器 Connection: close 串行口径下
-        // client_request 的复用尝试恒为陈旧发送+重试,纯增时窗;e2e 不消费
-        // keep-alive 语义,复用面由 x_client_e2e 自覆盖)
-        bfd.v = 0 - 1
-        var r1 = client_request(net, "GET", "127.0.0.1", port, "/hi", "", eb, 0, buf, 8192, scr, 5000, bfd, bhh, bpt, bru)
+        // GET 命中(各腿前置 drain:服务器 Connection: close 串行口径下清陈旧
+        // 连接,复用尝试恒新连;e2e 不消费 keep-alive 语义,复用面由
+        // x_client_e2e 自覆盖)
+        http_keep_drain(kp)
+        var r1 = client_request(net, "GET", "127.0.0.1", port, "/hi", "", eb, 0, buf, 8192, scr, 5000, kp)
         assert(rr_rc(r1) == 0 && rr_status(r1) == 200)
         assert(fx_eq_bytes(buf, rr_body_off(r1), "hi from sv_serve") == 1)
         // GET miss → 404(frm_rc_miss 面)
-        bfd.v = 0 - 1
-        var r2 = client_request(net, "GET", "127.0.0.1", port, "/nope", "", eb, 0, buf, 8192, scr, 5000, bfd, bhh, bpt, bru)
+        http_keep_drain(kp)
+        var r2 = client_request(net, "GET", "127.0.0.1", port, "/nope", "", eb, 0, buf, 8192, scr, 5000, kp)
         assert(rr_rc(r2) == 0 && rr_status(r2) == 404)
         // 方法不齐 → 405(frm_rc_method 面)
-        bfd.v = 0 - 1
-        var r3 = client_request(net, "POST", "127.0.0.1", port, "/hi", "", eb, 0, buf, 8192, scr, 5000, bfd, bhh, bpt, bru)
+        http_keep_drain(kp)
+        var r3 = client_request(net, "POST", "127.0.0.1", port, "/hi", "", eb, 0, buf, 8192, scr, 5000, kp)
         assert(rr_rc(r3) == 0 && rr_status(r3) == 405)
         // POST CL 体回声(体跨读环经 sv_read_body_cl)
         let bn = fx_fill(eb, "hello sv")
-        bfd.v = 0 - 1
-        var r4 = client_request(net, "POST", "127.0.0.1", port, "/echo", "", eb, bn, buf, 8192, scr, 5000, bfd, bhh, bpt, bru)
+        http_keep_drain(kp)
+        var r4 = client_request(net, "POST", "127.0.0.1", port, "/echo", "", eb, bn, buf, 8192, scr, 5000, kp)
         assert(rr_rc(r4) == 0 && rr_status(r4) == 200)
         assert(fx_eq_bytes(buf, rr_body_off(r4), "echo:hello sv") == 1)
         // 静态真盘:200 + text/html + 体;ETag/CL 头在
-        bfd.v = 0 - 1
-        var r5 = client_request(net, "GET", "127.0.0.1", port, "/file", "", eb, 0, buf, 8192, scr, 5000, bfd, bhh, bpt, bru)
+        http_keep_drain(kp)
+        var r5 = client_request(net, "GET", "127.0.0.1", port, "/file", "", eb, 0, buf, 8192, scr, 5000, kp)
         assert(rr_rc(r5) == 0 && rr_status(r5) == 200)
         assert(fx_eq_bytes(buf, rr_body_off(r5), "<h1>st-sv</h1>") == 1)
         assert(fx_has(buf, 0, rr_body_off(r5), "Content-Type: text/html") == 1)
         assert(fx_has(buf, 0, rr_body_off(r5), "ETag: ") == 1)
         // 中间件链序:a 外 b 内(嵌套装配序即执行序)
-        bfd.v = 0 - 1
-        var r6 = client_request(net, "GET", "127.0.0.1", port, "/chain", "", eb, 0, buf, 8192, scr, 5000, bfd, bhh, bpt, bru)
+        http_keep_drain(kp)
+        var r6 = client_request(net, "GET", "127.0.0.1", port, "/chain", "", eb, 0, buf, 8192, scr, 5000, kp)
         assert(rr_rc(r6) == 0 && rr_status(r6) == 200)
         assert(fx_eq_bytes(buf, rr_body_off(r6), "core12") == 1)
         // shutdown 端点(loop 直拦)→ 200 draining;join 返 2
-        bfd.v = 0 - 1
-        var r7 = client_request(net, "POST", "127.0.0.1", port, "/__shutdown", "", eb, 0, buf, 8192, scr, 5000, bfd, bhh, bpt, bru)
+        http_keep_drain(kp)
+        var r7 = client_request(net, "POST", "127.0.0.1", port, "/__shutdown", "", eb, 0, buf, 8192, scr, 5000, kp)
         assert(rr_rc(r7) == 0 && rr_status(r7) == 200)
         assert(fx_eq_bytes(buf, rr_body_off(r7), "draining") == 1)
 

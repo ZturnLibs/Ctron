@@ -20,13 +20,21 @@
 //      (301/302/303 → GET 且弃体;307/308 保方法保体;上限 5 跳;Location
 //      支持 绝对路径 与 http://host[:port]/path 全 URL 两形)→ 101 直通
 //      (WS upgrade:连接经缓存槽交予调用方,键位失效防误用)。
-//   ④ keep-alive 缓存(④ 面登记:发射面 struct 值语义 + 跨模块可变状态
-//      通道受限 —— TupleE 出口径、Box 字段 StructLit 出口径(本波探针实证),
-//      唯 Box[Box64] 标量胞 = 已证好形)⇒ 缓存态 = 调用方持有四枚标量胞
-//      (bfd 连接 / bhh 主机哈希 / bpt 端口 / bru 复用计数),单槽 v1,键 =
-//      hash(host)+port;复用失败(对端已关)重连一次 = 重试一次语义(仅
-//      复用面失败重试:发送失败或零字节读败;已有部分响应字节不重发)。
-//      复用计数 bru 在【成功走复用连接】时自增(测试可见)。
+//   ④ keep-alive 缓存 = 调用方持 HttpKeep(cache = Box[KeepMap],键 =
+//      "host:port",容量 8 FIFO 逐出;bru = 复用计数胞,成功走复用连接时
+//      自增,测试可见)。多槽化后跨 host 不再关旧连。101 直通经 resp.fd
+//      交付(键位出缓存防误复用)。复用失败(对端已关)重连一次 = 重试一次
+//      语义(仅复用面失败重试:发送失败或零字节读败;已有部分响应字节
+//      不重发)。
+//      引擎同模块自持(KeepMap/KeepCell)双因:①发射器结构体 Box 字段
+//      【跨模块】类型闭包缺失(t_HMapS/t_Box64 typedef 不随 t_HttpKeep 发出,
+//      同模块免疫已探针钉边,2026-10-09)——退役条件 = trans 线补跨模块
+//      收集,届时 cache 换 Box[HMapS[I64]] + std/hashmap hmsi_* 具体面;
+//      ②use 图 E5020 互斥树毒图:client.ct 一旦 use std.hashmap,消费方
+//      直用同模块即 E5020——自持面连根规避,消费方零新 use。附带登记:
+//      裸 V 返回非泛型宿主值位 E2010 家族 + V 不参与实参位推断(E2060,
+//      发射臂同码绿,seed/emit 宽严反向第三例)——泛型容器公共 API 的
+//      消费面形状约束,详见 std/hashmap W2 批 COVERAGE。
 //   ⑤ 上限 = parse.ct HttpLimits 缺省档(响应体 1 MiB 强制界,head 之上
 //      cap 参数为硬界);超时 = net_read_t 读截止,每次读同参(v1 无整请求
 //      deadline,登记)。
@@ -44,6 +52,250 @@ pub struct HttpNet {
 
 pub fn http_net() -> HttpNet {
     return HttpNet {}
+}
+
+pub struct KeepMap {
+    var slots: List[I32]
+    var keys: List[Str]
+    var vals: List[I64]
+}
+
+pub struct KeepCell {
+    var v: I64
+}
+
+// keep-alive 多槽缓存态(调用方持有;T2 显式状态门面豁免面,宪章 8 有界)。
+// cache = "host:port" → 连接 fd(容量 8,FIFO 逐出);bru = 复用计数。
+pub struct HttpKeep {
+    var cache: Box[KeepMap]
+    var bru: Box[KeepCell]
+}
+
+// ── 缓存引擎(同模块具体面;开放寻址+线性探查+负载 3/4 倍增;插入序;
+//    形状纪律同 std/hashmap:泛型元素读走形参 List 助手,Box 具体型直写。
+//    KeepMap/KeepCell 须 pub 且【声明序先于 HttpKeep】:发射器 typedef 按
+//    声明序出、不做依赖序(非 pub 不入消费单元闭包;序错即 t_KeepMap 悬空,
+//    2026-10-09 c0_pure 两犯实证)——类型面 pub,引擎 fn 保持非 pub。──
+fn keep_idx(s: Str) -> I32 {
+    var h: I32 = 5381
+    var i: I32 = 0
+    while i < s.len {
+        h = (h * 33 + byte_at(s, i)) % 100003
+        i += 1
+    }
+    return h
+}
+
+fn keep_slot_of(h: I32, cap: I32) -> I32 {
+    var m = (h % cap + cap) % cap
+    return m
+}
+
+fn keep_at_str(xs: List[Str], i: I32, dft: Str) -> Str {
+    if i < 0 {
+        return dft
+    }
+    if i >= xs.len {
+        return dft
+    }
+    return xs[i]
+}
+
+fn keep_at_i64(xs: List[I64], i: I32, dft: I64) -> I64 {
+    if i < 0 {
+        return dft
+    }
+    if i >= xs.len {
+        return dft
+    }
+    return xs[i]
+}
+
+fn keep_copy_str(xs: List[Str], hit: I32) -> List[Str] {
+    var out = List[Str]()
+    var i: I32 = 0
+    while i < xs.len {
+        if i != hit {
+            out.push(xs[i])
+        }
+        i += 1
+    }
+    return out
+}
+
+fn keep_copy_i64(xs: List[I64], hit: I32) -> List[I64] {
+    var out = List[I64]()
+    var i: I32 = 0
+    while i < xs.len {
+        if i != hit {
+            out.push(xs[i])
+        }
+        i += 1
+    }
+    return out
+}
+
+fn keep_new_map() -> Box[KeepMap] {
+    var s = List[I32]()
+    var i: I32 = 0
+    while i < 16 {
+        s.push(-1)
+        i += 1
+    }
+    return Box[KeepMap](KeepMap { slots: s, keys: List[Str](), vals: List[I64]() })
+}
+
+fn keep_find(m: Box[KeepMap], k: Str) -> I32 {
+    var cap = m.slots.len
+    var idx = keep_slot_of(keep_idx(k), cap)
+    var n: I32 = 0
+    while n < cap {
+        var s = m.slots[idx]
+        if s < 0 {
+            return -1
+        }
+        if keep_at_str(m.keys, s, k) == k {
+            return s
+        }
+        idx += 1
+        if idx == cap {
+            idx = 0
+        }
+        n += 1
+    }
+    return -1
+}
+
+fn keep_grow(m: Box[KeepMap]) {
+    var ncap = m.slots.len * 2
+    var ns = List[I32]()
+    var i: I32 = 0
+    while i < ncap {
+        ns.push(-1)
+        i += 1
+    }
+    var j: I32 = 0
+    while j < m.keys.len {
+        var idx = keep_slot_of(keep_idx(keep_at_str(m.keys, j, "")), ncap)
+        while ns[idx] >= 0 {
+            idx += 1
+            if idx == ncap {
+                idx = 0
+            }
+        }
+        ns[idx] = j
+        j += 1
+    }
+    m.slots = ns
+}
+
+fn keep_put(m: Box[KeepMap], k: Str, v: I64) {
+    var hit = keep_find(m, k)
+    if hit >= 0 {
+        var nv = List[I64]()
+        var j: I32 = 0
+        while j < m.vals.len {
+            if j == hit {
+                nv.push(v)
+            } else {
+                nv.push(keep_at_i64(m.vals, j, v))
+            }
+            j += 1
+        }
+        m.vals = nv
+        return
+    }
+    if m.keys.len * 4 > m.slots.len * 3 {
+        keep_grow(m)
+    }
+    var cap = m.slots.len
+    var idx = keep_slot_of(keep_idx(k), cap)
+    var n: I32 = 0
+    while n < cap {
+        if m.slots[idx] < 0 {
+            m.slots[idx] = m.keys.len
+            m.keys.push(k)
+            m.vals.push(v)
+            return
+        }
+        idx += 1
+        if idx == cap {
+            idx = 0
+        }
+        n += 1
+    }
+}
+
+fn keep_has(m: Box[KeepMap], k: Str) -> Bool {
+    if keep_find(m, k) < 0 {
+        return false
+    }
+    return true
+}
+
+fn keep_get(m: Box[KeepMap], k: Str, dft: I64) -> I64 {
+    var s = keep_find(m, k)
+    if s < 0 {
+        return dft
+    }
+    return keep_at_i64(m.vals, s, dft)
+}
+
+fn keep_del(m: Box[KeepMap], k: Str) {
+    var hit = keep_find(m, k)
+    if hit < 0 {
+        return
+    }
+    var nk = keep_copy_str(m.keys, hit)
+    var nv = keep_copy_i64(m.vals, hit)
+    var cap = m.slots.len
+    var ns = List[I32]()
+    var i: I32 = 0
+    while i < cap {
+        ns.push(-1)
+        i += 1
+    }
+    var j: I32 = 0
+    while j < nk.len {
+        var idx = keep_slot_of(keep_idx(keep_at_str(nk, j, "")), cap)
+        while ns[idx] >= 0 {
+            idx += 1
+            if idx == cap {
+                idx = 0
+            }
+        }
+        ns[idx] = j
+        j += 1
+    }
+    m.keys = nk
+    m.vals = nv
+    m.slots = ns
+}
+
+fn keep_len(m: Box[KeepMap]) -> I32 {
+    return m.keys.len
+}
+
+fn keep_keys(m: Box[KeepMap]) -> List[Str] {
+    return keep_copy_str(m.keys, -1)
+}
+
+pub fn http_keep_new() -> HttpKeep {
+    return HttpKeep { cache: keep_new_map(), bru: Box[KeepCell](KeepCell { v: 0 }) }
+}
+
+// 关闭并清空缓存全部连接(调用方收尾卫生;bru 计数不动)
+pub fn http_keep_drain(kp: HttpKeep) {
+    var ks = keep_keys(kp.cache)
+    var i: I32 = 0
+    while i < ks.len {
+        var fd = keep_get(kp.cache, ks[i], -1)
+        if fd >= 0 {
+            ctron_net_close(fd)
+        }
+        keep_del(kp.cache, ks[i])
+        i += 1
+    }
 }
 
 pub fn client_listen(host: Str, port: I64, out_fd: Box[Box64]) -> I64 {
@@ -402,6 +654,7 @@ pub struct HttpResp {
     var head_end: I64
     var body_off: I64
     var body_len: I64
+    var fd: I64
 }
 
 pub fn rr_rc(r: HttpResp) -> I64 { return r.rc }
@@ -414,13 +667,16 @@ pub fn rr_reuses(r: HttpResp) -> I64 { return r.reuses }
 pub fn rr_head_end(r: HttpResp) -> I64 { return r.head_end }
 pub fn rr_body_off(r: HttpResp) -> I64 { return r.body_off }
 pub fn rr_body_len(r: HttpResp) -> I64 { return r.body_len }
+pub fn rr_fd(r: HttpResp) -> I64 { return r.fd }
 
-// 请求执行(重定向跟随 + 单槽 keep-alive 缓存 + 复用失败重试一次)。
+// 请求执行(重定向跟随 + 多槽 keep-alive 缓存 + 复用失败重试一次)。
 // err 码:1 连接败 / 2 发送败 / 3 接收败(干净)/ 4 接收败(有字节或帧坏)/
 // 5 解析 / 6 Location 坏 / 7 重定向超限。重试一次仅限【复用连接】上的发送
 // 败或零字节读败(对端已关语义);有部分响应字节绝不重发。
-pub fn client_request(io: HttpNet, method: Str, host: Str, port: I64, path: Str, extra: Str, body: &I64[], blen: I64, buf: &I64[], cap: I64, scr: &I64[], timeout_ms: I64, bfd: Box[Box64], bhh: Box[Box64], bpt: Box[Box64], bru: Box[Box64]) -> HttpResp {
-    var resp = HttpResp { rc: -1, err: 0, status: -1, ver: -1, keep: 0, nredir: 0, reuses: 0, head_end: 0, body_off: 0, body_len: 0 }
+pub fn client_request(io: HttpNet, method: Str, host: Str, port: I64, path: Str, extra: Str, body: &I64[], blen: I64, buf: &I64[], cap: I64, scr: &I64[], timeout_ms: I64, kp: HttpKeep) -> HttpResp {
+    var resp = HttpResp { rc: -1, err: 0, status: -1, ver: -1, keep: 0, nredir: 0, reuses: 0, head_end: 0, body_off: 0, body_len: 0, fd: -1 }
+    var cache = kp.cache
+    var bru = kp.bru
     var cur_method = method
     var cur_host = host
     var cur_port = port
@@ -432,24 +688,27 @@ pub fn client_request(io: HttpNet, method: Str, host: Str, port: I64, path: Str,
         guard += 1
         var fd: I64 = -1
         var reused: I64 = 0
-        // ── 取连接:缓存命中(键符)复用,否则新连 ──
-        if bfd.v >= 0 && bhh.v == client_hash_host(cur_host) && bpt.v == cur_port {
-            fd = bfd.v
+        // ── 取连接:缓存命中("host:port" 键)复用,否则新连(容量 8 FIFO 逐出)──
+        let ckey = cur_host + ":" + cur_port.to_string()
+        if keep_has(cache, ckey) {
+            fd = keep_get(cache, ckey, -1)
             reused = 1
         } else {
-            if bfd.v >= 0 {
-                ctron_net_close(bfd.v)
-                bfd.v = -1
+            if keep_len(cache) >= 8 {
+                var ks = keep_keys(cache)
+                var ofd = keep_get(cache, ks[0], -1)
+                if ofd >= 0 {
+                    ctron_net_close(ofd)
+                }
+                keep_del(cache, ks[0])
             }
             let cb = Box[Box64](Box64 { v: -1 })
             if ctron_net_tcp_connect(cur_host, cur_port, cb) != 0 {
-                resp = HttpResp { rc: -1, err: 1, status: -1, ver: -1, keep: 0, nredir: resp.nredir, reuses: bru.v, head_end: 0, body_off: 0, body_len: 0 }
+                resp = HttpResp { rc: -1, err: 1, status: -1, ver: -1, keep: 0, nredir: resp.nredir, reuses: bru.v, head_end: 0, body_off: 0, body_len: 0, fd: -1 }
                 done = 1
             } else {
                 fd = cb.v
-                bfd.v = fd
-                bhh.v = client_hash_host(cur_host)
-                bpt.v = cur_port
+                keep_put(cache, ckey, fd)
             }
         }
         if done == 1 {
@@ -463,11 +722,11 @@ pub fn client_request(io: HttpNet, method: Str, host: Str, port: I64, path: Str,
         }
         if w < 0 {
             ctron_net_close(fd)
-            bfd.v = -1
+            keep_del(cache, ckey)
             if reused == 1 {
                 continue
             }
-            resp = HttpResp { rc: -1, err: 2, status: -1, ver: -1, keep: 0, nredir: resp.nredir, reuses: bru.v, head_end: 0, body_off: 0, body_len: 0 }
+            resp = HttpResp { rc: -1, err: 2, status: -1, ver: -1, keep: 0, nredir: resp.nredir, reuses: bru.v, head_end: 0, body_off: 0, body_len: 0, fd: -1 }
             done = 1
             break
         }
@@ -475,14 +734,14 @@ pub fn client_request(io: HttpNet, method: Str, host: Str, port: I64, path: Str,
         let crd = cx_read_resp(fd, buf, cap, scr, scr.len.as[I64](), timeout_ms)
         if crd.rc != 0 {
             ctron_net_close(fd)
-            bfd.v = -1
+            keep_del(cache, ckey)
             if reused == 1 && crd.rc == -2 {
                 continue
             }
             if crd.rc == -2 {
-                resp = HttpResp { rc: -1, err: 3, status: -1, ver: -1, keep: 0, nredir: resp.nredir, reuses: bru.v, head_end: 0, body_off: 0, body_len: 0 }
+                resp = HttpResp { rc: -1, err: 3, status: -1, ver: -1, keep: 0, nredir: resp.nredir, reuses: bru.v, head_end: 0, body_off: 0, body_len: 0, fd: -1 }
             } else {
-                resp = HttpResp { rc: -1, err: 4, status: -1, ver: -1, keep: 0, nredir: resp.nredir, reuses: bru.v, head_end: 0, body_off: 0, body_len: 0 }
+                resp = HttpResp { rc: -1, err: 4, status: -1, ver: -1, keep: 0, nredir: resp.nredir, reuses: bru.v, head_end: 0, body_off: 0, body_len: 0, fd: -1 }
             }
             done = 1
             break
@@ -503,10 +762,10 @@ pub fn client_request(io: HttpNet, method: Str, host: Str, port: I64, path: Str,
             keep = 0
         }
         if resp.status == 101 {
-            // WS upgrade:连接留在缓存槽,键位失效(防后续误复用);
-            // 调用方经 bfd.v 取用,完成后显式 close + bfd.v = -1
-            bhh.v = -1
-            bpt.v = -1
+            // WS upgrade:连接键位出缓存(防后续误复用),fd 经 resp.fd 交付
+            // 调用方(rr_fd);完成后调用方显式 close
+            keep_del(cache, ckey)
+            resp.fd = fd
             done = 1
             break
         }
@@ -517,7 +776,7 @@ pub fn client_request(io: HttpNet, method: Str, host: Str, port: I64, path: Str,
             resp.keep = 1
         } else {
             ctron_net_close(fd)
-            bfd.v = -1
+            keep_del(cache, ckey)
         }
         // ── 重定向跟随(301/302/303 → GET 弃体;307/308 保方法保体;≤5 跳)──
         var isredir = 0
@@ -583,6 +842,20 @@ test "client loc resolve" {
     assert(loc_ok(f) == 0)
     let g = client_loc_resolve("http://h:port/x", "127.0.0.1", 8080)
     assert(loc_ok(g) == 0)
+}
+
+test "http keep new empty" {
+    var kp = http_keep_new()
+    assert(keep_len(kp.cache) == 0)
+    assert(kp.bru.v == 0)
+    keep_put(kp.cache, "h:1", 31)
+    keep_put(kp.cache, "h:2", 32)
+    assert(keep_len(kp.cache) == 2)
+    assert(keep_get(kp.cache, "h:1", -1) == 31)
+    keep_del(kp.cache, "h:1")
+    assert(keep_len(kp.cache) == 1)
+    http_keep_drain(kp)
+    assert(keep_len(kp.cache) == 0)
 }
 
 test "client hash host stable and discriminating" {

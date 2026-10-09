@@ -8,7 +8,7 @@
 // 客户端 = 主面:101 直通(client_request)+ Accept 头黄金向量互证 + 掩码帧
 // (rng 种子键 —— RFC 仅要求"不可预测",v1 登记限制)+ 帧面断言。
 // CI 纪律:仅回环、:0、零外联。
-use http.client.{ http_net, client_listen, client_sockname, client_accept, client_request, client_read_t, client_write, client_write_str, client_close, HttpSock, rr_rc, rr_status, rr_head_end }
+use http.client.{ http_net, client_listen, client_sockname, client_accept, client_request, http_keep_new, client_read_t, client_write, client_write_str, client_close, HttpSock, rr_rc, rr_status, rr_fd, rr_head_end }
 use http.parse.{ http_parse_head, http_limits_default, http_rc, http_method_start, http_method_len, http_target_start, http_target_len, http_clen, http_head_end, http_header_value }
 use http.ws.{ ws_upgrade_ok, ws_accept_key, ws_accept_key_lane, ws_frame_encode, ws_frame_head, ws_step, ws_st_new, ws_close_payload, ws_close_protocol_error, ws_close_code_ok, ws_utf8_valid, ws_op_text, ws_op_binary, ws_op_ping, ws_op_pong, ws_op_close, wr_rc, wr_err, wr_consumed, wr_produced, wr_fin, wr_opcode }
 use std.rand.{ rng_fresh, rng_next }
@@ -393,11 +393,8 @@ test "ws e2e upgrade frames fragmentation masking close" {
         var bpos_c = Box[Box64](Box64 { v: 0 })
 
         // session A:upgrade → 101 直通(连接经缓存槽交予)
-        var bfd = Box[Box64](Box64 { v: -1 })
-        var bhh = Box[Box64](Box64 { v: 0 })
-        var bpt = Box[Box64](Box64 { v: -1 })
-        var bru = Box[Box64](Box64 { v: 0 })
-        let rup = client_request(net, "GET", "127.0.0.1", port, "/ws", extra, bodyb, 0, buf, 4096, scr, 5000, bfd, bhh, bpt, bru)
+        var kp = http_keep_new()
+        let rup = client_request(net, "GET", "127.0.0.1", port, "/ws", extra, bodyb, 0, buf, 4096, scr, 5000, kp)
         assert(rr_rc(rup) == 0 && rr_status(rup) == 101)
         // Accept 头互证:客户端独立计算 §1.3 黄金向量
         let hh = http_parse_head(buf, rr_head_end(rup), http_limits_default())
@@ -410,8 +407,7 @@ test "ws e2e upgrade frames fragmentation masking close" {
             assert(buf[sl_vs(accv) + ai.as[I64]()] == byte_at(want_acc, ai).as[I64]())
             ai += 1
         }
-        let wfd = bfd.v
-        bfd.v = -1
+        let wfd = rr_fd(rup)
 
         // 1) 掩码文本 "Hello" → 无掩码回声
         fx_fill(pl, "Hello")
@@ -465,14 +461,10 @@ test "ws e2e upgrade frames fragmentation masking close" {
         client_close(wfd)
 
         // session B:未掩码帧 → close 1002 协议错面
-        var bfd2 = Box[Box64](Box64 { v: -1 })
-        var bhh2 = Box[Box64](Box64 { v: 0 })
-        var bpt2 = Box[Box64](Box64 { v: -1 })
-        var bru2 = Box[Box64](Box64 { v: 0 })
-        let rup2 = client_request(net, "GET", "127.0.0.1", port, "/ws", extra, bodyb, 0, buf, 4096, scr, 5000, bfd2, bhh2, bpt2, bru2)
+        var kp2 = http_keep_new()
+        let rup2 = client_request(net, "GET", "127.0.0.1", port, "/ws", extra, bodyb, 0, buf, 4096, scr, 5000, kp2)
         assert(rr_rc(rup2) == 0 && rr_status(rup2) == 101)
-        let wfd2 = bfd2.v
-        bfd2.v = -1
+        let wfd2 = rr_fd(rup2)
         var bn_d = Box[Box64](Box64 { v: 0 })
         var bmsg_d = Box[Box64](Box64 { v: 0 })
         var bpos_d = Box[Box64](Box64 { v: 0 })
@@ -484,14 +476,10 @@ test "ws e2e upgrade frames fragmentation masking close" {
         client_close(wfd2)
 
         // session C:close 携非上线码 1005 → 服务端拒(不回声)→ close 1002
-        var bfd3 = Box[Box64](Box64 { v: -1 })
-        var bhh3 = Box[Box64](Box64 { v: 0 })
-        var bpt3 = Box[Box64](Box64 { v: -1 })
-        var bru3 = Box[Box64](Box64 { v: 0 })
-        let rup3 = client_request(net, "GET", "127.0.0.1", port, "/ws", extra, bodyb, 0, buf, 4096, scr, 5000, bfd3, bhh3, bpt3, bru3)
+        var kp3 = http_keep_new()
+        let rup3 = client_request(net, "GET", "127.0.0.1", port, "/ws", extra, bodyb, 0, buf, 4096, scr, 5000, kp3)
         assert(rr_rc(rup3) == 0 && rr_status(rup3) == 101)
-        let wfd3 = bfd3.v
-        bfd3.v = -1
+        let wfd3 = rr_fd(rup3)
         var bn_e = Box[Box64](Box64 { v: 0 })
         var bmsg_e = Box[Box64](Box64 { v: 0 })
         var bpos_e = Box[Box64](Box64 { v: 0 })
@@ -505,14 +493,10 @@ test "ws e2e upgrade frames fragmentation masking close" {
         client_close(wfd3)
 
         // session D:分片文本重组含非法 UTF-8(0xFF)→ close 1007
-        var bfd4 = Box[Box64](Box64 { v: -1 })
-        var bhh4 = Box[Box64](Box64 { v: 0 })
-        var bpt4 = Box[Box64](Box64 { v: -1 })
-        var bru4 = Box[Box64](Box64 { v: 0 })
-        let rup4 = client_request(net, "GET", "127.0.0.1", port, "/ws", extra, bodyb, 0, buf, 4096, scr, 5000, bfd4, bhh4, bpt4, bru4)
+        var kp4 = http_keep_new()
+        let rup4 = client_request(net, "GET", "127.0.0.1", port, "/ws", extra, bodyb, 0, buf, 4096, scr, 5000, kp4)
         assert(rr_rc(rup4) == 0 && rr_status(rup4) == 101)
-        let wfd4 = bfd4.v
-        bfd4.v = -1
+        let wfd4 = rr_fd(rup4)
         var bn_f = Box[Box64](Box64 { v: 0 })
         var bmsg_f = Box[Box64](Box64 { v: 0 })
         var bpos_f = Box[Box64](Box64 { v: 0 })
