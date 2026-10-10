@@ -1844,12 +1844,38 @@ fn ct_call_args_tg(ag: List[Str], from: I32, env: List[Str], file: List[Str], ca
         }
     }
     var args = ""
+    // CC1 批2:泛型被调跳过守卫——形参码为型参占位("i"),实参为调用点具体型,
+    // 单态化路径(ct_spec_call_emit)自带定型;按占位码判必误伤(fx_generic 实证)
+    var isgen = false
+    if callee != "" {
+        var gdg = ct_fn_decl(file, callee)
+        if gdg.len > 0 {
+            if gdg[2].len > 1 { isgen = true }
+        }
+    }
     var i: I32 = from
     while i < ag.len {
         if i > from { args = args + ", " }
         var ac = ct_typeof(ag[i], env, file)
         var pc = "i"
         if callee != "" && i - 1 < pcs.len { pc = pcs[i - 1] }
+        // CC1 批2:实参-形参码相容守卫(仅声明在案形参码;内建调用 pc 默认 "i"
+        // 不查)——Str 族↔数值/布尔族错位旧经 ct_arg_cast 尾行裸直通成错码。
+        // Ident 不在 env = 型别未知(ct_typeof "i" 兜底;match 语句后 env 丢失
+        // 属既有缺口,C 名发射不依赖 env 故无害)——跳过,只杀确证型别错位
+        if callee != "" && !isgen && i - 1 < pcs.len {
+            var skipc = false
+            if ag[i][0] == "Ident" {
+                if !ct_env_has(env, ag[i][1]) {
+                    skipc = true
+                }
+            }
+            if !skipc {
+                if !ct_args_compat(ac, pc) {
+                    panic("emit:实参类型不符:" + callee + " 第" + (i - from).to_string() + "参 形参码=" + pc + " 实参码=" + ac)
+                }
+            }
+        }
         var aenv = env
         // P0-A:裸 fn 引用实参(F 型形参位)→ env-first 解箱 shim(旧裸地址直填)
         if callee != "" {

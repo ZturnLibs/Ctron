@@ -640,6 +640,80 @@ fn ct_fn_decl_any(file: List[Str], nm: Str) -> Bool {
     return false
 }
 
+// 模块级符号/内建名可解析判定(CC1 批1:闭包未解析标识符响亮失败的判别宇宙;
+// env 命中者不进本判——本判只兜"非捕获名是否至少是某模块符号/前奏内建/内建
+// 类型名"。导入经 pkg_load_use 拼入 file,跨模块符号天然在案)
+fn ct_sym_resolvable(file: List[Str], nm: Str) -> Bool {
+    if nm.len == 0 { return true }
+    if pkg_is_prelude_sym(nm) { return true }
+    if nm == "self" { return true }
+    if nm == "List" { return true }
+    if nm == "Box" { return true }
+    if nm == "Atomic" { return true }
+    if nm == "Result" { return true }
+    if nm == "Option" { return true }
+    if nm == "Str" { return true }
+    if nm == "Bool" { return true }
+    if nm == "I8" { return true }
+    if nm == "I16" { return true }
+    if nm == "I32" { return true }
+    if nm == "I64" { return true }
+    if nm == "U8" { return true }
+    if nm == "U16" { return true }
+    if nm == "U32" { return true }
+    if nm == "U64" { return true }
+    if nm == "F32" { return true }
+    if nm == "F64" { return true }
+    if ct_fn_decl_any(file, nm) { return true }
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        var t = d[0]
+        if t == "Static" {
+            if d[1] == nm { return true }
+        } else if t == "Const" {
+            if d[1] == nm { return true }
+        } else if t == "Struct" {
+            if d[1] == nm { return true }
+        } else if t == "Class" {
+            if d[1] == nm { return true }
+        } else if t == "Enum" {
+            if d[1] == nm { return true }
+            var vs = d[3]
+            var j: I32 = 1
+            while j < vs.len {
+                if vs[j][1] == nm { return true }
+                j += 1
+            }
+        }
+        i += 1
+    }
+    return false
+}
+
+// 数值/布尔族类型码(CC1 批2 实参相容判定用)
+fn ct_numcode(c: Str) -> Bool {
+    if c == "i" { return true }
+    if c == "b" { return true }
+    if c == "f" { return true }
+    if c == "g" { return true }
+    if c == "6" { return true }
+    return false
+}
+
+// 实参-形参码相容判定(CC1 批2:杀 Str 族↔数值/布尔族错位——旧 ct_arg_cast 尾行
+// 裸直通产错码零告警;其余组合维持既有宽松:同码/数值族互转/Str 族互通/
+// 数组视图族(U8 豁免口径)/L 列表(s↔L 强转在 ct_arg_cast)/A 装箱/t: trait/
+// p 指针/u: 实例 = 交给 ct_arg_cast,深水收严登记后继)
+fn ct_args_compat(ac: Str, pc: Str) -> Bool {
+    if ac == pc { return true }
+    var pc_str = or2(pc == "s", pc == "N")
+    var ac_str = or2(ac == "s", ac == "N")
+    if pc_str && ct_numcode(ac) { return false }
+    if ac_str && ct_numcode(pc) { return false }
+    return true
+}
+
 // 用户 fn 形参类型码表(按 Param 顺序)
 fn ct_fn_pcodes(file: List[Str], nm: Str) -> List[Str] {
     var out = List[Str]()
