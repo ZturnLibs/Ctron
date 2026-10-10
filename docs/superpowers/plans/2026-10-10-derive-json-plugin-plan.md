@@ -1,6 +1,6 @@
 # derive(Json) 插件充实计划——to_json 全型别 + from_json 读入半边
 
-> 状态:**已裁决开工(2026-10-10 用户裁决:五点全按推荐执行——A F64 排除 / B Option 入(Some→值/None→null) / C from_json 入 W2 / D T[N] 非目标 / E enum 非目标)。W0 起批。**
+> 状态:**已收官(2026-10-10,四批落库:fc8359a5 JIx 前置/9414ac50 W1/69c3ad75 W2/7a70dffc spec §8.3 修订注,均已推 origin)。**裁决:五点全按推荐执行(A F64 排除 / B Option 入但被 iface v1 有损 ty 槽挂账 / C from_json 入 W2 且契约改 err 先行双件 / D T[N] 非目标 / E enum 非目标)。余账:List/Option 序列化 = T52 接口 v2 修订触发件(ty 塌缩头标识符,实参不可达);嵌套 round-trip emit 臂 = 发射泳道 struct 值链面账(interp 专臂锚 nested.ct 站岗)。
 > 上游:T52 插件协议(spec `docs/superpowers/specs/2026-10-03-t52-plugin-sandbox.md`,dc16a88d 落库,官方锚 `tests/plugins/json_demo` 双臂绿);
 > JIx 索引面(fc8359a5)——W2 from_json 的查询基底;
 > 修改面:`compiler/plugins/derive_json/`(插件包)+ `tests/plugins/`(锚)+ spec §8.3 修订注(契约不动则只补记)+ `lib/std/json.ct`(W2 前置 `jsub` 一件)。
