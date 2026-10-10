@@ -61,6 +61,18 @@ task "selfcheck" {
 EOF2
 OUT=$(cd "$SBOX" && CTRON_DRV_ROOT="$SBOX" $DRV task -f self.ctcl selfcheck 2>&1)
 if [ $? -eq 0 ] && printf '%s' "$OUT" | grep -q "ctron "; then ok; else bad "self 解析: $OUT"; fi
+# T9 fail-stop:步骤 rc 透传 + 失败后后续步骤被跳过
+cat > "$SBOX/failstop.ctcl" <<'EOF2'
+ctron {
+    config_version = 1
+}
+
+task "failstop" {
+    steps = ["sh data/ok.sh", "sh data/fail.sh", "echo never-run-marker"]
+}
+EOF2
+OUT=$(cd "$SBOX" && CTRON_DRV_ROOT="$SBOX" $DRV task -f failstop.ctcl failstop 2>&1)
+if [ $? -eq 3 ] && printf '%s' "$OUT" | grep -q "ran ok" && ! printf '%s' "$OUT" | grep -q "never-run-marker" && printf '%s' "$OUT" | grep -q "在步骤 2 失败(rc=3)"; then ok; else bad "fail-stop: rc=3+跳过后续+判词 期望,实得: $OUT"; fi
 
 echo "tests/tasks: $PASS 过 / $FAIL 败"
 [ "$FAIL" -eq 0 ]
