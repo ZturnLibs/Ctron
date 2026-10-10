@@ -479,7 +479,7 @@ function Dv-Load($path) {
 	try {
 		foreach ($raw in [IO.File]::ReadAllLines($path)) {
 			$ln++
-			$line = $raw.Trim(' ', "`t")
+			$line = (Dv-StripComment $raw).Trim(' ', "`t")   # 先剥注释再修剪(sh 同序:strip_comment → ltrim/rtrim;整行注释与行尾注释同剥)
 			if ($line -eq '') { continue }
 			if ($blk -eq '') {
 				if ($line[0] -eq '[') { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: 本语言不用 [section] 段头;请用块:ctron { ... } / task `"名`" { ... }") }
@@ -632,13 +632,15 @@ function Dv-QuoteArg($s) {
 	return '"' + $t + '"'
 }
 
-# Dv-RunStep <步骤串>:切分 argv(裸名 ctron → 同目录 ctron.cmd 转发面)并
+# Dv-RunStep <步骤串>:切分 argv(裸名 ctron → 脚本自身目录的 ctron.cmd 转发面)并
 # Start-Process -NoNewWindow -Wait -PassThru 直 exec 取 ExitCode——无 shell 中间层。
 function Dv-RunStep($step) {
 	$argv = Dv-SplitStep $step
 	if ($null -eq $argv) { return 2 }
 	if ($argv.Count -eq 0) { return 0 }
-	if ($argv[0] -eq 'ctron') { $argv[0] = Join-Path $Bin 'ctron.cmd' }
+	# 锚 $DevRoot(回落前脚本目录):$Bin 会因 dev 布局重定位到 compiler/bin,ctron.cmd
+	# 不在场必 127;DevRoot 与 sh 版 CTRON_SELF(脚本自身目录)同语义
+	if ($argv[0] -eq 'ctron') { $argv[0] = Join-Path $DevRoot 'ctron.cmd' }
 	$argline = ($argv | Select-Object -Skip 1 | ForEach-Object { Dv-QuoteArg $_ }) -join ' '
 	try {
 		$p = Start-Process -FilePath $argv[0] -ArgumentList $argline -NoNewWindow -Wait -PassThru
@@ -705,7 +707,7 @@ function Cmd-Task($rest) {
 function Cmd-Gate($rest) {
 	$gname = 'gate'
 	if ($rest.Count -ge 1) { $gname = $rest[0] }
-	if (Dv-IsDriverManifest 'ctron.ctcl') { Cmd-Task $rest }
+	if (Dv-IsDriverManifest 'ctron.ctcl') { Cmd-Task @($gname) }   # 只转发名实参(sh cmd_task "$GATE_NAME" 对齐;-f 歧义消除)
 	if ($gname -eq 'gate' -and (Test-Path 'Ctron.ctcl' -PathType Leaf)) {
 		Write-Output 'ctron: 内建默认门(build + fmt --check;项目自定义门:写 ctron.ctcl 的 task "gate")'
 		$rc = Dv-RunStep 'ctron build'
