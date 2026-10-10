@@ -940,10 +940,15 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 if dt == "f" {
                     return "(((" + obj + ").variant == 0) ? ((union \{ double _d; ct_i _i; })\{ ._i = (ct_i)(" + obj + ").v })._d : (" + dflt + "))"
                 }
+                // 结果 C 型由接收者元素码驱动(旧按默认实参 typeof:I64 载荷 rr.or(0)
+                // 的 0 字面=i32 → 全式 int32 截断,9007199254740993→1)
+                var orcE = ct_opt_elem_expr(file, cal[1], env)
+                if orcE == "6" {
+                    return "(int64_t)((" + obj + ").variant == 0 ? (" + obj + ").v : (ct_i)(long)(" + dflt + "))"
+                }
                 // u: struct 载荷解引用三目(盒装写侧配对)
-                var pec9 = ct_opt_elem_expr(file, cal[1], env)
-                if pec9.len > 2 && byte_slice(pec9, 0, 2) == "u:" {
-                    var dct9 = ct_ctype(pec9)
+                if orcE.len > 2 && byte_slice(orcE, 0, 2) == "u:" {
+                    var dct9 = ct_ctype(orcE)
                     return "((" + obj + ").variant == 0 ? (*(" + dct9 + "*)(long)(" + obj + ").v) : (" + dflt + "))"
                 }
                 return "(" + dct + ")((" + obj + ").variant == 0 ? (ct_i)(long)(" + obj + ").v : (ct_i)(long)(" + dflt + "))"
@@ -1129,6 +1134,20 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     if ag.len < 2 { panic("emit:push_str arity") }
                     var psa = ct_expr(ag[1], env, file)
                     return "ctron_sb_push((const void*)(" + obj + "), " + psa + ")"
+                }
+            }
+            // G1-T5:SB reserve/clear(复用缓冲面;接收者 N 门控同 push_str)
+            if m == "reserve" {
+                if objt == "N" {
+                    if ag.len < 2 { panic("emit:reserve arity") }
+                    var rsa = ct_expr(ag[1], env, file)
+                    return "ctron_sb_reserve((const void*)(" + obj + "), (int)(" + rsa + "))"
+                }
+            }
+            if m == "clear" {
+                if objt == "N" {
+                    if ag.len < 1 { panic("emit:clear arity") }
+                    return "ctron_sb_clear((const void*)(" + obj + "))"
                 }
             }
             if m == "to_string" {

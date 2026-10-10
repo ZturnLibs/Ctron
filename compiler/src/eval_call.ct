@@ -1071,6 +1071,21 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
                 cx_of(recv).push(sv.s)
                 return e4("k", ob.env, vV2(), ob.out)
             }
+            // G1-T5:SB reserve/clear(interp 镜像)。reserve=容量提示,interp 段表
+            // 无容量压力,no-op。clear=段表逐槽清空(下标赋值=共享可变原语,别名一致;
+            // 空段 join/计长自然归零,镜像 emit 侧 len=0)
+            if seq2(m, "reserve") && vals.len == 1 {
+                return e4("k", ob.env, vV2(), ob.out)
+            }
+            if seq2(m, "clear") && vals.len == 0 {
+                var segs = cx_of(recv)
+                var gi: I32 = 1
+                while gi < segs.len {
+                    segs[gi] = ""
+                    gi += 1
+                }
+                return e4("k", ob.env, vV2(), ob.out)
+            }
             if seq2(m, "to_string") && vals.len == 0 {
                 var acc = ""
                 var si: I32 = 1

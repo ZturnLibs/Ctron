@@ -1531,6 +1531,19 @@ val eval_expr(rt* R, cexpr* e) {
                     o.s = buf;
                     return o;
                 }
+                /* G1-T5:reserve=容量提示(interp 段表无容量压力,no-op)/
+                 * clear=段表逐槽清空(下标写=共享可变,join/计长自然归零) */
+                if (strcmp(cal->mname, "reserve") == 0) {
+                    if (e->nelems != 1) rt_abort(R, RT_ERROR, "reserve 实参");
+                    eval_expr(R, e->elems[0]);
+                    return v_void();
+                }
+                if (strcmp(cal->mname, "clear") == 0) {
+                    if (e->nelems != 0) rt_abort(R, RT_ERROR, "clear 实参");
+                    for (size_t i = 0; i < recv.lst->n; i++)
+                        recv.lst->items[i].s = (char*)"";
+                    return v_void();
+                }
                 rt_abort(R, RT_ERROR, "StringBuilder 方法不支持: %s", cal->mname);
             }
             if (recv.k == V_LIST && cal->mname) {

@@ -15,3 +15,19 @@ test "builder from empty" {
     sb.push_str("")
     assert_eq(sb.to_string(), "")
 }
+
+test "builder reserve clear" {
+    // G1-T5:reserve(确保再收 n 字节不重分配)+ clear(复用同一缓冲)
+    var sb = StringBuilder()
+    sb.reserve(1024)
+    var i: I32 = 0
+    while i < 100 {
+        sb.push_str("abcdefghij")
+        i += 1
+    }
+    assert_eq(sb.len, 1000)
+    sb.clear()
+    assert_eq(sb.len, 0)
+    sb.push_str("again")
+    assert_eq(sb.to_string(), "again")
+}
