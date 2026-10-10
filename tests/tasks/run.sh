@@ -151,6 +151,10 @@ task "gate" {
 EOF2
 OUT=$(cd "$SBOX" && CTRON_DRV_ROOT="$SBOX" $DRV gate < /dev/null 2>&1)
 if [ $? -eq 0 ] && printf '%s' "$OUT" | grep -q "ran ok" && ! printf '%s' "$OUT" | grep -q "内建默认门"; then ok; else bad "生产门路径: $OUT"; fi
+# T19 负控(真实落码):表无 task "gate"(还原夹具 m.ctcl)→ 裸 gate rc2 未知任务
+cp "$DIR/data/m.ctcl" "$SBOX/ctron.ctcl"
+OUT=$(cd "$SBOX" && CTRON_DRV_ROOT="$SBOX" $DRV gate < /dev/null 2>&1)
+if [ $? -eq 2 ] && printf '%s' "$OUT" | grep -q "未知任务"; then ok; else bad "生产门负控: rc2+未知任务 期望,实得: $OUT"; fi
 # T20 fmt 腿钉:脏文件使内建默认门 fmt --check 腿真咬人(rc1)
 (cd "$SBOX/proj" && printf 'fn  main( ) {\n    println("hi")\n}\n' > src/main.ct)   # 故意脏(双空格/括号内空格;fmt --check 实测必改)
 OUT=$(cd "$SBOX/proj" && CTRON_DRV_ROOT="$SBOX" $DRV gate < /dev/null 2>&1)
