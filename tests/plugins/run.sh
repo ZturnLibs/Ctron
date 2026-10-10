@@ -17,10 +17,10 @@ bad() { fail=$((fail+1)); echo "  FAIL $1"; [ $# -gt 1 ] && { echo "    ---- 实
 
 echo "== tests/plugins T52 插件沙箱阶梯 =="
 
-# 1) derive(Json) 端到端(解释臂)
+# 1) derive(Json) 端到端(解释臂;W2 起 round-trip+三 kind 负例随锚)
 "$CC" run "$ROOT/tests/plugins/json_demo/src/main.ct" > "$T/json.out" 2>&1
-if [ $? -eq 0 ] && grep -q '{"x":1,"s":"hi"}' "$T/json.out" && grep -q 'json-ok' "$T/json.out"; then
-    ok "json_demo interp(derive 展开端到端)"
+if [ $? -eq 0 ] && grep -q '{"x":1,"s":"hi"}' "$T/json.out" && grep -q 'json-ok' "$T/json.out" && grep -q 'rt-ok' "$T/json.out"; then
+    ok "json_demo interp(derive 展开端到端+W2 round-trip)"
 else
     bad "json_demo interp" "$T/json.out"
 fi
@@ -28,8 +28,8 @@ fi
 # 2) derive(Json) 端到端(发射臂:emit → cc → 运行)
 if "$EMIT" run "$ROOT/tests/plugins/json_demo/src/main.ct" > "$T/json.c" 2>"$T/json.err" && \
    cc -o "$T/jsonbin" "$T/json.c" 2>/dev/null && "$T/jsonbin" > "$T/json_native.out" 2>&1; then
-    if grep -q '{"x":1,"s":"hi"}' "$T/json_native.out" && grep -q 'json-ok' "$T/json_native.out"; then
-        ok "json_demo emit(interp/emit 同判)"
+    if grep -q '{"x":1,"s":"hi"}' "$T/json_native.out" && grep -q 'json-ok' "$T/json_native.out" && grep -q 'rt-ok' "$T/json_native.out"; then
+        ok "json_demo emit(interp/emit 同判+W2 round-trip)"
     else
         bad "json_demo emit(输出不符)" "$T/json_native.out"
     fi
@@ -76,6 +76,14 @@ if [ $? -ne 0 ] && grep -q 'unsupported_json_field_WithF_F64' "$T/uns.out"; then
     ok "derive_unsupported 陷阱(F64/带实参型别,错误嵌型别名)"
 else
     bad "derive_unsupported 陷阱" "$T/uns.out"
+fi
+
+# 8) 嵌套 round-trip(W2,2026-10-10;interp 专臂——emit struct 值链面静默错编在册)
+"$CC" run "$ROOT/tests/plugins/json_demo/src/nested.ct" > "$T/nested.out" 2>&1
+if [ $? -eq 0 ] && grep -q 'rt2-ok' "$T/nested.out"; then
+    ok "json_demo_nested interp 专臂(嵌套 round-trip)"
+else
+    bad "json_demo_nested interp 专臂" "$T/nested.out"
 fi
 
 echo "== 插件沙箱阶梯:$pass 过 / $fail 败 =="

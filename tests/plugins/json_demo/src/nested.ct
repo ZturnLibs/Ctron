@@ -1,0 +1,48 @@
+// json_demo/nested —— 嵌套 struct round-trip(interp 专臂;W2,2026-10-10)
+// emit 臂静默错编在册:struct 值局部链读(iq.v)与 x.y.z() 链式方法调用
+// (ct_expr:Member 家族;产物自身单层成员形不受影响)——interp 全绿,emit
+// 挂发射泳道 struct 值链面账,销账后本件可升双臂。
+use std.json.{ jix_bool, jix_i64, jix_new, jix_tag, jix_val, parse }
+
+@derive(Json)
+struct In {
+    let v: I64
+    let ok: Bool
+}
+
+@derive(Json)
+struct OuterP {
+    let inner: In
+    let label: Str
+}
+
+test "derive json nested round trip" {
+    let in1 = In {
+        v: 9007199254740993,
+        ok: true,
+    }
+    let o = OuterP {
+        inner: in1,
+        label: "外",
+    }
+    let rt2 = parse(o.OuterP_to_json())
+    if !rt2.is_some() {
+        assert(false)
+    } else {
+        let es2 = rt2.or(List[List[Str]]())
+        let e2 = OuterP_json_err(es2, "$")
+        if e2 != "" {
+            println(e2)
+            assert(false)
+        } else {
+            let q2 = OuterP_from_json_at(es2, "$")
+            assert_eq(q2.label, o.label)
+            let iq = q2.inner
+            assert_eq(iq.ok, in1.ok)
+            let iv = iq.v
+            let iv2 = in1.v
+            assert_eq(iv, iv2)
+        }
+    }
+    println("rt2-ok")
+}

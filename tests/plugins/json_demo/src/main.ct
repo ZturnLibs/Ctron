@@ -4,7 +4,9 @@
 // 嵌套 struct 递归。F64/带实参型别走陷阱(负锚 tests/plugins/derive_unsupported)。
 // interp 臂见 tests/plugins/run.sh(emit 同构双臂)。
 // 注:控制字符测试数据经 junesc 造(utf8_enc 解释臂传参 bug 在册,数据不可用之)。
-use std.json.{ junesc }
+// W2(2026-10-10):读半边 round-trip(平 struct)+ 三 kind 负例;消费方 use 契约 = 产物调用面。
+// 嵌套 round-trip 走 interp 专臂锚 nested.ct(emit struct 值链面静默错编在册,tests/plugins/run.sh)。
+use std.json.{ jix_bool, jix_i64, jix_new, jix_tag, jix_val, junesc, parse }
 
 @derive(Json)
 struct P {
@@ -36,5 +38,41 @@ test "derive json to_json suite" {
     assert_eq(in1.In_to_json(), "\{" + "\"v\":9007199254740993,\"ok\":true" + "}")
     let o = OuterP { inner: in1, label: "外" }
     assert_eq(o.OuterP_to_json(), "\{" + "\"inner\":" + in1.In_to_json() + ",\"label\":\"外\"" + "}")
+    // W2 round-trip(err 先行双件契约:Result 载荷槽 ct_i 不载 struct,emit 实证)
+    let rt = parse(p2.P_to_json())
+    if !rt.is_some() {
+        assert(false)
+    } else {
+        let es = rt.or(List[List[Str]]())
+        let e = P_json_err(es, "$")
+        if e != "" {
+            assert(false)
+        } else {
+            let q = P_from_json_at(es, "$")
+            assert_eq(q.x, 2)
+            assert_eq(q.s, p2.s)
+        }
+    }
+    let badr = parse("nope")
+    if !badr.is_some() {
+        assert(true)
+    } else {
+        assert(false)
+    }
+    let miss = parse("\{}")
+    if !miss.is_some() {
+        assert(false)
+    } else {
+        let es3 = miss.or(List[List[Str]]())
+        assert_eq(P_json_err(es3, "$"), "noent@$.x")
+    }
+    let typ = parse("\{\"x\":\"a\",\"s\":\"b\"}")
+    if !typ.is_some() {
+        assert(false)
+    } else {
+        let es4 = typ.or(List[List[Str]]())
+        assert_eq(P_json_err(es4, "$"), "type@$.x")
+    }
     println("json-ok")
+    println("rt-ok")
 }

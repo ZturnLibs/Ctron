@@ -1,20 +1,20 @@
 // derive_json —— T52 官方 derive(Json) 插件(§8.3 声明式代码生成;设计案 §6)
-// W1 充实(2026-10-10,计划 docs/superpowers/plans/2026-10-10-derive-json-plugin-plan.md):
-//   产物 = 普通 Ctron 源文本(§3 非宏手术),per-type 两件:
-//     __esc_<T>(全量转义含包裹引号:引号/反斜杠/控制字符 \b \t \n \f \r +
-//     \u00XX,RFC 8259;std/json esc 同款纯字面量形——utf8_enc 解释臂传参 bug
-//     实探 123→替换符 3 字节、emit 臂正确,在册分歧,产物不用之)/
-//     <T>_to_json(型别 mangling:同名方法跨接收者型别冲突,interp 名字分派
-//     首注册胜)。
-//   型别面 v1.1:I32/I64(to_string)/Bool(if 两臂)/Str(全量转义)/嵌套 struct
-//     (字段调 <Inner>_to_json,未 derive 由 sem 未解析兜)。F64 排除(1009 用户
-//     裁决;emit to_string 乱值实探 1.5→"1")。List/Option/Map 等带实参型别超
-//     DeriveInput v1 有损平文本接口(ty 塌缩头标识符)→ 陷阱 fn
-//     __unsupported_json_field_<T>_<ty>(sem 未解析调用带型别名 = 插件无诊断
-//     通道下的 v1 告警信道;空产物静默通过不可用;DBG 残留产物 interp SIGSEGV)。
-//     iface v2(实参型别槽)= T52 §2.2 修订触发件。
-//   插件自身上层转义纪律:产物文本内 { 一律经 lb("\{")合成(闭括号 } 裸写合法);
-//   Json trait 由接口包 ctron.plugin 提供(用户包 use 引入),产物自身零 use 自包含。
+// W1+W2 充实(2026-10-10,计划 docs/superpowers/plans/2026-10-10-derive-json-plugin-plan.md):
+//   产物 = 普通 Ctron 源文本(§3 非宏手术),per-type:
+//     写半边:__esc_<T>(全量转义含包裹引号,RFC 8259;std/json esc 同款纯字面量
+//     形——utf8_enc 解释臂传参 bug 在册,产物不用之)+ <T>_to_json(型别
+//     mangling:同名方法跨接收者型别冲突,interp 名字分派首注册胜)。
+//     读半边(W2):<T>_from_json(包装:parse→is_some→es→_at)+ <T>_from_json_at
+//     (es,pre 前缀式水合:数字/Bool/嵌套内联 match 表达式传播(双臂实证绿),
+//     Str 走 jix_tag 三行预检 noent/null/type;消费方 use std.json.{...} 契约,
+//     产物文本自身零 use)。
+//   型别面 v1.1:I32(as[I32] 收窄)/I64/Bool/Str/嵌套 struct(未 derive 由 sem
+//     未解析兜)。F64 排除(1009 用户裁决;emit to_string 乱值实探 1.5→"1")。
+//     List/Option/Map 等带实参型别超 DeriveInput v1 有损平文本接口(ty 塌缩
+//     头标识符)→ 陷阱 fn(sem 未解析调用嵌型别名 = 插件无诊断通道的 v1 告警
+//     信道;空产物静默通过不可用;DBG 残留产物 interp SIGSEGV)。iface v2
+//     (实参型别槽)= T52 §2.2 修订触发件。
+//   插件自身上层转义纪律:产物文本内 { 一律经 lb("\{")合成(闭括号 } 裸写合法)。
 use ctron.plugin.{ DeriveInput }
 
 pub fn ctron_derive(input: DeriveInput) -> Str {
@@ -23,6 +23,8 @@ pub fn ctron_derive(input: DeriveInput) -> Str {
     let lb = "\{"
     let tn = input.type_name
     var body = ""
+    var rd = ""
+    var rv = ""
     var first = true
     var k: I32 = 0
     var bad = ""
@@ -33,14 +35,34 @@ pub fn ctron_derive(input: DeriveInput) -> Str {
             comma = ","
         }
         var pre = "    b = b + " + q + comma + bs + q + f.name + bs + q + ":" + q + " + "
+        var path = q + "." + f.name + q
         if (f.ty == "I32") || (f.ty == "I64") {
             body = body + pre + "self." + f.name + ".to_string()" + "\n"
+            var conv = ""
+            if f.ty == "I32" {
+                conv = ".as[I32]()"
+            }
+            rd = rd + "    match jix_i64(ix, pre + " + path + ") " + lb + "\n"
+            rd = rd + "        Ok(_) => " + lb + " }\n"
+            rd = rd + "        Err(me) => " + lb + " return me }\n"
+            rd = rd + "    }\n"
+            rv = rv + "    let f_" + f.name + " = jix_i64(ix, pre + " + path + ").or(0)" + conv + "\n"
         } else {
             if f.ty == "Bool" {
                 body = body + pre + "(if self." + f.name + " " + lb + " " + q + "true" + q + " } else " + lb + " " + q + "false" + q + " })" + "\n"
+                rd = rd + "    match jix_bool(ix, pre + " + path + ") " + lb + "\n"
+                rd = rd + "        Ok(_) => " + lb + " }\n"
+                rd = rd + "        Err(me) => " + lb + " return me }\n"
+                rd = rd + "    }\n"
+                rv = rv + "    let f_" + f.name + " = jix_bool(ix, pre + " + path + ").or(false)\n"
             } else {
                 if f.ty == "Str" {
                     body = body + pre + "__esc_" + tn + "(self." + f.name + ")" + "\n"
+                    rd = rd + "    var tg_" + f.name + " = jix_tag(ix, pre + " + path + ")\n"
+                    rd = rd + "    if tg_" + f.name + " == \"\" " + lb + " return \"noent@\" + pre + " + path + " }\n"
+                    rd = rd + "    if tg_" + f.name + " == \"z\" " + lb + " return \"null@\" + pre + " + path + " }\n"
+                    rd = rd + "    if tg_" + f.name + " != \"s\" " + lb + " return \"type@\" + pre + " + path + " }\n"
+                    rv = rv + "    let v_" + f.name + " = jix_val(ix, pre + " + path + ")\n"
                 } else {
                     if f.ty == "F64" {
                         bad = "F64"
@@ -49,6 +71,9 @@ pub fn ctron_derive(input: DeriveInput) -> Str {
                             bad = f.ty
                         } else {
                             body = body + pre + "self." + f.name + "." + f.ty + "_to_json()" + "\n"
+                            rd = rd + "    var ce_" + f.name + " = " + f.ty + "_json_err(es, pre + " + path + ")\n"
+                            rd = rd + "    if ce_" + f.name + " != \"\" " + lb + " return ce_" + f.name + " }\n"
+                            rv = rv + "    let f_" + f.name + " = " + f.ty + "_from_json_at(es, pre + " + path + ")\n"
                         }
                     }
                 }
@@ -62,6 +87,12 @@ pub fn ctron_derive(input: DeriveInput) -> Str {
         var tout = "fn " + tn + "_to_json(self: " + tn + ") -> Str " + lb + "\n"
         tout = tout + "    return __unsupported_json_field_" + tn + "_" + cj_san(bad) + "()" + "\n"
         tout = tout + "}" + "\n"
+        tout = tout + "fn " + tn + "_json_err(es: List[List[Str]], pre: Str) -> Str " + lb + "\n"
+        tout = tout + "    return __unsupported_json_read_" + tn + "_" + cj_san(bad) + "()" + "\n"
+        tout = tout + "}" + "\n"
+        tout = tout + "fn " + tn + "_from_json_at(es: List[List[Str]], pre: Str) -> " + tn + " " + lb + "\n"
+        tout = tout + "    return __unsupported_json_read_" + tn + "_" + cj_san(bad) + "()" + "\n"
+        tout = tout + "}" + "\n"
         return tout
     }
     var out = cj_esc_helper(tn, lb)
@@ -70,7 +101,42 @@ pub fn ctron_derive(input: DeriveInput) -> Str {
     out = out + body
     out = out + "    return b + " + q + "}" + q + "\n"
     out = out + "}" + "\n"
+    // 读半边(W2):err 先行双件契约——Result 载荷槽 = ct_i 64 位,struct 值发射面
+    // 原理性不可行(C 层 (t_P) 强转编译错,实测),故 err 件回 Str、值件直返 T;
+    // 消费契约:parse→is_some→or(es)→_json_err(空串=ok)→_from_json_at。
+    out = out + "fn " + tn + "_json_err(es: List[List[Str]], pre: Str) -> Str " + lb + "\n"
+    out = out + "    let ix = jix_new(es)\n"
+    out = out + rd
+    out = out + "    return \"\"\n"
+    out = out + "}" + "\n"
+    out = out + "fn " + tn + "_from_json_at(es: List[List[Str]], pre: Str) -> " + tn + " " + lb + "\n"
+    out = out + "    let ix = jix_new(es)\n"
+    out = out + rv
+    out = out + "    return " + tn + " " + lb + "\n"
+    out = out + cj_fields(input)
+    out = out + "    }\n"
+    out = out + "}" + "\n"
     return out
+}
+
+// 结构字面量字段清单:err 先行双件下全部引 let 局部(f_*/v_*)
+fn cj_fields(input: DeriveInput) -> Str {
+    var r = ""
+    var k: I32 = 0
+    while k < input.fields.len {
+        let f = input.fields[k]
+        var comma = ","
+        if k == input.fields.len - 1 {
+            comma = ""
+        }
+        if f.ty == "Str" {
+            r = r + "        " + f.name + ": v_" + f.name + comma + "\n"
+        } else {
+            r = r + "        " + f.name + ": f_" + f.name + comma + "\n"
+        }
+        k += 1
+    }
+    return r
 }
 
 // ty 是否带型别实参(接口 v1 有损面:实参不可达 → 一律陷阱)

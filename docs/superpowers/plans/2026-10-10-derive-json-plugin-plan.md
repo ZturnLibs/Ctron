@@ -42,12 +42,11 @@
 - 嵌套 struct/List[T]/Option[T](按裁决)逐元素递归;生成代码保持平铺串接形态(demo 同款)。
 - 门:`tests/plugins/json_demo` 扩为 derive_json_suite(interp/emit 双臂;金样:中文/转义往返/嵌套/List/Option);负锚:未支持型别 E5060.iface;evil_derive/sandbox_escape 回归。
 
-### W2 from_json 读入半边
-- **前置一件(本泳道随批)**:`lib/std/json.ct` 增 `jsub(entries, path) -> List[List[Str]]`(子树条目提取、重根;零 use,与 JIx 同风格,~15 行 + 测试)——嵌套 struct hydration 的基底;List 走既有 `jw_keys` 零新增。
-- 产物:`from_json(text) -> Result[T, Str]`:parse → `jix_new` → 逐字段 `jk_*` 预检(kind 非 ok 即 `Err(kind@路径)`)→ `jv_*` 取值 → struct 字面量。**生成代码禁 match-on-Result**(`jk_*`/`jv_*` 组合子形态,绕开发射缺口,W0 定界后复核)。
-- 嵌套:`Sub_from_json` 接 `jsub` 子条目;List 元素逐下标递归。
-- 门:双臂 round-trip 恒等(to_json→from_json,含转义往返/中文/嵌套);负锚:坏 JSON / 缺字段 noent / 型别不符 type 三 kind。
-- 消费方契约:`use std.json.{ parse, jix_new, jix_tag, jix_val, jk_i64, ... }`(§0-3)。
+### W2 from_json 读入半边(落地修订,2026-10-10)
+- **契约改形(err 先行双件)**:原 `<T>_from_json -> Result[T, Str]` 发射面原理性不可行——Result 载荷槽 = ct_i 64 位,struct 值 C 层 `(t_P)` 强转编译错(实测)。落地为 `<T>_json_err(es, pre) -> Str`(空串=ok;语句位 match)+ `<T>_from_json_at(es, pre) -> T`(值件全 `.or(dft)` 直返,零 match 零 Result)。消费契约:`parse→is_some→or(es)→_json_err→_from_json_at`。
+- **jsub 撤销**:前缀路径直查平表,子树提取不需要。
+- 嵌套:err 件 `ce_*` 链传播、值件直调 `<Inner>_from_json_at`;I32 `.as[I32]()` 收窄;Str 标签预检 noent/null/type。
+- 门:json_demo 平 struct round-trip 双臂(rt-ok)+ 三 kind 负例断言;嵌套 round-trip = **interp 专臂锚 nested.ct**(emit struct 值链面静默错编在册:struct 值局部链读 `iq.v`、`x.y.z()` 链式方法调用——`ct_expr:Member` 家族,坑 71② 扩展,挂发射泳道;销账后升双臂);plugins 阶梯 8/0。
 
 ### W3 收尾
 - spec §8.3 修订注(产物 use 契约/覆盖矩阵终态);COVERAGE、divergences 回写;`tests/plugins/run.sh` 锚数更新。
