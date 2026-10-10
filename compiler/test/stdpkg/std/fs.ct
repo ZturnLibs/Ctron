@@ -35,9 +35,10 @@ pub fn exists(path: Str) -> Bool {
 
 // ---- walk(递归遍历;W4 驱动器测试发现/缓存枚举底座)----
 // 口径:DFS 前序;每层条目字节序插入排序(pkg_dep 名称平表惯例)=全序确定;
-// 目录含自身入列;root 缺失/不可读 = 空表;空目录与文件 = 叶;深度上限 64
-// (无 stat 内建,符号链接环以深度守卫,v0)。read_dir 双口径沿 pkg_dep.ct
-// 的 match 形(自宿两臂实证编译面);空目录 read_dir 返非空换行尾,以名解析。
+// 目录含自身入列;root 缺失 = 空表(存在但不可读 = 单元素[root],fs_exists 守卫
+// 只判存在);空目录与文件 = 叶;深度上限 64(无 stat 内建,符号链接环以深度
+// 守卫,v0)。read_dir 双口径沿 pkg_dep.ct 的 match 形(自宿两臂实证编译面);
+// 尾推 cur.len>0 对两宿换行尾形态稳健(native 空目录返空串)。
 fn walk_lt(a: Str, b: Str) -> Bool {
     var i: I32 = 0
     while i < a.len && i < b.len {
@@ -160,4 +161,3 @@ test "read_or hits and defaults" {
     assert(fs_delete(p))
     assert(!exists(p))
 }
-
