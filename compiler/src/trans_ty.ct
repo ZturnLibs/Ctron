@@ -1648,6 +1648,8 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if cal[1] == "ctron_cli_flag" { return "s" }
             if cal[1] == "read_dir" { return "s" }
             if or2(cal[1] == "fs_exists", or2(cal[1] == "fs_write", or2(cal[1] == "fs_delete", cal[1] == "fs_mkdir"))) { return "b" }
+            // env_set 同名让路本源 CVM fn(镜像 trans_expr 臂守卫;自举面防误型)
+            if cal[1] == "env_set" && ct_fn_decl(file, cal[1]).len == 0 { return "b" }
             // L4:Bytes 族返回型
             if or2(cal[1] == "read_file_bytes", cal[1] == "bytes_slice") { return "YB" }
             if cal[1] == "bytes_len" { return "6" }

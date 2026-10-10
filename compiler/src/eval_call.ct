@@ -499,6 +499,23 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
         panic("env_get args")
         return e4("k", env, vS(""), out)
     }
+    if seq2(nm, "env_set") {
+        // W3 批1:setenv overwrite=1(真=成功)。臂体经 W4 E1 ext 桥 dlsym
+        // 发射模板同名符号 ctron_env_set——bare env_set 名已被本源 eval_env.ct
+        // 的 CVM 换绑 3 参 fn 占用,新 extern 声明又动 decls=525 锁,故走桥。
+        if vals.len == 2 {
+            var r40 = v_unbox(vals[0])
+            var r41 = v_unbox(vals[1])
+            if r40.tag == 5 && r41.tag == 5 {
+                if ctron_ext_dispatch("ctron_env_set", "s:" + r40.s, "s:" + r41.s, "", "", "", "", "", "", "", "", "", "") != 0 {
+                    return e4("k", env, vB(true), out)
+                }
+                return e4("k", env, vB(false), out)
+            }
+        }
+        panic("env_set args")
+        return e4("a", env, vV2(), out)
+    }
     if seq2(nm, "ctron_cli_flag") {
         if vals.len == 1 {
             var r7 = v_unbox(vals[0])
