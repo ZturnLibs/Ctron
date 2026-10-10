@@ -16,7 +16,7 @@ cc -O1 -w -pthread -o "$T/seg.bin" "$T/seg.c" || { echo "  FAIL seg (cc)"; exit 
 
 envf=""
 for env in "CTRON_GC=1" "CTRON_GC=off" "CTRON_GC=1 CTRON_GC_CONSERV=0"; do
-    if env $env "$T/seg.bin" > "$T/seg.out" 2>&1 && grep -q "seg-probe ok acc=" "$T/seg.out"; then
+    if env $env "$T/seg.bin" > "$T/seg.out" 2>&1 && grep -qE "seg-probe ok acc=[0-9]+" "$T/seg.out"; then
         pass=$((pass+1)); echo "  PASS seg ($env)"
     else
         echo "  FAIL seg ($env): $(tail -1 "$T/seg.out")"; fail=$((fail+1))

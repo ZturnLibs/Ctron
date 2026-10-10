@@ -32,6 +32,6 @@ fn main() -> I32 {
         }
         round += 1
     }
-    println("seg-probe ok acc=\{acc}")
+    println("seg-probe ok acc={acc}")
     return 0
 }
