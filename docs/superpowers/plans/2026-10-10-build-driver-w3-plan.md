@@ -186,6 +186,10 @@ git commit -m "feat(proc): rc 型 argv 执行面+argv_to_blob 门面+上限 12�
 2. 推送。W3 幅度小于 W2,不另派全分支终审(三任务各自评审 + smoke 零差口径代之);T1 若与对端在飞件交叠升级。
 3. W3 齐后 W4 立项(std/config L1 通用面 → compiler/driver/ 骨架 → 逐族对拍 → 垫片翻转,另立计划)。
 
-## 执行记录
+## 执行记录(2026-10-10,W3 三批全落库过审)
 
-(执行时逐任务回写。)
+- **批1 `9069a00e` + 控制器补刀 `5e92670e`**:env_set 内建四锚点 + 发射模板 ctron_env_set + process.ct roundtrip/覆写双断言 test + stdpkg 镜像。**五处实证逼出的偏差**(全过评审):①解释臂直写不可行——env_set 名被本源 eval_env.ct:138 CVM 换绑 fn 占用(E2010)、新 extern 动 decls=525 锁、setenv 三参覆写帧无二参通道 → 改经已声明 ctron_ext_dispatch 桥 dlsym 链接符号(助手去 static,T45 先例);②发射臂/trans_ty 加 ct_fn_decl 本地 fn 让路守卫(无守卫自举自改写 4 error 实证;守卫=复用 ct_fn_decl 与 sem 解析同构,评审无法构造分歧例);③净增 1 红=3j3 Rust 臂 process(ctronr 缺 env 内建族)→ 控制器补 smoke.sh known= 表(清账即翻绿惯例);④W8040 预期 0 条(触发面=let/形参名,fn 名不在列——计划预判作废);⑤stdpkg 镜像随批(5e19effe 惯例)。**记录修正**:提交信息 dlsym("setenv") macOS NULL 论据被评审探针证伪(实测可解析),真因=名撞+锁+覆写帧三重。
+- **批2 `d5d7c786` + 注释修正 `a7c7fdd6`**:fs.walk(字节序 DFS+深度 64+根自含)。**执行口径**:子代理两次 600s 超时(前台 smoke 长跑触看门狗)→ 控制器内联。两处设计修正:①read_or 的惯用法实为守卫+裸读(read_file 终局 Str 裁决专有),read_dir 真先例 = pkg_dep.ct match 形,照抄;②首跑缺根自推(插桩定位),修 fs_exists 守卫+推根。smoke 前后 232/5 逐名全等(五红全对端 G1 在飞);双臂+fmt+镜像 cmp 全绿;评审证 walk_lt 前缀序正确/深度环有界/尾推两宿稳健。注释两处事实修正随批。
+- **批3 `86dff621`**:proc rc 型 argv 面——新 extern ctron_proc_run_argv_rc(capture=0 无 out_len,绕 &ProcBox64 在册限制)、执行核抽 proc_exec_core(argv_p ABI 逐参不变,评审对 git show 逐行等价验证)、argv_to_blob 门面(NUL 打包 Σ(len+1) 惯例)、上限 12→32(14 段 argv 捕获 26 字节钉=旧限必败真回归钉)、6 新臂全 rc/字节精确断言;-Wall -Wextra 零警告。免 smoke 理由在册(未触编译器/lib/std)。
+- **挂账**:ps1 Dv-EnvSetup(W2 遗留,随 Windows CI);ex-* rc0 复验(树绿后);对端 G1 通道五红/decls 526 锁在飞中(W3 三批烟测口径=基线零差,已逐名核)。
+- **Minor 留档**:interp 臂无 user-fn yield(全内建既有架构)/dlsym 每调用未缓存/变量携带缓存路径盲区(meta_check 扫描 docstring 未注)/proc.ct 顶注未提 rc 面/argv_to_blob 空串元素 laxity(调用方契约)/walk 每目录双列目录(W4 量级可优化)。
