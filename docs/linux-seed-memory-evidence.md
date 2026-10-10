@@ -128,3 +128,16 @@ drop_frame bind 回收落地后 ubuntu-24.04 实测:
 按此推算 E2(cc_emit.ct,19k 行)≈ 2.3GB,16GB runner 裕度充足 → ci.yml ubuntu 门禁
 的内存面解除。门禁:suite.py 0 红;编译器源词法暂被对端在途调试行
 (trans_stmt.ct 裸 `{`)挡住,与本片无关(双向对照排除)。
+
+## G1 复测指引(2026-10-10 登记)
+
+G1 翻面(7de2291e)后本债的复测口径:
+
+- **复测命令**(linux 靶,同原始测量口径):seed 解释形态跑大语料,`/usr/bin/time -v` 采 peak RSS,
+  观察曲线是否仍随语料线性爬(原案 15.4GB)。
+- **判据**:RSS 仍线性爬=维持「发布链绕行」豁免(本债域=seed 解释器自身 arena 纪律,M2/arena
+  治理域,不入 G1);曲线转平=销账,随批更新本文。
+- **CI 触发**:GitHub CI 单平台 ubuntu——workflow 内跑 `sh tests/db/run.sh` interp 臂或专用
+  seed 语料步即可复现(翻面后 interp 臂默认 GC=on,本债是否被 GC 治理顺带治愈,此一测便知;
+  db interp 臂 G1-T7 批内已见 `byte_slice: range out of bounds` 新红形,同域取样点)。
+- **注意**:本债与发射产物(bin 形态)无关,勿与 emit RSS 混测。
