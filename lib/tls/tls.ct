@@ -25,7 +25,7 @@
 //      误判环 —— tls→net 后消费方再 use std.net 即 E5020,实证;StdNet 形参
 //      按名于 use 文本合并后的单命名空间解析,消费方 use net.{Net_probe}
 //      即供给,E5030 同名拦截是此机制的守卫面)。
-use tls.bind.{ctron_tls_last_errno, ctron_tls_strerror, ctron_tls_ctx_new, ctron_tls_use_cert, ctron_tls_use_ca_bundle, ctron_tls_set_alpn, ctron_tls_set_hostname, ctron_tls_handshake, ctron_tls_read, ctron_tls_write, ctron_tls_alpn_selected_s, ctron_tls_close}
+use tls.bind.{ctron_tls_last_errno, ctron_tls_strerror, ctron_tls_ctx_new, ctron_tls_use_cert, ctron_tls_use_ca_bundle, ctron_tls_set_alpn, ctron_tls_set_hostname, ctron_tls_set_verify_peer, ctron_tls_handshake, ctron_tls_read, ctron_tls_write, ctron_tls_alpn_selected_s, ctron_tls_close}
 
 // ---- 句柄与错误类型(值 struct;ctx < 0 视为已关闭) ----
 
@@ -99,6 +99,13 @@ pub fn tls_set_alpn(net: StdNet, conn: TlsConn, protos: Str) -> I64 {
 // 跳过(ctron_tls.c 文件头"主机名口径");传空串 = 回到 opt-out 态。
 pub fn tls_set_hostname(net: StdNet, conn: TlsConn, host: Str) -> I64 {
     return ctron_tls_set_hostname(conn.ctx, host)
+}
+
+// 对端证书验证模式(M3C6 批1 mTLS 增补面):0 NONE(缺省)/1 REQUIRED/2 OPTIONAL。
+// 须在 tls_handshake 前调;服务端索客户端证书须先 tls 侧装入 CA 信任锚
+// (ctron_tls_use_ca_bundle,冻结面直通;门面不包)。返回 0 成 / <0 败。
+pub fn tls_set_verify_peer(net: StdNet, conn: TlsConn, mode: I64) -> I64 {
+    return ctron_tls_set_verify_peer(conn.ctx, mode)
 }
 
 // 握手(阻塞式;fd = net 层已 connect/accept 的 socket,即后续 BIO 传输体)。

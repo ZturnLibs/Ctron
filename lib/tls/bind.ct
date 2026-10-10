@@ -24,6 +24,7 @@ pub extern "c" fn ctron_tls_use_cert(ctx: I64, cert_pem: Str, key_pem: Str) -> I
 pub extern "c" fn ctron_tls_use_ca_bundle(ctx: I64, ca_path: Str) -> I64
 pub extern "c" fn ctron_tls_set_alpn(ctx: I64, protos: Str) -> I64
 pub extern "c" fn ctron_tls_set_hostname(ctx: I64, host: Str) -> I64
+pub extern "c" fn ctron_tls_set_verify_peer(ctx: I64, mode: I64) -> I64
 pub extern "c" fn ctron_tls_handshake(ctx: I64, fd: I64) -> I64
 pub extern "c" fn ctron_tls_read(ctx: I64, var buf: U8[], cap: I64, timeout_ms: I64) -> I64
 pub extern "c" fn ctron_tls_write(ctx: I64, buf: Str, n: I64) -> I64

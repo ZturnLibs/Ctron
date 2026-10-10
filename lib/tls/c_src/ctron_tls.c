@@ -287,6 +287,20 @@ int64_t ctron_tls_set_hostname(int64_t h, const char* host) {
     return 0;
 }
 
+/* 增补面(M3C6 批1 mTLS):对端证书验证模式。mode=0 VERIFY_NONE(缺省,服务端
+ * 旧口径)、1 REQUIRED(服务端索客户端证书/客户端验服务端链)、2 OPTIONAL
+ * (索但缺证书放行,验证失败拒)。须在 use_ca_bundle 装入信任锚后、handshake
+ * 前调用;返回 0 成 / -1 参数坏(槽置 EINVAL)。 */
+int64_t ctron_tls_set_verify_peer(int64_t h, int64_t mode) {
+    ct_tls_ctx* c = (ct_tls_ctx*)(intptr_t)h;
+    if (c == NULL || mode < 0 || mode > 2) { *ct_tls_err_slot() = EINVAL; return -1; }
+    mbedtls_ssl_conf_authmode(&c->conf,
+                              mode == 0 ? MBEDTLS_SSL_VERIFY_NONE
+                                        : (mode == 1 ? MBEDTLS_SSL_VERIFY_REQUIRED
+                                                     : MBEDTLS_SSL_VERIFY_OPTIONAL));
+    return 0;
+}
+
 int64_t ctron_tls_handshake(int64_t h, int64_t fd) {
     ct_tls_ctx* c = (ct_tls_ctx*)(intptr_t)h;
     if (c == NULL || fd < 0) { *ct_tls_err_slot() = EINVAL; return -1; }
