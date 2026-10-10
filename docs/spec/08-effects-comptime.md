@@ -32,6 +32,8 @@ fn handler(req: &Request, clock: &Clock) -> Result[Response, HttpError]
 
 > **修订注(2026-10-03,T52 插件沙箱 v1 落库)**:插件 = 普通 Ctron 包(清单 `plugin "kind.name"` 块声明,CTCL 注册表增殖文法零改动);编译器进程内以受限调用面执行(复用自举解释器 = comptime CVM 全量形态,零进程外插件/动态链接/FFI)。沙箱边界三层:①静态纯度门(extern 禁 + I/O/时钟/并发白名单 + 能力调用门,E6020.sandbox 域);②静态规模门(256 KiB/512 decl;执行期步数预算列 v2——`Global[T]` 实证为单绑定持久盒无跨调用计数载体,与 comptime v0→v1 同演进路径);③确定性(禁时钟/环境/并发,同输入同输出锚)。derive 插件约定入口 `ctron_derive(DeriveInput) -> Str`(合成源码文本经重 parse 注入,产物禁 use/test/@derive 递归);内建集 {Show, Eq, Error} 维持 v0 声明性口径不动。设计案与 HIR 暴露宽度裁决:`docs/superpowers/specs/2026-10-03-t52-plugin-sandbox.md`。
 
+> **修订注(2026-10-10,derive(Json) 官方插件充实)**:`@derive(Json)` 产物契约钉形如下。①产物方法名带型别(`T_to_json` 等):同名方法跨接收者型别不作重载分派, mangling 消歧。②读半边为「校验先行双件」:`T_json_err(entries, path) -> Str`(空串 = 合法,否则错误码@路径)与 `T_from_json_at(entries, path) -> T`(校验通过后取值);`Result` 载荷槽为 64 位整数,不携带 struct 值,故读件不返 `Result[T, E]`。③字段型别面:I32/I64/Bool/Str 与嵌套派生 struct;`F64` 与带型别实参的型别(`List[T]`/`Option[T]`/`Map[K,V]` 等)当前不受支持——插件合成对未定义函数的调用,以编译期未解析错误指明型别(接口 `DeriveField.ty` 为平文本,型别实参不可达;实参槽位为接口 v2 修订事项)。④读半边产物引用 `std.json` 查询面,消费包须显式 `use` 请求(跨包引用即请求);写半边产物零依赖自包含。
+
 - 编译器可利用 `#[pure]` 做优化与并行证明;`parallel.map` 闭包的纯度由**推断**得出(规则同上,§7.7),无需在闭包上书写注解。
 - `#[trusted]` 数量与位置随包发布元数据上报;`ctron lint --trusted` 列出全部信任边界。
 
