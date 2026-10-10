@@ -2,7 +2,7 @@
 // 钉住:run_argv 捕获 stdout(/bin/echo)、退出码透传(/usr/bin/false = 1)、
 // exec 失败 127(不存在路径)、cwd 切换、spawn_bg 后台 + kill + wait(信号杀 = -1)、
 // words_to_blob 纯面已在 lib inline。CI 纪律:仅本机 /bin 工具,零网络。
-use proc.{run_argv, spawn_bg, kill_pid, wait_pid, words_to_blob}
+use proc.{run_argv, run_argv_rc, spawn_bg, kill_pid, wait_pid, words_to_blob, argv_to_blob}
 use proc.bind.{ctron_proc_run_argv_p, ProcBox64}
 use fio.{write_raw}
 
@@ -72,6 +72,85 @@ test "run_argv_p: PATH lookup + stdin redirect + capture count" {
     assert(ctron_proc_run_argv_p("", blob, n.as[I64](), pin, 0, out, plen0) == 0)
     assert(plen0.v == 0)
     fs_delete(pin)
+}
+
+// rc 型面:run_argv_rc(stdout/stderr 继承;argv_to_blob 构包)——rc0 / 透传 / 127
+
+test "run_argv_rc: rc 0 via echo (3 args, stdout inherited)" {
+    var argv = List[Str]()
+    argv.push("/bin/echo")
+    argv.push("rc")
+    argv.push("face")
+    argv.push("ok")
+    var blob: U8[32] = [0, 0, 0, 0, 0, 0, 0, 0]
+    let n = argv_to_blob(argv, blob)
+    // "/bin/echo\0rc\0face\0ok\0" = 10 + 3 + 5 + 3 = 21
+    assert(n == 21)
+    // 输出直入测试主进程 stdout(run.sh 落盘),此处只验 rc 面
+    assert(run_argv_rc("", blob, n.as[I64](), "") == 0)
+}
+
+test "run_argv_rc: exit code passthrough (false = 1)" {
+    var blob: U8[32] = [0, 0, 0, 0, 0, 0, 0, 0]
+    let n = words_to_blob("/usr/bin/false", blob)
+    assert(run_argv_rc("", blob, n.as[I64](), "") == 1)
+}
+
+test "run_argv_rc: exec fail = 127 (stdin_path empty = inherit)" {
+    var blob: U8[32] = [0, 0, 0, 0, 0, 0, 0, 0]
+    let n = words_to_blob("/no/such/bin-rc-xyz", blob)
+    assert(run_argv_rc("", blob, n.as[I64](), "") == 127)
+}
+
+// 上限实证:14 段 argv(/bin/echo + 13 单字符参)capture=1 → 26 字节整捕
+// (旧上限 12 只解析 12 段 = 11 参 = 22 字节 → 本臂必败 = 上限回归钉)
+test "run_argv_p cap 32: 14-segment argv captured intact" {
+    var blob: U8[64] = [0, 0, 0, 0, 0, 0, 0, 0]
+    var n: I32 = 0
+    n = blob_push_word(blob, n, "/bin/echo")
+    n = blob_push_word(blob, n, "0")
+    n = blob_push_word(blob, n, "1")
+    n = blob_push_word(blob, n, "2")
+    n = blob_push_word(blob, n, "3")
+    n = blob_push_word(blob, n, "4")
+    n = blob_push_word(blob, n, "5")
+    n = blob_push_word(blob, n, "6")
+    n = blob_push_word(blob, n, "7")
+    n = blob_push_word(blob, n, "8")
+    n = blob_push_word(blob, n, "9")
+    n = blob_push_word(blob, n, "a")
+    n = blob_push_word(blob, n, "b")
+    n = blob_push_word(blob, n, "c")
+    assert(n == 36)
+    var out: U8[32] = [0, 0, 0, 0, 0, 0, 0, 0]
+    var plen = ProcBox64 { v: 0 }
+    let rc = ctron_proc_run_argv_p("", blob, n.as[I64](), "", 1, out, plen)
+    assert(rc == 0)
+    // echo 输出 = 13 字符 + 12 空格 + 1 换行 = 26
+    assert(plen.v == 26)
+    assert(out[0] == 48)
+    assert(out[1] == 32)
+    assert(out[24] == 99)
+    assert(out[25] == 10)
+}
+
+// argv_to_blob 对照:同词输入产同 blob(words_to_blob 一致性);空表 = -1
+test "argv_to_blob parity with words_to_blob + empty = -1" {
+    var wb: U8[64] = [0, 0, 0, 0, 0, 0, 0, 0]
+    let wn = words_to_blob("/bin/echo x y", wb)
+    var argv = List[Str]()
+    argv.push("/bin/echo")
+    argv.push("x")
+    argv.push("y")
+    var ab: U8[64] = [0, 0, 0, 0, 0, 0, 0, 0]
+    let an = argv_to_blob(argv, ab)
+    assert(wn == an)
+    var t: I32 = 0
+    while t < an {
+        assert(ab[t] == wb[t])
+        t = t + 1
+    }
+    assert(argv_to_blob(List[Str](), ab) == -1)
 }
 
 // 词追加(NUL 结尾);返回新 n(-1 = 容量不足)

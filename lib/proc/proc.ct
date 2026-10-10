@@ -6,7 +6,7 @@
 // 归 fio。门面形态:免费函数,零 Cap trait 零 caps。e2e = tests/proc。
 // argv blob 构造助手:words_to_blob(空格分词,词内禁空格——测试/固定 token 面);
 // 含空格路径的调用方应自拼 NUL 块(byte_at/str_bytes,fio 面)。
-use proc.bind.{ctron_proc_run, ctron_proc_run_argv, ctron_proc_spawn_bg, ctron_proc_kill, ctron_proc_wait}
+use proc.bind.{ctron_proc_run, ctron_proc_run_argv, ctron_proc_run_argv_rc, ctron_proc_spawn_bg, ctron_proc_kill, ctron_proc_wait}
 
 // 前台:"<bin> run <arg>"(stdout 捕获进 out;返回退出码,-1 = fork/chdir/管道败)
 pub fn run(cwd: Str, bin: Str, arg: Str, var out: U8[]) -> I32 {
@@ -16,6 +16,13 @@ pub fn run(cwd: Str, bin: Str, arg: Str, var out: U8[]) -> I32 {
 // 前台通用 argv 形(blob = NUL 分隔参数块,首段 = 程序路径;同上 rc 口径)
 pub fn run_argv(cwd: Str, var blob: U8[], n: I64, var out: U8[]) -> I32 {
     return ctron_proc_run_argv(cwd, blob, n, out)
+}
+
+// rc 型工具面(stdout/stderr 继承——不建管道,长输出无 SIGPIPE 面;stdin_path
+// 空串 = 继承;返回退出码,127 = exec 失败):argv_p 的 capture=0 无 out_len 形,
+// 无 &ProcBox64 引用形参 → 门面可发射
+pub fn run_argv_rc(cwd: Str, var blob: U8[], n: I64, stdin_path: Str) -> I32 {
+    return ctron_proc_run_argv_rc(cwd, blob, n, stdin_path)
 }
 
 // 后台(daemon 形;err_path 空串 = stderr 亦入 /dev/null):返回 pid(-1 败)
@@ -33,9 +40,10 @@ pub fn wait_pid(pid: I64) -> I32 {
     return ctron_proc_wait(pid)
 }
 
-// 工具面原语 ctron_proc_run_argv_p 不设门面转发:普通 fn 的 &ProcBox64 引用形参
-// 不可发射(Ref+Named → 非法 C,net Task 6 在册;&T 仅 extern 声明位可用)——
-// 消费方直用 proc.bind(git 桥先例 = loom gitx.ct)。
+// 工具面原语 ctron_proc_run_argv_p 仍不设门面转发:capture 形需 &ProcBox64 引用
+// 形参回实捕字节数,普通 fn 的引用形参不可发射(Ref+Named → 非法 C,net Task 6
+// 在册;&T 仅 extern 声明位可用)——消费方直用 proc.bind(git 桥先例 = loom gitx.ct)。
+// rc 型则不同:run_argv_rc 无 out_len 形参 → 上方已设门面。
 
 // ---- inline tests(纯 Ctron 面:argv blob 构造助手;行为面见 tests/proc) ----
 
@@ -83,4 +91,60 @@ pub fn words_to_blob(words: Str, var blob: U8[]) -> I32 {
         i = i + 1
     }
     return n
+}
+
+// argv 列表 → NUL 分隔参数块(逐元素 byte 拷贝 + 各接一个 NUL;元素内允许空格——
+// words_to_blob 的分词限制不触);返回总字节数 = Σ len + 元素数(即末元素亦带
+// 结尾 NUL,与 words_to_blob 同约定);空 argv / 容量不足 = -1
+pub fn argv_to_blob(argv: List[Str], var blob: U8[]) -> I32 {
+    if argv.len == 0 { return -1 }
+    var n: I32 = 0
+    var k: I32 = 0
+    while k < argv.len {
+        var w = argv[k]
+        var j: I32 = 0
+        while j < w.len {
+            if n >= blob.len { return -1 }
+            var cb: I64 = byte_at(w, j)
+            if cb < 0 { cb = cb + 256 }
+            blob[n] = cb.as[U8]()
+            n = n + 1
+            j = j + 1
+        }
+        if n >= blob.len { return -1 }
+        blob[n] = 0.as[U8]()
+        n = n + 1
+        k = k + 1
+    }
+    return n
+}
+
+test "argv_to_blob shape + words_to_blob parity + empty = -1" {
+    var blob: U8[64] = [0, 0, 0, 0, 0, 0, 0, 0]
+    var argv = List[Str]()
+    argv.push("/bin/echo")
+    argv.push("a b")
+    let n = argv_to_blob(argv, blob)
+    // "/bin/echo\0a b\0" = 9 + 1 + 3 + 1 = 14;词内空格原样保留(blob[11] = 32)
+    assert_eq(n, 14)
+    assert_eq(blob[9], 0)
+    assert_eq(blob[11], 32)
+    assert_eq(blob[13], 0)
+    // 一致性:元素序列 = words 分词结果时,产 blob 与 words_to_blob 逐字节同
+    var wblob: U8[64] = [0, 0, 0, 0, 0, 0, 0, 0]
+    let wn = words_to_blob("/bin/echo a b", wblob)
+    var pargv = List[Str]()
+    pargv.push("/bin/echo")
+    pargv.push("a")
+    pargv.push("b")
+    var pblob: U8[64] = [0, 0, 0, 0, 0, 0, 0, 0]
+    let pn = argv_to_blob(pargv, pblob)
+    assert_eq(pn, wn)
+    var t: I32 = 0
+    while t < pn {
+        assert_eq(pblob[t], wblob[t])
+        t = t + 1
+    }
+    var none = List[Str]()
+    assert_eq(argv_to_blob(none, blob), -1)
 }

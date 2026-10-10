@@ -5,7 +5,7 @@
 // 来源:port 自 loom c_src/loom_exec.c 全件 + loom_net.c 进程三件(spawn/kill/wait)
 // (loom C 垫片内化战役批3b-i)。
 // ABI 纪律:ctron_view_w8u 与发射器模板逐字段一致;Str = GC NUL 结尾串;
-// argv blob = NUL 分隔参数块(首段 = 程序路径,逻辑长度 n 显式传)。
+// argv blob = NUL 分隔参数块(首段 = 程序路径,逻辑长度 n 显式传;argv 上限 32)。
 // rc 口径:run 族 = 进程退出码(WIFEXITED;fork/chdir/管道败 = -1;exec 失败 = 127);
 // spawn_bg = pid(-1 败);kill = kill() rc;wait = 退出码(信号杀 = -1)。
 #include <stdint.h>
@@ -53,12 +53,12 @@ int32_t ctron_proc_run(const char* cwd, const char* bin, const char* arg, ctron_
     return run_capture_child_wait(pipefd, pid, out);
 }
 
-// 通用 argv 形:blob = NUL 分隔参数块(首段 = 程序路径,n = 逻辑字节数);argv 上限 12
+// 通用 argv 形:blob = NUL 分隔参数块(首段 = 程序路径,n = 逻辑字节数);argv 上限 32
 int32_t ctron_proc_run_argv(const char* cwd, ctron_view_w8u blob, int64_t n, ctron_view_w8u out) {
-    char* argv[13];
+    char* argv[33];
     int argc = 0;
     int64_t i = 0;
-    while (i < n && argc < 12) {
+    while (i < n && argc < 32) {
         argv[argc++] = (char*)(blob.d + i);
         while (i < n && blob.d[i] != 0) { i++; }
         i++;
@@ -113,18 +113,21 @@ int32_t ctron_proc_wait(int64_t pid) {
 }
 
 // git 桥等工具面原语:PATH 查找(execvp)+ stdin 重定向 + 可选捕获。
-// blob = NUL 分隔 argv 块(首段 = 程序名,execvp 按 PATH 解析;argv 上限 12);
+// blob = NUL 分隔 argv 块(首段 = 程序名,execvp 按 PATH 解析;argv 上限 32);
 // stdin_path 空串 = 继承,非空 = 其内容重定向进 stdin(fast-import 流式面);
-// capture = 0 → 不建管道,子进程 stdout 继承(rc 型工具面——截断管道会 SIGPIPE 误杀
-// 长输出的 push/fetch,loom_git.c 传承语义);capture > 0 → 管道捕获至 out 容量,
-// *out_len = 实捕字节数。返回进程退出码(-1 = fork/chdir/管道/exec 链败,127 = exec 失败)。
+// capture = 0 → 不建管道,子进程 stdout/stderr 继承(rc 型工具面——截断管道会
+// SIGPIPE 误杀长输出的 push/fetch,loom_git.c 传承语义);capture > 0 → 管道捕获
+// 至 out 容量,*out_len = 实捕字节数。返回进程退出码(-1 = fork/chdir/管道/exec
+// 链败,127 = exec 失败)。
 typedef struct { int64_t v; } ProcBox64;
 
-int32_t ctron_proc_run_argv_p(const char* cwd, ctron_view_w8u blob, int64_t n, const char* stdin_path, int64_t capture, ctron_view_w8u out, ProcBox64* out_len) {
-    char* argv[13];
+// argv_p / argv_rc 共用执行核(argv 解析 + chdir + stdin dup2 + execvp + wait):
+// capture = 0 → 不建管道(stdout/stderr 继承);capture > 0 → 管道捕获至 out 容量
+static int32_t proc_exec_core(const char* cwd, ctron_view_w8u blob, int64_t n, const char* stdin_path, int64_t capture, ctron_view_w8u out, ProcBox64* out_len) {
+    char* argv[33];
     int argc = 0;
     int64_t i = 0;
-    while (i < n && argc < 12) {
+    while (i < n && argc < 32) {
         argv[argc++] = (char*)(blob.d + i);
         while (i < n && blob.d[i] != 0) { i++; }
         i++;
@@ -169,4 +172,15 @@ int32_t ctron_proc_run_argv_p(const char* cwd, ctron_view_w8u blob, int64_t n, c
     waitpid(pid, &st, 0);
     if (out_len != NULL) { out_len->v = have_pipe ? total : 0; }
     return WIFEXITED(st) ? WEXITSTATUS(st) : -1;
+}
+
+// rc 型工具面:capture 恒 0(out 置空、无 out_len 形参 → 门面可发射,&ProcBox64
+// 引用形参不可发射的在册限制不触);stdout/stderr 继承,stdin 语义与 argv_p 同源
+int32_t ctron_proc_run_argv_rc(const char* cwd, ctron_view_w8u blob, int64_t n, const char* stdin_path) {
+    ctron_view_w8u no_out = { NULL, 0 };
+    return proc_exec_core(cwd, blob, n, stdin_path, 0, no_out, NULL);
+}
+
+int32_t ctron_proc_run_argv_p(const char* cwd, ctron_view_w8u blob, int64_t n, const char* stdin_path, int64_t capture, ctron_view_w8u out, ProcBox64* out_len) {
+    return proc_exec_core(cwd, blob, n, stdin_path, capture, out, out_len);
 }

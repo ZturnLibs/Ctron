@@ -17,3 +17,7 @@ pub struct ProcBox64 {
     var v: I64
 }
 pub extern "c" fn ctron_proc_run_argv_p(cwd: Str, var blob: U8[], n: I64, stdin_path: Str, capture: I64, var out: U8[], out_len: &ProcBox64) -> I32
+
+// rc 型工具面(argv_p 同核,capture 恒 0):stdout/stderr 继承,stdin_path 空串 =
+// 继承;无 out_len 形参 → 无 &ProcBox64 引用形参,普通门面可发射(proc.ct 包面)
+pub extern "c" fn ctron_proc_run_argv_rc(cwd: Str, var blob: U8[], n: I64, stdin_path: Str) -> I32
