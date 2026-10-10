@@ -1,69 +1,157 @@
-// derive_json —— T52 官方 derive 插件样例(§8.3 声明式代码生成;设计案 §6)
-// ctron_derive:字段驱动合成「模块级 JSON 转义 helper + impl Json for <T>(to_json)」。
-// 产物 = 普通 Ctron 源码文本(人可读、可手写等价物,§3 非宏手术);Json trait 由
-// 接口包 ctron.plugin 提供(用户包 use 引入,产物自身零 use 自包含)。
-// 字段面 v1:I32/I64/F64(to_string)/Bool(if 表达式两臂)/Str(转义);其他型别
-// 返回空串 → 编译器对空产物报 E5060.iface(插件无诊断通道,v1 口径)。
-// 产物文本的元字符经插件侧变量一次转义(q=引号 bs=反斜杠 lb=花括号开)。
+// derive_json —— T52 官方 derive(Json) 插件(§8.3 声明式代码生成;设计案 §6)
+// W1 充实(2026-10-10,计划 docs/superpowers/plans/2026-10-10-derive-json-plugin-plan.md):
+//   产物 = 普通 Ctron 源文本(§3 非宏手术),per-type 两件:
+//     __esc_<T>(全量转义含包裹引号:引号/反斜杠/控制字符 \b \t \n \f \r +
+//     \u00XX,RFC 8259;std/json esc 同款纯字面量形——utf8_enc 解释臂传参 bug
+//     实探 123→替换符 3 字节、emit 臂正确,在册分歧,产物不用之)/
+//     <T>_to_json(型别 mangling:同名方法跨接收者型别冲突,interp 名字分派
+//     首注册胜)。
+//   型别面 v1.1:I32/I64(to_string)/Bool(if 两臂)/Str(全量转义)/嵌套 struct
+//     (字段调 <Inner>_to_json,未 derive 由 sem 未解析兜)。F64 排除(1009 用户
+//     裁决;emit to_string 乱值实探 1.5→"1")。List/Option/Map 等带实参型别超
+//     DeriveInput v1 有损平文本接口(ty 塌缩头标识符)→ 陷阱 fn
+//     __unsupported_json_field_<T>_<ty>(sem 未解析调用带型别名 = 插件无诊断
+//     通道下的 v1 告警信道;空产物静默通过不可用;DBG 残留产物 interp SIGSEGV)。
+//     iface v2(实参型别槽)= T52 §2.2 修订触发件。
+//   插件自身上层转义纪律:产物文本内 { 一律经 lb("\{")合成(闭括号 } 裸写合法);
+//   Json trait 由接口包 ctron.plugin 提供(用户包 use 引入),产物自身零 use 自包含。
 use ctron.plugin.{ DeriveInput }
 
 pub fn ctron_derive(input: DeriveInput) -> Str {
     let q = "\""
     let bs = "\\"
     let lb = "\{"
+    let tn = input.type_name
     var body = ""
     var first = true
     var k: I32 = 0
-    var ok = true
+    var bad = ""
     while k < input.fields.len {
         let f = input.fields[k]
         var comma = ""
         if !first {
             comma = ","
         }
-        if f.ty == "I32" || f.ty == "I64" || f.ty == "F64" {
-            body = body + "    b = b + " + q + comma + bs + q + f.name + bs + q + ":" + q + " + self." + f.name + ".to_string()" + "\n"
+        var pre = "    b = b + " + q + comma + bs + q + f.name + bs + q + ":" + q + " + "
+        if (f.ty == "I32") || (f.ty == "I64") {
+            body = body + pre + "self." + f.name + ".to_string()" + "\n"
         } else {
             if f.ty == "Bool" {
-                body = body + "    b = b + " + q + comma + bs + q + f.name + bs + q + ":" + q + " + (if self." + f.name + " " + lb + " " + q + "true" + q + " } else " + lb + " " + q + "false" + q + " })" + "\n"
+                body = body + pre + "(if self." + f.name + " " + lb + " " + q + "true" + q + " } else " + lb + " " + q + "false" + q + " })" + "\n"
             } else {
                 if f.ty == "Str" {
-                    body = body + "    b = b + " + q + comma + bs + q + f.name + bs + q + ":" + bs + q + q + " + __esc_" + input.type_name + "(self." + f.name + ") + " + q + bs + q + q + "\n"
+                    body = body + pre + "__esc_" + tn + "(self." + f.name + ")" + "\n"
                 } else {
-                    ok = false
+                    if f.ty == "F64" {
+                        bad = "F64"
+                    } else {
+                        if cj_generic(f.ty) {
+                            bad = f.ty
+                        } else {
+                            body = body + pre + "self." + f.name + "." + f.ty + "_to_json()" + "\n"
+                        }
+                    }
                 }
             }
         }
         first = false
         k += 1
     }
-    if !ok {
-        return "DBG tn=" + input.type_name + " nf=" + input.fields.len.to_string()
+    if bad != "" {
+        // 陷阱信道:未支持型别 → 产物引用未定义 fn(sem 未解析错误,型别名嵌于名)
+        var tout = "fn " + tn + "_to_json(self: " + tn + ") -> Str " + lb + "\n"
+        tout = tout + "    return __unsupported_json_field_" + tn + "_" + cj_san(bad) + "()" + "\n"
+        tout = tout + "}" + "\n"
+        return tout
     }
-    // 产物:模块级转义 helper(名带类型防多 derive 撞名)+ impl Json for <T>
-    var esc = "__esc_" + input.type_name
-    var out = "fn " + esc + "(s: Str) -> Str " + lb + "\n"
-    out = out + "    var r = \"\"" + "\n"
-    out = out + "    var i: I32 = 0" + "\n"
-    out = out + "    while i < s.len " + lb + "\n"
-    out = out + "        let c = byte_at(s, i)" + "\n"
-    out = out + "        if c == 34 " + lb + "\n"
-    out = out + "            r = r + " + q + bs + bs + bs + q + q + "\n"
-    out = out + "        } else " + lb + "\n"
-    out = out + "            if c == 92 " + lb + "\n"
-    out = out + "                r = r + " + q + bs + bs + bs + bs + q + "\n"
-    out = out + "            } else " + lb + "\n"
-    out = out + "                r = r + byte_slice(s, i, i + 1)" + "\n"
-    out = out + "            }" + "\n"
-    out = out + "        }" + "\n"
-    out = out + "        i += 1" + "\n"
-    out = out + "    }" + "\n"
-    out = out + "    return r" + "\n"
-    out = out + "}" + "\n"
-    out = out + "fn to_json(self: " + input.type_name + ") -> Str " + lb + "\n"
+    var out = cj_esc_helper(tn, lb)
+    out = out + "fn " + tn + "_to_json(self: " + tn + ") -> Str " + lb + "\n"
     out = out + "    var b = " + q + bs + lb + q + "\n"
     out = out + body
     out = out + "    return b + " + q + "}" + q + "\n"
     out = out + "}" + "\n"
+    return out
+}
+
+// ty 是否带型别实参(接口 v1 有损面:实参不可达 → 一律陷阱)
+fn cj_generic(ty: Str) -> Bool {
+    var i: I32 = 0
+    while i < ty.len {
+        let c = byte_at(ty, i)
+        if c == 91 {
+            return true
+        }
+        i += 1
+    }
+    return false
+}
+
+// 陷阱名净化:非字母数字压 _
+fn cj_san(ty: Str) -> Str {
+    var r = ""
+    var i: I32 = 0
+    while i < ty.len {
+        let c = byte_at(ty, i)
+        var ok = false
+        if c >= 48 {
+            if c <= 57 {
+                ok = true
+            }
+        }
+        if c >= 65 {
+            if c <= 90 {
+                ok = true
+            }
+        }
+        if c >= 97 {
+            if c <= 122 {
+                ok = true
+            }
+        }
+        if ok {
+            r = r + byte_slice(ty, i, i + 1)
+        } else {
+            r = r + "_"
+        }
+        i += 1
+    }
+    return r
+}
+
+// per-type 全量转义 helper 产物(std/json esc 同款:含包裹引号;控制字符经
+// 字母字面量 + hex 查表,零 utf8_enc 依赖、零深字面量转义手术)
+fn cj_esc_helper(tn: Str, lb: Str) -> Str {
+    var out = "fn __esc_" + tn + "(s: Str) -> Str " + lb + "\n"
+    out = out + "    var e = " + "\"\\\\\"\n"
+    out = out + "    var q = " + "\"\\\"\"\n"
+    out = out + "    var out = q\n"
+    out = out + "    var i: I32 = 0\n"
+    out = out + "    while i < s.len " + lb + "\n"
+    out = out + "        let c = byte_at(s, i)\n"
+    out = out + "        if c == 34 " + lb + "\n"
+    out = out + "            out = out + e + q\n"
+    out = out + "        } else if c == 92 " + lb + "\n"
+    out = out + "            out = out + e + e\n"
+    out = out + "        } else if c == 8 " + lb + "\n"
+    out = out + "            out = out + e + \"b\"\n"
+    out = out + "        } else if c == 9 " + lb + "\n"
+    out = out + "            out = out + e + \"t\"\n"
+    out = out + "        } else if c == 10 " + lb + "\n"
+    out = out + "            out = out + e + \"n\"\n"
+    out = out + "        } else if c == 12 " + lb + "\n"
+    out = out + "            out = out + e + \"f\"\n"
+    out = out + "        } else if c == 13 " + lb + "\n"
+    out = out + "            out = out + e + \"r\"\n"
+    out = out + "        } else " + lb + "\n"
+    out = out + "            if c < 32 " + lb + "\n"
+    out = out + "                out = out + e + \"u00\" + byte_slice(\"0123456789ABCDEF\", c / 16, c / 16 + 1) + byte_slice(\"0123456789ABCDEF\", c % 16, c % 16 + 1)\n"
+    out = out + "            } else " + lb + "\n"
+    out = out + "                out = out + byte_slice(s, i, i + 1)\n"
+    out = out + "            }\n"
+    out = out + "        }\n"
+    out = out + "        i += 1\n"
+    out = out + "    }\n"
+    out = out + "    return out + q\n"
+    out = out + "}\n"
     return out
 }

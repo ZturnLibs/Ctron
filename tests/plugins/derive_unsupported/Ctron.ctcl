@@ -1,0 +1,9 @@
+pkg {
+    manifest_version = 1
+    name = "derive_unsupported"
+    version = "0.1.0"
+}
+
+plugin "derive.Json" {
+    path = "../../../compiler/plugins/derive_json"
+}

@@ -69,5 +69,14 @@ else
     bad "sandbox_escape E6020" "$T/escape.out"
 fi
 
+# 7) derive_unsupported 负锚(W1,2026-10-10):F64/带实参型别 → 陷阱 fn
+#    (sem 未解析调用,型别名嵌于陷阱名;插件无诊断通道的 v1 告警信道)
+"$CC" run "$ROOT/tests/plugins/derive_unsupported/src/main.ct" > "$T/uns.out" 2>&1
+if [ $? -ne 0 ] && grep -q 'unsupported_json_field_WithF_F64' "$T/uns.out"; then
+    ok "derive_unsupported 陷阱(F64/带实参型别,错误嵌型别名)"
+else
+    bad "derive_unsupported 陷阱" "$T/uns.out"
+fi
+
 echo "== 插件沙箱阶梯:$pass 过 / $fail 败 =="
 [ "$fail" -eq 0 ]

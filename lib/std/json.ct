@@ -92,6 +92,8 @@ fn jskip(s: Str, i: I32) -> I32 {
 }
 
 // JSON 字符串转义还原(\u 仅解码表内字符;其余原样保留,v0 口径)
+// 修(2026-10-10):已知转义分支原不推进 i → \t/\n/\r/\"/\\// 无限循环 OOM
+// (SIGKILL 137;json_fidelity 无已知转义直测面故存量绿)——两字符消耗归一。
 pub fn junesc(s: Str) -> Str {
     var e = "\\"
     var q = "\""
@@ -101,7 +103,7 @@ pub fn junesc(s: Str) -> Str {
         var c = byte_at(s, i)
         if c == 92 && i + 1 < s.len {
             var d = byte_at(s, i + 1)
-            if d == 34 { out = out + q } else if d == 92 { out = out + e } else if d == 47 { out = out + "/" } else if d == 110 { out = out + "\n" } else if d == 116 { out = out + "\t" } else if d == 114 { out = out + "\r" } else if d == 117 && i + 5 < s.len {
+            if d == 117 && i + 5 < s.len {
                 var cp = hex4(s, i + 2)
                 var ch = ""
                 if cp >= 48 && cp <= 57 {
@@ -119,7 +121,21 @@ pub fn junesc(s: Str) -> Str {
                     i += 6
                 }
             } else {
-                out = out + byte_slice(s, i, i + 2)
+                if d == 34 {
+                    out = out + q
+                } else if d == 92 {
+                    out = out + e
+                } else if d == 47 {
+                    out = out + "/"
+                } else if d == 110 {
+                    out = out + "\n"
+                } else if d == 116 {
+                    out = out + "\t"
+                } else if d == 114 {
+                    out = out + "\r"
+                } else {
+                    out = out + byte_slice(s, i, i + 2)
+                }
                 i += 2
             }
         } else {
@@ -1196,6 +1212,25 @@ test "scalar json canonical forms" {
 test "esc round trip" {
     let e = esc("tab\there")
     assert_eq(e, "\"tab\\there\"")
+}
+
+test "junesc known escapes advance" {
+    assert_eq(junesc("a\\tb"), "a\tb")
+    assert_eq(junesc("x\\ny"), "x\ny")
+    assert_eq(junesc("q\\\"w"), "q\"w")
+    assert_eq(junesc("\\\\z"), "\\z")
+}
+
+test "parse string with tab escape" {
+    let r = parse("\{\"s\":\"a\\tb\"}")
+    let es = match r {
+        Ok(v) => v
+        Err(m) => {
+            println(m)
+            return 1
+        }
+    }
+    assert_eq(qval(es, "$.s"), "a\tb")
 }
 
 test "numbers strict per RFC ABNF" {

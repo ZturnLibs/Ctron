@@ -1,0 +1,21 @@
+// derive_unsupported —— 负锚:未支持型别陷阱(F64 裁决排除/带实参型别超 iface v1)
+// 产物引用未定义 fn → sem 未解析错误,型别名嵌于陷阱名(插件无诊断通道的 v1 告警信道)。
+// 探针实证:空产物=静默通过不可用;DBG 残留产物=interp SIGSEGV——陷阱是 v1 唯一合规形态。
+
+@derive(Json)
+struct WithF {
+    let v: F64
+}
+
+@derive(Json)
+struct WithM {
+    let m: Map[Str, I32]
+}
+
+fn main() -> I32 {
+    return 0
+}
+
+test "anchor carries runnable block" {
+    assert(true)
+}

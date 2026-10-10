@@ -1,6 +1,10 @@
 // json_demo —— T52 官方 derive(Json) 端到端正锚(§8.3 插件展开 = 普通代码)
-// to_json 产物 = 自由 fn(UFCS 调用;值接收;trait impl 发射为在册缺口);Str 值转义
-// 覆盖引号/反斜杠;interp 臂见 tests/plugins/run.sh(emit 同构双臂)。
+// W1(2026-10-10):产物型别 mangling(<T>_to_json;同名方法跨接收者型别冲突实证)
+// + 全量转义(引号/反斜杠/控制字符 \b \t \n \f \r + \u00XX,RFC 8259)+ I64/Bool/
+// 嵌套 struct 递归。F64/带实参型别走陷阱(负锚 tests/plugins/derive_unsupported)。
+// interp 臂见 tests/plugins/run.sh(emit 同构双臂)。
+// 注:控制字符测试数据经 junesc 造(utf8_enc 解释臂传参 bug 在册,数据不可用之)。
+use std.json.{ junesc }
 
 @derive(Json)
 struct P {
@@ -8,11 +12,29 @@ struct P {
     let s: Str
 }
 
-test "derive json to_json" {
+@derive(Json)
+struct In {
+    let v: I64
+    let ok: Bool
+}
+
+@derive(Json)
+struct OuterP {
+    let inner: In
+    let label: Str
+}
+
+test "derive json to_json suite" {
     let p = P { x: 1, s: "hi" }
-    println(to_json(p))
-    assert_eq(p.to_json(), "\{" + "\"x\":1,\"s\":\"hi\"" + "}")
-    let p2 = P { x: 2, s: "a\"b" }
-    assert_eq(p2.to_json(), "\{" + "\"x\":2,\"s\":\"a\\\"b\"" + "}")
+    println(p.P_to_json())
+    assert_eq(p.P_to_json(), "\{" + "\"x\":1,\"s\":\"hi\"" + "}")
+    let p2 = P { x: 2, s: "a\"b\\c\nd" }
+    assert_eq(p2.P_to_json(), "\{" + "\"x\":2,\"s\":\"a\\\"b\\\\c\\nd\"" + "}")
+    let p3 = P { x: 3, s: junesc("a\\tb") }
+    assert_eq(p3.P_to_json(), "\{" + "\"x\":3,\"s\":\"a\\tb\"" + "}")
+    let in1 = In { v: 9007199254740993, ok: true }
+    assert_eq(in1.In_to_json(), "\{" + "\"v\":9007199254740993,\"ok\":true" + "}")
+    let o = OuterP { inner: in1, label: "外" }
+    assert_eq(o.OuterP_to_json(), "\{" + "\"inner\":" + in1.In_to_json() + ",\"label\":\"外\"" + "}")
     println("json-ok")
 }
