@@ -50,6 +50,11 @@ ctron —— Ctron 工具链驱动
   ctron pkg log query <日志仓> [名]
                              日志查询:列名或列某名的 digest+公证要点
   ctron new <dir>              脚手架:hello + Ctron.toml + Ctron.ctcl
+  ctron task [-f <file>] [名]  列出/执行 ctron.ctcl 任务(驱动器面;步骤直 exec,拒 shell 元字符)
+  ctron gate [名]              ≡ task,缺省名 gate;无 ctron.ctcl 时项目模式
+                             回落内建默认门(build + fmt --check)
+  ctron clean [--all]          清工具链缓存三域(.cache/emit|bare|wasm);
+                             --all 加项目 build/ 与 pkgs/
   ctron --version              版本
   ctron --help | help [cmd]    帮助(亦可 ctron <cmd> --help)
 环境变量:CC(默认 gcc)、CTRON_STDPATH(覆盖标准库位置)
@@ -90,6 +95,12 @@ ctron build —— 发射 C 并编译为可执行
 		Write-Output 'ctron pkg verify <artifact-dir> [--deep] —— 密封工件摘要自洽校验(D8-2 L1):SHA256SUMS 逐成员重算 + self_digest=sha256(SHA256SUMS 字节) 重算比对;缺 meta/SHA256SUMS/impl 或任一成员不符即 fail-closed rc=1;--deep = ctron-verify 发射验证器(in-language 重算,L3 载体);trace 复放腿归 S3'
 	} elseif ($c -eq 'new') {
 		Write-Output 'ctron new <dir> —— 生成 <dir>/Ctron.toml + Ctron.ctcl + src/main.ct(hello)'
+	} elseif ($c -eq 'task') {
+		Write-Output 'ctron task [-f <file>] [名] —— 列出/执行 ctron.ctcl 任务(驱动器面);步骤为直 exec 命令行,拒 shell 元字符(| & ; 等),复杂编排写脚本文件后以 sh 调用;-f 指定清单(缺省 ./ctron.ctcl),步骤以清单所在目录为 cwd'
+	} elseif ($c -eq 'gate') {
+		Write-Output 'ctron gate [名] —— ≡ task,缺省名 gate;无 ctron.ctcl 时项目模式回落内建默认门(build + fmt --check);步骤引号语义非 shell 全同'
+	} elseif ($c -eq 'clean') {
+		Write-Output 'ctron clean [--all] —— 清工具链缓存三域(.cache/emit|bare|wasm);--all 加项目 build/ 与 pkgs/;CTRON_DRV_ROOT 可覆盖缓存根'
 	} else { Usage }
 }
 
@@ -418,10 +429,327 @@ function Cmd-PkgLog($lrest) {
 	exit 0
 }
 
+# ---- 驱动器面 ctron.ctcl 读取器 + task/gate/clean(W1 批3;与 sh 版同文同诊,行制 E 码族,fail-closed 一错即停) ----
+class CtronParseError : System.Exception {
+	CtronParseError([string]$m) : base($m) {}
+}
+
+function Dv-StripComment($s) {
+	$inq = $false; $bs = $false; $out = ''
+	for ($i = 0; $i -lt $s.Length; $i++) {
+		$c = $s[$i]
+		if ($inq) {
+			$out += $c
+			if ($bs) { $bs = $false }
+			elseif ($c -eq '\') { $bs = $true }
+			elseif ($c -eq '"') { $inq = $false }
+		} else {
+			if ($c -eq '"') { $inq = $true; $out += $c }
+			elseif ($c -eq '/' -and ($i + 1) -lt $s.Length -and $s[$i + 1] -eq '/') { return $out }
+			else { $out += $c }
+		}
+	}
+	return $out
+}
+
+# Dv-Unquote <串> <ok:ref>:CTCL 字符串反转义(仅 \" 与 \\);失败置 ok=$false
+function Dv-Unquote($s, [ref]$ok) {
+	$ok.Value = $true
+	if ($s.Length -lt 2 -or $s[0] -ne '"' -or $s[$s.Length - 1] -ne '"') { $ok.Value = $false; return '' }
+	$body = $s.Substring(1, $s.Length - 2)
+	$out = ''; $i = 0
+	while ($i -lt $body.Length) {
+		$c = $body[$i]
+		if ($c -eq '\') {
+			if ($i -eq $body.Length - 1) { $ok.Value = $false; return '' }
+			$c = $body[$i + 1]
+			if ($c -ne '"' -and $c -ne '\') { $ok.Value = $false; return '' }
+			$out += $c
+			$i += 2
+		} else { $out += $c; $i += 1 }
+	}
+	return $out
+}
+
+# Dv-Load <清单>:行制读取器主体(诊断带行号,一错即停);成功返回 task 记录有序数组,失败返回 $null
+function Dv-Load($path) {
+	$tasks = @(); $names = @()
+	$blk = ''; $cur = $null; $sawCtron = $false; $seenCfg = $false; $cfgOk = $false
+	$ln = 0
+	try {
+		foreach ($raw in [IO.File]::ReadAllLines($path)) {
+			$ln++
+			$line = $raw.Trim(' ', "`t")
+			if ($line -eq '') { continue }
+			if ($blk -eq '') {
+				if ($line[0] -eq '[') { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: 本语言不用 [section] 段头;请用块:ctron { ... } / task `"名`" { ... }") }
+				if ($line[$line.Length - 1] -ne '{') { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: 块头 { 必须行尾:ctron { ... } / task `"名`" { ... }") }
+				$head = $line.Substring(0, $line.Length - 1).TrimEnd(' ', "`t")
+				$ws = $head.IndexOfAny([char[]]@(' ', "`t"))
+				if ($ws -lt 0) { $id = $head; $arg = '' } else { $id = $head.Substring(0, $ws); $arg = $head.Substring($ws + 1).TrimEnd(' ', "`t") }
+				if ($id -ne 'ctron' -and $id -ne 'task') { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5044 未知块 $id;合法块:ctron, task") }
+				if ($id -eq 'ctron') {
+					if ($arg -ne '') { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5041 ctron 是记录块,不带名字实参") }
+					if ($sawCtron) { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5045 ctron 块最多一个") }
+					$sawCtron = $true
+				} else {
+					if ($arg -eq '') { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5041 task 是键控块:task `"名`" { ... }") }
+					$ok = $false
+					$arg = Dv-Unquote $arg ([ref]$ok)
+					if (-not $ok) { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5040 task 名实参非法") }
+					if ($arg -notmatch '^[a-z][a-z0-9_-]*$') { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5046 task 名非法(形:[a-z][a-z0-9_-]*):$arg") }
+					if ($names -contains $arg) { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5045 重复的 task `"$arg`"") }
+					$names += $arg
+					$cur = @{ name = $arg; desc = ''; steps = New-Object System.Collections.Generic.List[string]; keys = @(); hasSteps = $false }
+				}
+				$blk = $id
+				continue
+			}
+			if ($line -eq '}') {
+				if ($blk -eq 'task') {
+					if (-not $cur.hasSteps) { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5051 task `"$($cur.name)`" 缺必填键 steps") }
+					if ($cur.steps.Count -eq 0) { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5054 steps 不允许空列表(空 steps 的任务不合法)") }
+					$tasks += $cur
+				}
+				$blk = ''; $cur = $null
+				continue
+			}
+			if ($line.Contains('{') -or $line.Contains('}')) { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5040 块内禁止嵌套块/单行块(深度恒 1)") }
+			$eq = $line.IndexOf('=')
+			if ($eq -lt 0) { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5040 块内每行必须是 键 = 值") }
+			$key = $line.Substring(0, $eq).TrimEnd(' ', "`t")
+			$val = $line.Substring($eq + 1).TrimStart(' ', "`t")
+			if ($key -notmatch '^[a-z_][a-z0-9_]*$') { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5040 块内每行必须是 键 = 值") }
+			if ($blk -eq 'ctron') {
+				if ($key -ne 'config_version') { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5043 块 ctron 中未知键 $key;合法键:config_version") }
+				if ($seenCfg) { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5045 重复键 $key") }
+				$seenCfg = $true
+				if ($val -notmatch '^-?(0|[1-9][0-9]*)$') { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5046 config_version 的类型应为 int") }
+				if ($val -ne '1') { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5050 config_version 必须为 1") }
+				$cfgOk = $true
+				continue
+			}
+			if ($key -ne 'steps' -and $key -ne 'desc') { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5043 块 task 中未知键 $key;合法键:steps, desc") }
+			if ($cur.keys -contains $key) { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5045 重复键 $key") }
+			$cur.keys += $key
+			if ($key -eq 'desc') {
+				if ($val[0] -ne '"') { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5046 desc 的类型应为 str") }
+				$ok = $false
+				$cur.desc = Dv-Unquote $val ([ref]$ok)
+				if (-not $ok) { throw [CtronParseError]::new('ctron: ctron.ctcl:' + $ln + ': E5048 desc 字符串非法(转义仅 \" 与 \\)') }
+				continue
+			}
+			if ($val[0] -ne '[') { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5046 steps 的类型应为 list") }
+			if ($val[$val.Length - 1] -ne ']') { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5040 列表必须单行且以 ] 结尾") }
+			$inner = $val.Substring(1, $val.Length - 2).Trim(' ', "`t")
+			if ($inner -eq '') { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5054 steps 不允许空列表(空 steps 的任务不合法)") }
+			if ($inner[$inner.Length - 1] -eq ',') { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5048 列表不允许尾逗号(最后元素后直接 ])") }
+			$cur.hasSteps = $true
+			$rest2 = $inner
+			while ($true) {
+				$inq = $false; $bs = $false; $elem = ''
+				$m = $rest2.Length
+				$comma = -1
+				for ($j = 0; $j -lt $m; $j++) {
+					$c = $rest2[$j]
+					if ($inq) {
+						$elem += $c
+						if ($bs) { $bs = $false }
+						elseif ($c -eq '\') { $bs = $true }
+						elseif ($c -eq '"') { $inq = $false }
+					} else {
+						if ($c -eq '"') { $inq = $true; $elem += $c }
+						elseif ($c -eq ',') { $comma = $j; break }
+						else { $elem += $c }
+					}
+				}
+				$e2 = $elem.Trim(' ', "`t")
+				$ok = $false; $v = ''
+				if ($e2 -ne '') { $v = Dv-Unquote $e2 ([ref]$ok) }
+				if (-not $ok) { throw [CtronParseError]::new('ctron: ctron.ctcl:' + $ln + ': E5048 列表元素必须是双引号字符串(转义仅 \" 与 \\)') }
+				$cur.steps.Add($v)
+				if ($comma -lt 0) { break }
+				$rest2 = $rest2.Substring($comma + 1)
+			}
+		}
+		if ($blk -ne '') { throw [CtronParseError]::new('ctron: ctron.ctcl: 块未闭合(缺 })') }
+		if (-not $sawCtron) { throw [CtronParseError]::new('ctron: ctron.ctcl: E5047 缺 ctron 块') }
+		if (-not $cfgOk) { throw [CtronParseError]::new('ctron: ctron.ctcl: E5050 ctron 缺语言版本键 config_version(必须存在且 = 1)') }
+		return ,$tasks
+	} catch [CtronParseError] {
+		[Console]::Error.WriteLine($_.Exception.Message)
+		return $null
+	}
+}
+
+# Dv-SplitStep <步骤串>:argv 切分(双引号分组,转义仅 \" 与 \\;元字符同一拒绝表,
+# 引号内也拒——与 sh 版切分器同表同语义;反引号同拒,PS 转义字符不为其开洞)
+function Dv-SplitStep($s) {
+	foreach ($mc in @('|', '&', ';', '$', '`', '<', '>', '(', ')', '*', '?')) {
+		if ($s.Contains($mc)) {
+			[Console]::Error.WriteLine('ctron: E5040 步骤含 shell 元字符(| & ; $ ` < > ( ) * ?):' + $s + ';两条出路:改写为多步骤 / 写脚本文件后以 sh 调用')
+			return $null
+		}
+	}
+	$out = New-Object System.Collections.Generic.List[string]
+	$i = 0; $n = $s.Length
+	while ($i -lt $n) {
+		$c = $s[$i]
+		if ($c -eq ' ' -or $c -eq "`t") { $i++; continue }
+		$arg = ''
+		if ($c -eq '"') {
+			$i++
+			$closed = $false
+			while ($i -lt $n) {
+				$c = $s[$i]
+				if ($c -eq '\') {
+					if ($i -eq $n - 1) { [Console]::Error.WriteLine('ctron: 步骤串孤立的尾部反斜杠:' + $s); return $null }
+					$arg += $s[$i + 1]
+					$i += 2
+				} elseif ($c -eq '"') { $closed = $true; $i++; break }
+				else { $arg += $c; $i++ }
+			}
+			if (-not $closed) { [Console]::Error.WriteLine('ctron: 步骤串引号未闭合:' + $s); return $null }
+		} else {
+			while ($i -lt $n) {
+				$c = $s[$i]
+				if ($c -eq ' ' -or $c -eq "`t" -or $c -eq '"') { break }
+				$arg += $c
+				$i++
+			}
+		}
+		$out.Add($arg)
+	}
+	return $out
+}
+
+# Dv-QuoteArg:Start-Process -ArgumentList 拼接不自动加引号;含空格/引号的实参按
+# Windows 命令行规则手工引注(反斜杠在引注前与尾处翻倍," 记作 \")
+function Dv-QuoteArg($s) {
+	if ($s -notmatch '[\s"]') { return $s }
+	$t = $s -replace '(\\*)"', '$1$1\"'
+	$t = $t -replace '(\\+)$', '$1$1'
+	return '"' + $t + '"'
+}
+
+# Dv-RunStep <步骤串>:切分 argv(裸名 ctron → 同目录 ctron.cmd 转发面)并
+# Start-Process -NoNewWindow -Wait -PassThru 直 exec 取 ExitCode——无 shell 中间层。
+function Dv-RunStep($step) {
+	$argv = Dv-SplitStep $step
+	if ($null -eq $argv) { return 2 }
+	if ($argv.Count -eq 0) { return 0 }
+	if ($argv[0] -eq 'ctron') { $argv[0] = Join-Path $Bin 'ctron.cmd' }
+	$argline = ($argv | Select-Object -Skip 1 | ForEach-Object { Dv-QuoteArg $_ }) -join ' '
+	try {
+		$p = Start-Process -FilePath $argv[0] -ArgumentList $argline -NoNewWindow -Wait -PassThru
+	} catch {
+		[Console]::Error.WriteLine($_.Exception.Message)
+		return 127
+	}
+	$rc = $p.ExitCode
+	if ($null -eq $rc) { $rc = 1 }
+	return $rc
+}
+
+# Dv-IsDriverManifest <路径>:首块嗅探(与 ctcl_check 注册表嗅探同哲学)——大小写
+# 不敏感文件系统(Windows NTFS)上 ctron.ctcl 与 Ctron.ctcl 同指一文件,项目清单
+# (pkg 块)不得被 gate 的回落序误当驱动器清单;诊断仍归读取器(ctron task 显式面)。
+function Dv-IsDriverManifest($p) {
+	if (-not (Test-Path $p -PathType Leaf)) { return $false }
+	foreach ($l in @(Get-Content $p)) {
+		$t = $l.Trim(' ', "`t")
+		if ($t -eq '' -or $t.StartsWith('//')) { continue }
+		return ($t -match '^(ctron|task)[ \t{]')
+	}
+	return $false
+}
+
+function Cmd-Task($rest) {
+	$taskFile = './ctron.ctcl'
+	$taskName = ''
+	$i = 0
+	while ($i -lt $rest.Count) {
+		$a = $rest[$i]
+		if ($a -eq '-f') { $i++; if ($i -ge $rest.Count) { [Console]::Error.WriteLine('ctron: task: -f 缺值'); exit 2 }; $taskFile = $rest[$i] }
+		elseif ($a.StartsWith('-f=')) { $taskFile = $a.Substring(3) }
+		else { $taskName = $a }
+		$i++
+	}
+	if (-not (Test-Path $taskFile -PathType Leaf)) { [Console]::Error.WriteLine("ctron: task: 缺清单 $taskFile(驱动器面;试: ctron task -f <文件> 或先 ctron new)"); exit 2 }
+	# §5.4 cwd 契约:步骤一律以清单所在目录为工作目录(相对路径 = 清单相对)
+	$full = (Resolve-Path $taskFile).Path
+	$dir = Split-Path -Parent $full
+	$tasks = Dv-Load $full
+	if ($null -eq $tasks) { exit 2 }
+	if ($taskName -eq '') {
+		foreach ($t in $tasks) { Write-Output ("$($t.name)`t$($t.desc)") }
+		exit 0
+	}
+	$t0 = $tasks | Where-Object { $_.name -eq $taskName } | Select-Object -First 1
+	if (-not $t0) { [Console]::Error.WriteLine("ctron: task: 未知任务 $taskName(试: ctron task 列表)"); exit 2 }
+	Push-Location $dir
+	$n = 0
+	$total = $t0.steps.Count
+	foreach ($st in $t0.steps) {
+		$n++
+		Write-Output ("ctron: task $taskName 步骤 $n/${total}: $st")
+		$rc = Dv-RunStep $st
+		if ($rc -ne 0) { [Console]::Error.WriteLine("ctron: task $taskName 在步骤 $n 失败(rc=$rc)"); exit $rc }
+	}
+	Write-Output "ctron: task $taskName 完成($n 步)"
+	exit 0
+}
+
+# Cmd-Gate:D4 解析序 fail-closed——cwd ctron.ctcl(经首块嗅探确证)task → 项目模式
+# (Ctron.ctcl 在场)内建默认门 → rc 2 用法错;名实参先自解析(与 sh 版同序)。
+function Cmd-Gate($rest) {
+	$gname = 'gate'
+	if ($rest.Count -ge 1) { $gname = $rest[0] }
+	if (Dv-IsDriverManifest 'ctron.ctcl') { Cmd-Task $rest }
+	if ($gname -eq 'gate' -and (Test-Path 'Ctron.ctcl' -PathType Leaf)) {
+		Write-Output 'ctron: 内建默认门(build + fmt --check;项目自定义门:写 ctron.ctcl 的 task "gate")'
+		$rc = Dv-RunStep 'ctron build'
+		if ($rc -ne 0) { [Console]::Error.WriteLine("ctron: gate 在步骤 1 失败(rc=$rc)"); exit $rc }
+		$rc = Dv-RunStep 'ctron fmt --check .'
+		if ($rc -ne 0) { [Console]::Error.WriteLine("ctron: gate 在步骤 2 失败(rc=$rc)"); exit $rc }
+		Write-Output 'ctron: gate 完成(2 步)'
+		exit 0
+	}
+	[Console]::Error.WriteLine('ctron: gate: 缺 ctron.ctcl 且非项目模式(Ctron.ctcl 亦缺);试: ctron task / 先 ctron new')
+	exit 2
+}
+
+# Cmd-Clean:缓存清理唯一合法口——默认缓存三域(.cache/emit|bare|wasm,根 =
+# CTRON_DRV_ROOT 覆盖,缺省 DevRoot);--all 加项目 build/ 与 pkgs/。
+function Cmd-Clean($rest) {
+	$all = $false
+	foreach ($a in $rest) {
+		if ($a -eq '--all') { $all = $true } else { [Console]::Error.WriteLine("ctron: clean 未知旗标: $a(支持: --all)"); exit 2 }
+	}
+	$drvRoot = $env:CTRON_DRV_ROOT
+	if (-not $drvRoot) { $drvRoot = $DevRoot }
+	foreach ($d in @('emit', 'bare', 'wasm')) {
+		$p = Join-Path $drvRoot ".cache/$d"
+		if (Test-Path $p -PathType Container) {
+			Remove-Item $p -Recurse -Force
+			Write-Output "ctron: 已清理 .cache/$d"
+		}
+	}
+	if ($all) {
+		foreach ($d in @('build', 'pkgs')) {
+			if (Test-Path $d -PathType Container) {
+				Remove-Item $d -Recurse -Force
+				Write-Output "ctron: 已清理 $d/"
+			}
+		}
+	}
+	exit 0
+}
+
 if ($args.Count -lt 1) { Usage; exit 2 }
 $cmd = $args[0]; $rest = @($args | Select-Object -Skip 1)
 # <cmd> --help / <cmd> -h:子命令详助入口(usage 宣传的第四帮助入口),先于各分派臂拦截(同 sh 版)
-if ($cmd -in 'run','check','build','test','new','fmt','doc','lint','bench','add','publish','lock','pkg' -and $rest.Count -ge 1 -and $rest[0] -in '--help','-h') {
+if ($cmd -in 'run','check','build','test','new','fmt','doc','lint','bench','add','publish','lock','pkg','task','gate','clean' -and $rest.Count -ge 1 -and $rest[0] -in '--help','-h') {
 	Help-Cmd $cmd; exit 0
 }
 switch ($cmd) {
@@ -447,12 +775,15 @@ switch ($cmd) {
 		& (Join-Path $Bin 'ctron-cc.exe') run $rest[0]; exit $LASTEXITCODE }
 	'fmt' {
 		# R-P2d:ctron fmt <file|pkg目录> [-w|--check](语义对齐 compiler-rust main.rs fmt 分支)
+		# W1 批3:D4 内建默认门步骤字面 "ctron fmt --check ." 要求旗标可在目标前——目标 = 首个非旗标实参(同 sh 版)
 		if ($rest.Count -lt 1) { [Console]::Error.WriteLine('ctron: fmt 需要输入文件或 pkg 目录'); exit 2 }
-		$target = $rest[0]
+		$target = ''
 		$w = $false; $check = $false
-		foreach ($a in ($rest | Select-Object -Skip 1)) {
+		foreach ($a in $rest) {
 			if ($a -in '-w','--write') { $w = $true } elseif ($a -eq '--check') { $check = $true }
+			elseif ($target -eq '') { $target = $a }
 		}
+		if ($target -eq '') { [Console]::Error.WriteLine('ctron: fmt 需要输入文件或 pkg 目录'); exit 2 }
 		if (Test-Path $target -PathType Container) {
 			$dir = $target
 			if (Test-Path (Join-Path $target 'src') -PathType Container) { $dir = Join-Path $target 'src' }
@@ -489,6 +820,9 @@ switch ($cmd) {
 		if ($check -and $unf -gt 0) { [Console]::Error.WriteLine("$unf 个文件待格式化"); exit 1 }
 		exit 0 }
 	'build' { if ($rest.Count -ge 1) { Build-File $rest[0] } else { Build-Proj } }
+	'task' { Cmd-Task $rest }
+	'gate' { Cmd-Gate $rest }
+	'clean' { Cmd-Clean $rest }
 	'new' {
 		if ($rest.Count -lt 1) { [Console]::Error.WriteLine('ctron: new 需要目录名'); exit 2 }
 		New-Item -ItemType Directory -Force -Path "$($rest[0])/src" | Out-Null

@@ -73,6 +73,26 @@ task "failstop" {
 EOF2
 OUT=$(cd "$SBOX" && CTRON_DRV_ROOT="$SBOX" $DRV task -f failstop.ctcl failstop 2>&1)
 if [ $? -eq 3 ] && printf '%s' "$OUT" | grep -q "ran ok" && ! printf '%s' "$OUT" | grep -q "never-run-marker" && printf '%s' "$OUT" | grep -q "在步骤 2 失败(rc=3)"; then ok; else bad "fail-stop: rc=3+跳过后续+判词 期望,实得: $OUT"; fi
+# T10 gate = task 别名
+T "gate 别名" 0 "ran ok" gate hello
+# T11 内建默认门回落:项目目录(Ctron.ctcl 在场)无 ctron.ctcl → build+fmt
+mkdir -p "$SBOX/proj/src"
+printf 'pkg {\n    manifest_version = 1\n    name = "proj"\n    version = "0.1.0"\n}\n' > "$SBOX/proj/Ctron.ctcl"
+printf 'fn main() {\n    println("hi")\n}\n' > "$SBOX/proj/src/main.ct"
+(cd "$SBOX/proj" && CTRON_DRV_ROOT="$SBOX" $DRV fmt -w src/main.ct) > /dev/null   # 先 fmt 归一,免门假红
+OUT=$(cd "$SBOX/proj" && CTRON_DRV_ROOT="$SBOX" $DRV gate 2>&1)
+if [ $? -eq 0 ] && printf '%s' "$OUT" | grep -q "内建默认门" && printf '%s' "$OUT" | grep -q "已构建"; then ok; else bad "内建默认门: $OUT"; fi
+# T12 非项目目录 + 无 ctron.ctcl → rc2 用法错
+mkdir -p "$SBOX/empty_dir"
+OUT=$(cd "$SBOX/empty_dir" && CTRON_DRV_ROOT="$SBOX" $DRV gate 2>&1)
+if [ $? -eq 2 ]; then ok; else bad "gate 用法错: rc 2 期望,实得(输出: $OUT)"; fi
+# T13 clean 清缓存域(--all 加 build/);CTRON_DRV_ROOT 沙盒
+mkdir -p "$SBOX/.cache/emit" "$SBOX/.cache/bare" "$SBOX/proj/build" "$SBOX/proj/pkgs"
+OUT=$(cd "$SBOX/proj" && CTRON_DRV_ROOT="$SBOX" $DRV clean --all 2>&1)
+if [ $? -eq 0 ] && [ ! -d "$SBOX/.cache/emit" ] && [ ! -d "$SBOX/.cache/bare" ] && [ ! -d "$SBOX/proj/build" ] && [ ! -d "$SBOX/proj/pkgs" ]; then ok; else bad "clean --all: $OUT"; fi
+# T14 clean 未知旗标
+OUT=$(cd "$SBOX" && CTRON_DRV_ROOT="$SBOX" $DRV clean --nope 2>&1)
+if [ $? -eq 2 ]; then ok; else bad "clean 旗标: rc 2 期望"; fi
 
 echo "tests/tasks: $PASS 过 / $FAIL 败"
 [ "$FAIL" -eq 0 ]

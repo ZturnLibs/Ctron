@@ -257,6 +257,10 @@ ctron —— Ctron 工具链驱动
                              日志查询:列名或列某名的 digest+公证要点
   ctron new <dir>              脚手架:hello + Ctron.ctcl
   ctron task [-f <file>] [名]  列出/执行 ctron.ctcl 任务(驱动器面;步骤直 exec,拒 shell 元字符)
+  ctron gate [名]              ≡ task,缺省名 gate;无 ctron.ctcl 时项目模式
+                             回落内建默认门(build + fmt --check)
+  ctron clean [--all]          清工具链缓存三域(.cache/emit|bare|wasm);
+                             --all 加项目 build/ 与 pkgs/
   ctron --version              版本
   ctron --help | help [cmd]    帮助(亦可 ctron <cmd> --help)
 环境变量:CC(默认 cc)、CTRON_STDPATH(覆盖标准库位置)
@@ -296,6 +300,8 @@ H
     pkg) echo "ctron pkg verify <artifact-dir> [--deep] / pkg trace record|replay —— verify: 密封工件摘要自洽校验(D8-2 L1;SHA256SUMS 逐成员+self_digest 重算,fail-closed rc=1;--deep = ctron-verify 发射验证器 L3 载体);trace: 纯函数黄金轨迹录制/复放(S3-α,值=to_string 规范形);trace 复放腿接线与效果函数 FakeFs 归 S3-β";;
     new) echo "ctron new <dir> —— 生成 <dir>/Ctron.ctcl + src/main.ct(hello)";;
     task) echo "ctron task [-f <file>] [名] —— 列出/执行 ctron.ctcl 任务(驱动器面;步骤直 exec,拒 shell 元字符);-f 指定清单(缺省 ./ctron.ctcl),步骤以清单所在目录为 cwd";;
+    gate) echo "ctron gate [名] —— ≡ task,缺省名 gate;无 ctron.ctcl 时项目模式回落内建默认门(build + fmt --check);步骤引号语义非 shell 全同";;
+    clean) echo "ctron clean [--all] —— 清工具链缓存三域(.cache/emit|bare|wasm);--all 加项目 build/ 与 pkgs/;CTRON_DRV_ROOT 可覆盖缓存根";;
     *) usage;;
 esac
 }
@@ -1018,11 +1024,75 @@ cmd_task() {
     echo "ctron: task $TASK_NAME 完成($N 步)"
 }
 
+# drv_is_driver_manifest <文件>:首块嗅探(与 ctcl_check 注册表嗅探同哲学,清单/驱动器
+# 两面互不误伤)——首条非空非注释行的块 id ∈ {ctron, task} 才认驱动器清单。大小写不
+# 敏感文件系统(macOS/Windows)上 ctron.ctcl 与 Ctron.ctcl 同指一文件,项目清单(pkg
+# 块)不得被 gate 的回落序误当驱动器清单。嗅探只把关卡分派;诊断仍归读取器(ctron task 显式面)。
+drv_is_driver_manifest() {
+    [ -f "$1" ] || return 1
+    sed -n 's/^[[:space:]]*//p' "$1" | grep -v '^//' | grep -Eq '^(ctron|task)[[:space:]{]'
+}
+
+# cmd_gate:D4 解析序 fail-closed——cwd ctron.ctcl(经首块嗅探确证为驱动器清单)task →
+# 项目模式(Ctron.ctcl 在场)内建默认门 ["ctron build", "ctron fmt --check ."] →
+# rc 2 用法错。gate ≡ task 别名,故先自解析名实参再进 run_step(run_step 会 clobber
+# 位置实参,评审批2 在案)。步骤失败 rc 原样透传;用法/清单错 = 2。
+cmd_gate() {
+    GATE_NAME=""
+    [ $# -ge 1 ] && GATE_NAME=$1
+    [ -n "$GATE_NAME" ] || GATE_NAME=gate
+    if drv_is_driver_manifest ctron.ctcl; then
+        cmd_task "$GATE_NAME"
+        return
+    fi
+    if [ "$GATE_NAME" = "gate" ] && [ -f Ctron.ctcl ]; then
+        echo "ctron: 内建默认门(build + fmt --check;项目自定义门:写 ctron.ctcl 的 task \"gate\")"
+        run_step "ctron build"
+        RC=$?
+        if [ "$RC" -ne 0 ]; then echo "ctron: gate 在步骤 1 失败(rc=$RC)" >&2; exit "$RC"; fi
+        run_step "ctron fmt --check ."
+        RC=$?
+        if [ "$RC" -ne 0 ]; then echo "ctron: gate 在步骤 2 失败(rc=$RC)" >&2; exit "$RC"; fi
+        echo "ctron: gate 完成(2 步)"
+        exit 0
+    fi
+    die2 "gate: 缺 ctron.ctcl 且非项目模式(Ctron.ctcl 亦缺);试: ctron task / 先 ctron new"
+}
+
+# cmd_clean:缓存清理唯一合法口——默认工具链缓存三域(.cache/emit|bare|wasm,
+# 根 = CTRON_DRV_ROOT 覆盖,缺省 DEVROOT);--all 加项目 build/ 与 pkgs/。
+# 未知旗标 = rc 2 用法错。
+cmd_clean() {
+    CLEAN_ALL=0
+    for CA in "$@"; do
+        case $CA in
+            --all) CLEAN_ALL=1 ;;
+            *) die2 "clean 未知旗标: $CA(支持: --all)" ;;
+        esac
+    done
+    DRV_ROOT=${CTRON_DRV_ROOT:-$DEVROOT}
+    for CD in emit bare wasm; do
+        if [ -d "$DRV_ROOT/.cache/$CD" ]; then
+            rm -rf "$DRV_ROOT/.cache/$CD"
+            echo "ctron: 已清理 .cache/$CD"
+        fi
+    done
+    if [ "$CLEAN_ALL" = 1 ]; then
+        for CD in build pkgs; do
+            if [ -d "$CD" ]; then
+                rm -rf "$CD"
+                echo "ctron: 已清理 $CD/"
+            fi
+        done
+    fi
+    exit 0
+}
+
 [ $# -lt 1 ] && { usage; exit 2; }
 CMD=$1; shift
 # <cmd> --help / <cmd> -h:子命令详助入口(usage 宣传的第四帮助入口),先于各分派臂拦截
 case $CMD in
-    run|check|build|test|new|fmt|doc|lint|bench|add|publish|lock|pkg|task)
+    run|check|build|test|new|fmt|doc|lint|bench|add|publish|lock|pkg|task|gate|clean)
         case ${1-} in --help|-h) help_cmd "$CMD"; exit 0 ;; esac ;;
 esac
 case $CMD in
@@ -1065,15 +1135,19 @@ case $CMD in
         ;;
     fmt)
         # R-P2d:ctron fmt <file|pkg目录> [-w|--check](语义对齐 compiler-rust main.rs fmt 分支)
+        # W1 批3:D4 内建默认门步骤字面 "ctron fmt --check ." 要求旗标可在目标前——
+        # 旧解析($1 恒为目标)会把旗标吃成目标,--check 腿静默 no-op;改目标 = 首个非旗标实参
         [ $# -ge 1 ] || die2 "fmt 需要输入文件或 pkg 目录"
-        FMT_TARGET=$1; shift
+        FMT_TARGET=""
         FMT_W=0; FMT_CHECK=0
         for a in "$@"; do
             case $a in
                 -w|--write) FMT_W=1 ;;
                 --check) FMT_CHECK=1 ;;
+                *) [ -z "$FMT_TARGET" ] && FMT_TARGET=$a ;;
             esac
         done
+        [ -n "$FMT_TARGET" ] || die2 "fmt 需要输入文件或 pkg 目录"
         # 目标集:目录 → src/*.ct(无 src 则直下),文件名序;单文件直通
         if [ -d "$FMT_TARGET" ]; then
             FMT_DIR="$FMT_TARGET"
@@ -1118,6 +1192,13 @@ case $CMD in
     task)
         drv_env_setup
         cmd_task "$@"
+        ;;
+    gate)
+        drv_env_setup
+        cmd_gate "$@"
+        ;;
+    clean)
+        cmd_clean "$@"
         ;;
     lint)
         [ $# -ge 1 ] || die2 "lint 需要输入文件或 pkg 目录"
