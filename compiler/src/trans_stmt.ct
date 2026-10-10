@@ -734,6 +734,10 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             if ec2 == "f" {
                 vx6 = "((union \{ double _d; ct_i _i; })\{ ._i = (ct_i)(" + qv + ".v) })._d"
             }
+            // u: struct 载荷解引用(盒装写侧配对;T14-③ 同款)
+            if ec2.len > 2 && byte_slice(ec2, 0, 2) == "u:" {
+                vx6 = "(*(" + ct_ctype(ec2) + "*)(long)" + qv + ".v)"
+            }
             eln(ct_ctype(ec2) + " t_" + pat[1] + " = " + vx6 + ";", env)
             return env_bind(env, pat[1], ec2)
         }

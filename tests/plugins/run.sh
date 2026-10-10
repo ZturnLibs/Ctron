@@ -78,7 +78,9 @@ else
     bad "derive_unsupported 陷阱" "$T/uns.out"
 fi
 
-# 8) 嵌套 round-trip(W2,2026-10-10;interp 专臂——emit struct 值链面静默错编在册)
+# 8) 嵌套 round-trip(W2;interp 专臂——emit 臂余 .or(字面默认) i32 截断账:
+#    I64 载荷 rr.or(0) 的 0 字面=i32 → 9007199254740993→1(sv_g 复现),变量默认
+#    双臂全对;#elem 登记 Let 臂拓扑+ct_typeof or 元素码优先两已在树,销账即升双臂)
 "$CC" run "$ROOT/tests/plugins/json_demo/src/nested.ct" > "$T/nested.out" 2>&1
 if [ $? -eq 0 ] && grep -q 'rt2-ok' "$T/nested.out"; then
     ok "json_demo_nested interp 专臂(嵌套 round-trip)"
