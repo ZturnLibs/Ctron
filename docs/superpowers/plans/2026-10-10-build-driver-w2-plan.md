@@ -301,6 +301,12 @@ git commit -m "test(driver)+docs: 门面三钉与文档同步(W2 批4)——T19 
 2. 推送(本地领先笔数随对端机刷节奏,或主动推)。
 3. 终审:W2 幅度小,不另派全分支终审——以各任务评审 + T19–T21 生产路径钉代之;若 Task 2 出现计划外大偏离,升级为一次终审。
 
-## 执行记录
+## 执行记录(2026-10-10,W2 四批全落库过审)
 
-(执行时逐任务回写。)
+- **批1 `c2b39aac`**(+spec §5.4 修订 `0104f320`):task.cwd 键——注册表演进 D7(schema regkey + POS 语料)、读取器 CWDT 记录、sh/ps1 双面 chdir(fail-closed 判词「cwd 目录不存在」)、门 16→18 断言(T17 正例 basename $PWD 实证 / T18 判词判别,E5043 路径不误绿经活体验证)。评审 Approved;Important 唯一枚 = §5.4「一律」与 cwd 键相抵,控制器一行修讫。
+- **批2 `b5c7a8a5`**:试点收编 ex-gui-calc(5 步)/ex-todo-v10(6 步,task.cwd 指例子目录),两 run.sh 删除(零外部引用侦察证实)。**红基线对拍**:本树 gui 发射面先存红(原 run.sh 改前即 rc1,gui 阶梯 45/56 败 = 对端在飞),两任务输出与原 run.sh 特征诊断行逐字一致,评审独立复现并机制性背书(路径非因果 + 共享发射核码点);env(1) 直 exec 裁决成立(argv 直 exec、rc 直传,沙箱 rc7 透传实证);rc0 复验挂账树绿后各一条命令。
+- **批3 `01fcb1e5`**:meta_check 私清缓存扫描(check_script_cache_cleanup,六域 *.sh + ci.sh,docker --rm 负向后行为真险三行实证必要)。扫描命中 smoke.sh:1307 私 rm emit 缓存(4ba1b37c fail-closed 腿)→ 裁决合规化:改经 `ctron clean`,腿单跑实证语义保持(fail-closed 仍 rc1+E2020/W8901);基线两红(对端 E1002)不变,sweep 零命中直证。
+- **批4 `1dd401a8` + 复修 `6af7d5b2`**:T19 生产门路径钉(三重判别 + 负控真实落码:表无 task gate → rc2 未知任务,钉到分派臂精度)+ T20 fmt 腿钉(脏文件 rc1 待格式化,关 M-T3-5 盲区)+ 六语言 README 9-stage 措辞清零(德文 9-stufige 为 brief grep 漏项,实现者抓获)+ pkgs/gui 与 wasm32 README [n/9] 死标签改指 gate 步 + gui_calc README 死指令改任务表面。复修两 Important:T19 负控从宣称变真码(20→21),真窗指引链落地终止(ex-gui-calc desc 内联手工命令,评审草拟 env 形经 git 史证伪——真窗是无 HEADLESS 裸 exec)。复审 Approved。
+- **范围裁决存档**:tests/plugins/run.sh 8 锚断言形态不收编(侦察实证);gui_dash 等其余 GUI 例链接面迁移(E5 归一)归 W5;计划「三枚钉 21」系与 gate 步数撞数,按 Files 节两枚实做(控制器裁决)。
+- **挂账三枚**:①ex-* 两任务 rc0 复验(树绿后各一条命令,报告 §5 有命令与期望输出);②gui 发射面红(对端 GUI 泳道在飞,与本泳道无关);③meta_check 两红(对端 E1002,W2 验收「meta_check 绿」条款随 W1 同口径待其清偿)。
+- **Minor 留档**:cwd 空串=未设未文档化 / 绝对 cwd 按清单相对重释 / ps1 通配 cwd 分歧(静态账)/ cd 泄 TASKS_CFG(TOCTOU 不可达)/ 变量携带缓存路径盲区(docstring 未注)/ pkgs/gui:274 例外注位置可读性。
