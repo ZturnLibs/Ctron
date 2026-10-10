@@ -3,7 +3,7 @@
 // net/bind.ct 同款。可见性注:pub extern 而非 #[trusted] 组合语法的理由
 // 同 net/bind.ct 头注(loader use 可见性仅认 FnExt+pub 尾槽)。
 // 边界形态(依 net/bind.ct 既有登记):
-//   - 缓冲读 = &I64[] 视图 lane(C 侧 ct_view6 布局镜像,ctron_tls.c 头注);
+//   - 缓冲读 = var U8[] 字节平面(ctron_view_w8u,net CW1a 同型;旧 &I64[] lane 注记已过时);
 //   - 写 = Str → const char* 零拷贝直通(同 ctron_net_write_str);
 //   - C-owned 串返回(strerror/alpn_selected_s)为 thread-local 静态或 ctx
 //     自有表,门面 str_from_c 深拷后用(§9.6 三约定);
@@ -25,7 +25,7 @@ pub extern "c" fn ctron_tls_use_ca_bundle(ctx: I64, ca_path: Str) -> I64
 pub extern "c" fn ctron_tls_set_alpn(ctx: I64, protos: Str) -> I64
 pub extern "c" fn ctron_tls_set_hostname(ctx: I64, host: Str) -> I64
 pub extern "c" fn ctron_tls_handshake(ctx: I64, fd: I64) -> I64
-pub extern "c" fn ctron_tls_read(ctx: I64, buf: &I64[], cap: I64, timeout_ms: I64) -> I64
+pub extern "c" fn ctron_tls_read(ctx: I64, var buf: U8[], cap: I64, timeout_ms: I64) -> I64
 pub extern "c" fn ctron_tls_write(ctx: I64, buf: Str, n: I64) -> I64
 pub extern "c" fn ctron_tls_alpn_selected_s(ctx: I64) -> Str
 pub extern "c" fn ctron_tls_close(ctx: I64) -> I64

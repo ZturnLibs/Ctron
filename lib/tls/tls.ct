@@ -111,7 +111,7 @@ pub fn tls_handshake(net: StdNet, conn: TlsConn, fd: I64) -> I64 {
 
 // 带超时读:timeout_ms <= 0 永久阻塞;>0 到时返 -1(槽 = SSL_TIMEOUT)。
 // >0 n / 0 eof / <0 err;单次调用至多搬运 4096 字节(头注⑤)。
-pub fn tls_read(net: StdNet, conn: TlsConn, buf: &I64[], cap: I64, timeout_ms: I64) -> I64 {
+pub fn tls_read(net: StdNet, conn: TlsConn, buf: &U8[], cap: I64, timeout_ms: I64) -> I64 {
     return ctron_tls_read(conn.ctx, buf, cap, timeout_ms)
 }
 
