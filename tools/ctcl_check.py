@@ -498,6 +498,16 @@ task "smoke" {
     steps = ["sh compiler/test/smoke.sh --full"]
 }
 '''),
+("task cwd 键", '''\
+ctron {
+    config_version = 1
+}
+
+task "build" {
+    cwd = "sub"
+    steps = ["sh go.sh"]
+}
+'''),
 ]
 NEG_CTRON = [
 ("steps 空列表(E5054)", '''\

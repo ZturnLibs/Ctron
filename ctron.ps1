@@ -500,7 +500,7 @@ function Dv-Load($path) {
 					if ($arg -notmatch '^[a-z][a-z0-9_-]*$') { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5046 task 名非法(形:[a-z][a-z0-9_-]*):$arg") }
 					if ($names -contains $arg) { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5045 重复的 task `"$arg`"") }
 					$names += $arg
-					$cur = @{ name = $arg; desc = ''; steps = New-Object System.Collections.Generic.List[string]; keys = @(); hasSteps = $false }
+					$cur = @{ name = $arg; desc = ''; cwd = ''; steps = New-Object System.Collections.Generic.List[string]; keys = @(); hasSteps = $false }
 				}
 				$blk = $id
 				continue
@@ -529,7 +529,7 @@ function Dv-Load($path) {
 				$cfgOk = $true
 				continue
 			}
-			if ($key -ne 'steps' -and $key -ne 'desc') { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5043 块 task 中未知键 $key;合法键:steps, desc") }
+			if ($key -ne 'steps' -and $key -ne 'desc' -and $key -ne 'cwd') { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5043 块 task 中未知键 $key;合法键:steps, desc, cwd") }
 			if ($cur.keys -contains $key) { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5045 重复键 $key") }
 			$cur.keys += $key
 			if ($key -eq 'desc') {
@@ -537,6 +537,13 @@ function Dv-Load($path) {
 				$ok = $false
 				$cur.desc = Dv-Unquote $val ([ref]$ok)
 				if (-not $ok) { throw [CtronParseError]::new('ctron: ctron.ctcl:' + $ln + ': E5048 desc 字符串非法(转义仅 \" 与 \\)') }
+				continue
+			}
+			if ($key -eq 'cwd') {
+				if ($val[0] -ne '"') { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5046 cwd 的类型应为 str") }
+				$ok = $false
+				$cur.cwd = Dv-Unquote $val ([ref]$ok)
+				if (-not $ok) { throw [CtronParseError]::new('ctron: ctron.ctcl:' + $ln + ': E5048 cwd 字符串非法(转义仅 \" 与 \\)') }
 				continue
 			}
 			if ($val[0] -ne '[') { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5046 steps 的类型应为 list") }
@@ -689,6 +696,12 @@ function Cmd-Task($rest) {
 	}
 	$t0 = $tasks | Where-Object { $_.name -eq $taskName } | Select-Object -First 1
 	if (-not $t0) { [Console]::Error.WriteLine("ctron: task: 未知任务 $taskName(试: ctron task 列表)"); exit 2 }
+	# W2 批1:task.cwd 相对清单目录解析,步骤执行前 chdir;缺失/非目录 = stderr + exit 2(sh cmd_task 对齐)
+	if ($t0.cwd -ne '') {
+		$cwdAbs = Resolve-Path (Join-Path $dir $t0.cwd) -ErrorAction SilentlyContinue
+		if (-not $cwdAbs) { [Console]::Error.WriteLine("ctron: task ${taskName}: cwd 目录不存在: $($t0.cwd)(相对清单目录)"); exit 2 }
+		$dir = $cwdAbs.Path
+	}
 	Push-Location $dir
 	$n = 0
 	$total = $t0.steps.Count

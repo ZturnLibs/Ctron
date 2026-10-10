@@ -93,7 +93,7 @@ function unquote(s,  body, i, c, out) {
             if (arg !~ /^[a-z][a-z0-9_-]*$/) fail("E5046 task 名非法(形:[a-z][a-z0-9_-]*):" arg)
             if (arg in seen_task) fail("E5045 重复的 task \"" arg "\"")
             seen_task[arg] = 1
-            cur = arg; nsteps = 0; has_steps = 0; desc = ""
+            cur = arg; nsteps = 0; has_steps = 0; desc = ""; tcwd = ""
         }
         blk = id
         next
@@ -103,6 +103,7 @@ function unquote(s,  body, i, c, out) {
             if (!has_steps) fail("E5051 task \"" cur "\" 缺必填键 steps")
             if (nsteps == 0) fail("E5054 steps 不允许空列表(空 steps 的任务不合法)")
             printf "TASK\t%s\t%s\n", cur, desc
+            if (tcwd != "") printf "CWDT\t%s\t%s\n", cur, tcwd
         }
         blk = ""; cur = ""
         next
@@ -122,13 +123,19 @@ function unquote(s,  body, i, c, out) {
         cfg_ok = 1
         next
     }
-    if (key != "steps" && key != "desc") fail("E5043 块 task 中未知键 " key ";合法键:steps, desc")
+    if (key != "steps" && key != "desc" && key != "cwd") fail("E5043 块 task 中未知键 " key ";合法键:steps, desc, cwd")
     if ((cur SUBSEP key) in seen_key) fail("E5045 重复键 " key)
     seen_key[cur SUBSEP key] = 1
     if (key == "desc") {
         if (substr(val, 1, 1) != "\"") fail("E5046 desc 的类型应为 str")
         desc = unquote(val)
         if (!UQ_OK) fail("E5048 desc 字符串非法(转义仅 \\\" 与 \\\\)")
+        next
+    }
+    if (key == "cwd") {
+        if (substr(val, 1, 1) != "\"") fail("E5046 cwd 的类型应为 str")
+        tcwd = unquote(val)
+        if (!UQ_OK) fail("E5048 cwd 字符串非法(转义仅 \\\" 与 \\\\)")
         next
     }
     if (substr(val, 1, 1) != "[") fail("E5046 steps 的类型应为 list")
@@ -256,7 +263,8 @@ ctron —— Ctron 工具链驱动
   ctron pkg log query <日志仓> [名]
                              日志查询:列名或列某名的 digest+公证要点
   ctron new <dir>              脚手架:hello + Ctron.ctcl
-  ctron task [-f <file>] [名]  列出/执行 ctron.ctcl 任务(驱动器面;步骤直 exec,拒 shell 元字符)
+  ctron task [-f <file>] [名]  列出/执行 ctron.ctcl 任务(驱动器面;步骤直 exec,拒 shell 元字符;
+                             task 可带 cwd = 相对清单目录,步骤以其为工作目录)
   ctron gate [名]              ≡ task,缺省名 gate;无 ctron.ctcl 时项目模式
                              回落内建默认门(build + fmt --check)
   ctron clean [--all]          清工具链缓存三域(.cache/emit|bare|wasm);
@@ -1010,6 +1018,14 @@ cmd_task() {
     fi
     awk -F '\t' -v t="$TASK_NAME" '$1 == "TASK" && $2 == t { found = 1 } END { exit !found }' "$TASKS_CFG" \
         || { rm -f "$TASKS_CFG"; die2 "task: 未知任务 $TASK_NAME(试: ctron task 列表)"; }
+    # W2 批1:task.cwd 相对清单目录解析,步骤执行前 chdir;缺失/非目录 = rc 2 fail-closed
+    # (此刻 STEP_LIST 尚未创建,清理只清 TASKS_CFG)
+    TASK_CWD=$(awk -F '\t' -v t="$TASK_NAME" '$1 == "CWDT" && $2 == t { print $3 }' "$TASKS_CFG")
+    if [ -n "$TASK_CWD" ]; then
+        TASK_CWD_ABS="$PWD/$TASK_CWD"
+        [ -d "$TASK_CWD_ABS" ] || { rm -f "$TASKS_CFG"; die2 "task $TASK_NAME: cwd 目录不存在: $TASK_CWD(相对清单目录)"; }
+        cd -- "$TASK_CWD_ABS" || exit 2
+    fi
     STEP_LIST=$(mktemp "${TMPDIR:-/tmp}/ctron_steps.XXXXXX")
     awk -F '\t' -v t="$TASK_NAME" '$1 == "STEP" && $2 == t { sub(/^[^\t]*\t[^\t]*\t/, ""); print }' "$TASKS_CFG" > "$STEP_LIST"
     TOTAL=$(wc -l < "$STEP_LIST" | tr -d ' ')

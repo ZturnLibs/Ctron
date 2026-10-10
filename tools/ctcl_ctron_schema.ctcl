@@ -29,3 +29,7 @@ regkey "task.steps" {
 regkey "task.desc" {
     type = "str"
 }
+
+regkey "task.cwd" {
+    type = "str"
+}

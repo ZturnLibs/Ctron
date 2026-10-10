@@ -110,6 +110,34 @@ if [ $? -eq 0 ] && printf '%s' "$OUT" | grep -q "完成(3 步)"; then ok; else b
 mkdir -p "$SBOX/nonproj/build" "$SBOX/.cache/emit"
 OUT=$(cd "$SBOX/nonproj" && CTRON_DRV_ROOT="$SBOX" $DRV clean --all 2>&1)
 if [ $? -eq 0 ] && [ ! -d "$SBOX/.cache/emit" ] && [ -d "$SBOX/nonproj/build" ]; then ok; else bad "clean --all 项目守卫: rc 0+缓存清+build 留 期望,实得: $OUT"; fi
+# T17 task.cwd:步骤以 cwd 目录为工作目录
+mkdir -p "$SBOX/sub"
+printf '#!/bin/sh\nprintf "cwd-ok pwd=%%s\\n" "$(basename "$PWD")"\n' > "$SBOX/sub/go.sh"
+cat > "$SBOX/cwd.ctcl" <<'EOF2'
+ctron {
+    config_version = 1
+}
+
+task "build" {
+    cwd = "sub"
+    steps = ["sh go.sh"]
+}
+EOF2
+OUT=$(cd "$SBOX" && CTRON_DRV_ROOT="$SBOX" $DRV task -f cwd.ctcl build < /dev/null 2>&1)
+if [ $? -eq 0 ] && printf '%s' "$OUT" | grep -q "cwd-ok pwd=sub"; then ok; else bad "task.cwd 正例: $OUT"; fi
+# T18 task.cwd 指向不存在目录 → rc2 fail-closed
+cat > "$SBOX/cwd_bad.ctcl" <<'EOF2'
+ctron {
+    config_version = 1
+}
+
+task "build" {
+    cwd = "nope"
+    steps = ["sh go.sh"]
+}
+EOF2
+OUT=$(cd "$SBOX" && CTRON_DRV_ROOT="$SBOX" $DRV task -f cwd_bad.ctcl build < /dev/null 2>&1)
+if [ $? -eq 2 ] && printf '%s' "$OUT" | grep -q "cwd 目录不存在"; then ok; else bad "task.cwd 缺目录: rc2+判词 期望,实得: $OUT"; fi
 
 echo "tests/tasks: $PASS 过 / $FAIL 败"
 [ "$FAIL" -eq 0 ]

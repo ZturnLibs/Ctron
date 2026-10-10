@@ -93,6 +93,7 @@ task "smoke" {
 - `ctron.ps1` / `ctron.cmd` 同文同步( house 规矩:三面同文)。
 - `--help` / `help task|gate|clean` 与 usage 同步;rc 约定 0/1/2 不变。
 - 驱动器清单存在性判定按**首块嗅探**(实现期引入的 D4 精化,2026-10-10 落地):darwin/Windows 大小写不敏感文件系统上 `ctron.ctcl` 会命中包清单 `Ctron.ctcl`,首块非 ctron/task 即视为"无驱动器清单",fail-closed 落入回落序;真实驱动器清单含垃圾仍 rc 2。
+- 任务可选 `cwd` 键(2026-10-10 W2 增,注册表演进 D7):相对清单目录解析,步骤执行前 chdir,缺失 = rc 2;真窗分支等交互路径不收编。
 
 ## 5. 执行器语义(本设计的核心钉子)
 
