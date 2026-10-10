@@ -254,7 +254,7 @@ fn pl_builtin_drv(nm: Str) -> Bool {
     return or2(seq2(nm, "Show"), or2(seq2(nm, "Eq"), seq2(nm, "Error")))
 }
 
-// DeriveInput Val 构造(AST 直读;形态 = pkgs/ctron/plugin.ct v1 镜像)
+// DeriveInput Val 构造(AST 直读;形态 = pkgs/ctron/plugin.ct v2 镜像)
 fn pl_derive_input(d: List[Str]) -> Val {
     var fs = List[Str]()
     fs.push("L")
@@ -272,6 +272,8 @@ fn pl_derive_input(d: List[Str]) -> Val {
         fd.push(v_box(vS(ty_head(f[3]))))
         fd.push("mutable")
         fd.push(v_box(vB(seq2(f[1], "true"))))
+        fd.push("ty_full")
+        fd.push(v_box(vS(ty_text(f[3]))))
         fs.push(v_box(cx_val(fd)))
         k += 1
     }
@@ -283,6 +285,37 @@ fn pl_derive_input(d: List[Str]) -> Val {
     di.push("fields")
     di.push(v_box(cx_val(fs)))
     return cx_val(di)
+}
+
+// 型别节点全文序列化(v2;Named+TArgs 递归;Slice/Optional 渲染;ArrayT/FnType 空串=不支持)
+fn ty_text(ty: List[Str]) -> Str {
+    var t = ty[0]
+    if t == "Named" {
+        var s = ty[1]
+        var args = ty[2]
+        if args.len > 1 {
+            s = s + "["
+            var k: I32 = 1
+            var first = true
+            while k < args.len {
+                if !first {
+                    s = s + ","
+                }
+                s = s + ty_text(args[k])
+                first = false
+                k += 1
+            }
+            s = s + "]"
+        }
+        return s
+    }
+    if t == "Slice" {
+        return ty_text(ty[1]) + "[]"
+    }
+    if t == "Optional" {
+        return ty_text(ty[1]) + "?"
+    }
+    return ""
 }
 
 // 产物文本重 parse(scan4+p_file 同源;失败 = E5060.iface)

@@ -1,6 +1,8 @@
-// derive_unsupported —— 负锚:未支持型别陷阱(F64 裁决排除/带实参型别超 iface v1)
+// derive_unsupported —— 负锚:未支持型别陷阱(F64 裁决排除/组合泛型/struct 元素)
 // 产物引用未定义 fn → sem 未解析错误,型别名嵌于陷阱名(插件无诊断通道的 v1 告警信道)。
 // 探针实证:空产物=静默通过不可用;DBG 残留产物=interp SIGSEGV——陷阱是 v1 唯一合规形态。
+// v2.1 负例:List[List]](组合泛型)与 Option[struct](emit struct 值链面在册账)仍陷阱;
+// List[标量]/Option[标量] 已由接口 ty_full 修订启用(json_demo)。
 
 @derive(Json)
 struct WithF {
@@ -10,6 +12,20 @@ struct WithF {
 @derive(Json)
 struct WithM {
     let m: Map[Str, I32]
+}
+
+struct In2 {
+    let v: I32
+}
+
+@derive(Json)
+struct WithLL {
+    let m: List[List[Str]]
+}
+
+@derive(Json)
+struct WithOS {
+    let p: Option[In2]
 }
 
 fn main() -> I32 {

@@ -58,11 +58,14 @@ plugin "lint.toolong" {
 ### 2.2 接口包 `ctron.plugin`(编译器同仓官方包,解析链 pkgs 位)
 
 ```ctron
-// pkgs/ctron/plugin/plugin.ct —— v1 冻结面(加字段 = 破坏性扩展,须走修订)
+// pkgs/ctron/plugin/plugin.ct —— v2 面(2026-10-10 修订;加字段 = 破坏性扩展,走本节程序)
 pub struct DeriveField {
     pub let name: Str
-    pub let ty: Str
+    pub let ty: Str        // 头标识符(v1 口径不动,既有插件兼容)
     pub let mutable: Bool
+    pub let ty_full: Str   // v2:完整型别文本(Named+型别实参递归序列化,
+                           //      Slice/Optional 渲染,其余空串)——List/Option
+                           //      序列化前置;v1 的 ty 塌缩头标识符为已登记缺口
 }
 pub struct DeriveInput {
     pub let type_name: Str

@@ -6,7 +6,7 @@
 // 注:控制字符测试数据经 junesc 造(utf8_enc 解释臂传参 bug 在册,数据不可用之)。
 // W2(2026-10-10):读半边 round-trip(平 struct)+ 三 kind 负例;消费方 use 契约 = 产物调用面。
 // 嵌套 round-trip 走 interp 专臂锚 nested.ct(emit struct 值链面静默错编在册,tests/plugins/run.sh)。
-use std.json.{ jix_bool, jix_i64, jix_new, jix_tag, jix_val, junesc, parse }
+use std.json.{ jix_bool, jix_i64, jix_new, jix_tag, jix_val, junesc, jw_keys, parse }
 
 @derive(Json)
 struct P {
@@ -24,6 +24,16 @@ struct In {
 struct OuterP {
     let inner: In
     let label: Str
+}
+
+// v2.1:List[标量]/Option[标量](接口 ty_full 修订启用;null 母语)
+@derive(Json)
+struct WithLists {
+    let tags: List[Str]
+    let nums: List[I32]
+    let bigs: List[I64]
+    let nick: Option[Str]
+    let flag: Option[Bool]
 }
 
 test "derive json to_json suite" {
@@ -72,6 +82,59 @@ test "derive json to_json suite" {
     } else {
         let es4 = typ.or(List[List[Str]]())
         assert_eq(P_json_err(es4, "$"), "type@$.x")
+    }
+    // v2.1:List/Option 金样 + round-trip(平标量,双臂)
+    let tags_l = List[Str]()
+    tags_l.push("甲")
+    tags_l.push("乙")
+    let nums_l = List[I32]()
+    nums_l.push(3)
+    nums_l.push(4)
+    let bigs_l = List[I64]()
+    bigs_l.push(9007199254740993)
+    bigs_l.push(0 - 1)
+    let nick_o: Option[Str] = None
+    let flag_o: Option[Bool] = Some(true)
+    let wlo = WithLists {
+        tags: tags_l,
+        nums: nums_l,
+        bigs: bigs_l,
+        nick: nick_o,
+        flag: flag_o,
+    }
+    assert_eq(wlo.WithLists_to_json(), "\{" + "\"tags\":[\"甲\",\"乙\"],\"nums\":[3,4],\"bigs\":[9007199254740993,-1],\"nick\":null,\"flag\":true" + "}")
+    let wl2 = WithLists {
+        tags: List[Str](),
+        nums: List[I32](),
+        bigs: List[I64](),
+        nick: Some("空"),
+        flag: None,
+    }
+    assert_eq(wl2.WithLists_to_json(), "\{" + "\"tags\":[],\"nums\":[],\"bigs\":[],\"nick\":\"空\",\"flag\":null" + "}")
+    let rtw = parse(wlo.WithLists_to_json())
+    if !rtw.is_some() {
+        assert(false)
+    } else {
+        let esw = rtw.or(List[List[Str]]())
+        let ew = WithLists_json_err(esw, "$")
+        if ew != "" {
+            println(ew)
+            assert(false)
+        } else {
+            let qw = WithLists_from_json_at(esw, "$")
+            assert_eq(qw.tags[1], "乙")
+            assert_eq(qw.nums[0], 3)
+            let bq = qw.bigs[1]
+            assert_eq(bq, -1)
+            assert_eq(qw.flag.is_some(), flag_o.is_some())
+            let fv = qw.flag.or(false)
+            let fo = flag_o.or(false)
+            assert_eq(fv, fo)
+            assert_eq(qw.nick.is_some(), nick_o.is_some())
+            let nv = qw.nick.or("")
+            let no2 = nick_o.or("")
+            assert_eq(nv, no2)
+        }
     }
     println("json-ok")
     println("rt-ok")

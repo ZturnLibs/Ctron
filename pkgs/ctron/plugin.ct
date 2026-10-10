@@ -1,4 +1,4 @@
-// plugin.ct —— 编译器插件接口包 v1(T52;§8.3/§10.6 插件扩展点)
+// plugin.ct —— 编译器插件接口包 v2(T52;§8.3/§10.6 插件扩展点)
 //
 // 插件 = 普通 Ctron 包:derive 插件约定入口 `pub fn ctron_derive(input: DeriveInput) -> Str`
 // (返回合成 Ctron 源码文本);lint 插件约定入口 `pub fn ctron_lint(unit: LintUnit) -> List[LintDiag]`
@@ -7,11 +7,15 @@
 //
 // v1 冻结面:加字段 = 破坏性扩展,须走修订程序(设计案 §2.2:
 // docs/superpowers/specs/2026-10-03-t52-plugin-sandbox.md)。
+// v2 修订(2026-10-10):DeriveField 增 ty_full(完整型别文本;Named+型别实参
+// 递归序列化,Slice/Optional 渲染,其余空串)——List/Option 序列化的前置;
+// ty 头标识符槽维持 v1 口径不动(既有插件兼容)。
 
 pub struct DeriveField {
     let name: Str
     let ty: Str
     let mutable: Bool
+    let ty_full: Str
 }
 
 pub struct DeriveInput {
