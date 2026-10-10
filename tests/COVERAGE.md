@@ -1851,3 +1851,15 @@ vs gc-on 381/382/380MB 稳态平台+停顿尾零)。翻面后门:gc 三档 9/0+s
 翻面零增量)——**语义套件在默认 GC=on 下整体验证首次达成**。db 门 interp 臂红形落地为在册豁免
 的具体形态:GC=on 下 interp 报 `byte_slice: range out of bounds`(T32 在册「db 编译器臂豁免,
 interp GC=1 病理」域,emit 臂=真实消费路径全过);漂移 5+E2080 legacy 红为对端域预存。
+
+**G1 批终登记(2026-10-10,提交链 31474191→697dcdf8)**:T1 arena 段化基座(块链+ct_arn+TLS,
+收集器全链扫描+空超级块两代惰性释放)/T2 任务段接线(pthread 解除永久退避,coro 维持;探针
+seg 4/0+RSS 49-54MB 有界)/T3 通道边界值语义(malloc 中转双向拷贝+E3021 双宿四注册+负例 06g+
+expect s 码 cast;窗口压测 3/3)/T4 Region.heap()(dispatch 助手+跨增长 panic;region 3/3)/
+T5 StringBuilder reserve/clear+增量 push(三镜+03j 双臂)/T6 P99 双柱(gc-off 单调涨 vs gc-on
+稳态平台)/T7 翻面(语义套件默认 GC=on 首次整体验证)/T9 seed 债复测指引。**残余在册**:T8
+repeat 字面量(F25 语言面)未执行——既有计划 2026-10-09-repeat-literal-plan.md 独立成批,下轮
+执行;smoke 全量与 ctron gate 21 步终跑挂=共享树自举被对端 trans_stmt WIP 断(其落地后补跑,
+当轮口径=gc 族 9/0+seg 全腿+suite 115/116·116/116+p99 6/0+bench 1.000);coro 档退避维持(协程
+迁移 TLS 段不安全,登记);通道 List/struct 载荷跨界=E3021 限面(真深拷挂 G3 半端类型化);
+expect() recv 接收者 elem 码擦除不可恢复=G3 一并治。
