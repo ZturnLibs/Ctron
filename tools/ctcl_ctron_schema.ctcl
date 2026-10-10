@@ -1,0 +1,31 @@
+// CTCL Schema:驱动器配置注册表 v1(设计:docs/superpowers/specs/2026-10-10-build-driver-design.md §3)
+// schema-as-CTCL:消费者 = ctron 驱动器(task/gate/clean);加载器 = tools/ctcl_check.py。
+schema {
+    schema_version = 1
+}
+
+reg "ctron" {
+    kind = "record"
+    required = true
+}
+
+regkey "ctron.config_version" {
+    type = "int"
+    const = 1
+    first = true
+}
+
+reg "task" {
+    kind = "keyed"
+    name_pattern = "[a-z][a-z0-9_-]*"
+    required_keys = ["steps"]
+}
+
+regkey "task.steps" {
+    type = "list"
+    nonempty = true
+}
+
+regkey "task.desc" {
+    type = "str"
+}

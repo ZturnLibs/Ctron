@@ -17,7 +17,7 @@ FIELD = re.compile(r"(%s)\s*=\s*(.+?)\s*$" % IDENT)
 
 # schema 方言允许的旗标(reg 块级 / regkey 键级);未知旗标 = 加载失败(L0 纪律)
 _REG_FLAGS = {"kind", "required", "name_pattern", "mutex", "required_keys"}
-_REGKEY_FLAGS = {"type", "const", "first", "min", "pattern", "members", "sorted", "required"}
+_REGKEY_FLAGS = {"type", "const", "first", "min", "pattern", "members", "sorted", "required", "nonempty"}
 _TYPES = {"str", "int", "bool", "list"}
 
 
@@ -235,13 +235,14 @@ def did_you_mean(k, known):
         return ";你是不是想要 %s?" % best
     return ""
 
-def validate(blocks, ds):
+def validate(blocks, ds, schema=None):
+    if schema is None: schema = SCHEMA
     seen = {}
     for b in blocks:
-        spec = SCHEMA.get(b["name"])
+        spec = schema.get(b["name"])
         if spec is None:
             ds.append(diag("E5044", b["ln"], "未知块 %s;合法块:%s" %
-                           (b["name"], ", ".join(sorted(SCHEMA))))); continue
+                           (b["name"], ", ".join(sorted(schema))))); continue
         if spec["kind"] == "record" and b["arg"] is not None:
             ds.append(diag("E5041", b["ln"], "%s 是记录块,不带名字实参" % b["name"])); continue
         if spec["kind"] == "keyed":
@@ -274,6 +275,8 @@ def validate(blocks, ds):
             if not ok:
                 ds.append(diag("E5046", f["ln"], "%s 的类型应为 %s" % (f["k"], t))); continue
             if t == "list":
+                if ks.get("nonempty") and len(v) == 0:
+                    ds.append(diag("E5054", f["ln"], "键 %s 不允许空列表(空 steps 的任务不合法)" % f["k"]))
                 members = ks.get("members")
                 for x in v:
                     if not isinstance(x, str):
@@ -282,7 +285,7 @@ def validate(blocks, ds):
                         ds.append(diag("E5043", f["ln"], "未知能力 %s;合法:%s(能力是安全边界,未知即拒绝)"
                                        % (x, ", ".join(sorted(members)))))
             if "const" in ks and v != ks["const"]:
-                ds.append(diag("E5050", f["ln"], "manifest_version 必须为 %s" % ks["const"]))
+                ds.append(diag("E5050", f["ln"], "%s 必须为 %s" % (f["k"], ks["const"])))
             if "pattern" in ks and isinstance(v, str) and not re.match(ks["pattern"] + r"\Z", v):
                 ds.append(diag("E5046", f["ln"], "键 %s 值 %r 不符合 %s" % (f["k"], v, ks["pattern"])))
             if "min" in ks and isinstance(v, int) and v < ks["min"]:
@@ -315,7 +318,7 @@ def validate(blocks, ds):
             for rk in spec["required_keys"]:
                 if rk not in present:
                     ds.append(diag("E5051", b["ln"], '%s "%s" 缺必填键 %s' % (b["name"], b["arg"], rk)))
-    for bname, bspec in SCHEMA.items():
+    for bname, bspec in schema.items():
         if bspec["kind"] != "record":
             continue
         insts = [b for b in blocks if b["name"] == bname]
@@ -333,8 +336,10 @@ def canon_value(v):
     if isinstance(v, list): return "[" + ", ".join(canon_str(x) for x in v) + "]"
     return canon_str(v)
 
-def render(blocks, tail):
-    def sk(b): return (BLOCK_ORDER.get(b["name"], 9), b["arg"] or "")
+def render(blocks, tail, schema=None, block_order=None):
+    if schema is None: schema = SCHEMA
+    if block_order is None: block_order = BLOCK_ORDER
+    def sk(b): return (block_order.get(b["name"], 9), b["arg"] or "")
     chunks = []
     for b in sorted(blocks, key=sk):
         lines = []
@@ -342,10 +347,10 @@ def render(blocks, tail):
         head = b["name"] + (" " + canon_str(b["arg"]) if b["arg"] else "") + " {"
         if b["head_trail"]: head += "  // " + b["head_trail"]
         lines.append(head)
-        pos = {k: i for i, k in enumerate(SCHEMA.get(b["name"], {"keys": {}})["keys"])}
+        pos = {k: i for i, k in enumerate(schema.get(b["name"], {"keys": {}})["keys"])}
         for f in sorted(b["fields"], key=lambda f: pos.get(f["k"], 99)):
             if f["k"] == "\x00坏行" or f["v"] is None: continue   # 损坏字段不进规范形态(F2)
-            fspec = SCHEMA.get(b["name"], {"keys": {}})["keys"].get(f["k"], {})
+            fspec = schema.get(b["name"], {"keys": {}})["keys"].get(f["k"], {})
             v = sorted(f["v"]) if (isinstance(f["v"], list) and fspec.get("sorted")) else f["v"]  # 集合语义:规范形态排序(schema sorted 旗标)
             for c in f["lead"]:
                 if c: lines.append("    // " + c)
@@ -364,10 +369,11 @@ FAILURES = []
 
 def check(name, text, want):
     blocks, ds, tail = parse_manifest(text)
-    ds = validate(blocks, ds)
-    c1 = render(blocks, tail)
+    sch, border = _pick_registry(blocks)
+    ds = validate(blocks, ds, sch)
+    c1 = render(blocks, tail, sch, border)
     b2, d2, t2 = parse_manifest(c1)
-    idem = (not d2) and render(b2, t2) == c1
+    idem = (not d2) and render(b2, t2, sch, border) == c1
     es = [d for d in ds if d["code"].startswith("E")]
     ws = [d for d in ds if d["code"].startswith("W")]
     ok = len(es) == want and idem
@@ -476,21 +482,109 @@ NEG = [
 ("块名与实参无空格(恢复后 1 条)", 'pkg {\n    manifest_version = 1\n    name = "x"\n    version = "0.1.0"\n}\n\ndep"a" {\n    path = "../a"\n}\n', 1),
 ("嵌套块拒绝(跳读恢复,1 条)", 'pkg {\n    manifest_version = 1\n    name = "x"\n    version = "0.1.0"\n    inner {\n        a = 1\n    }\n}\n', 1),
 ]
+POS_CTRON = [
+("ctron 最小", '''\
+ctron {
+    config_version = 1
+}
+'''),
+("task 全键", '''\
+ctron {
+    config_version = 1
+}
+
+task "smoke" {
+    desc = "编译器冒烟单门"
+    steps = ["sh compiler/test/smoke.sh --full"]
+}
+'''),
+]
+NEG_CTRON = [
+("steps 空列表(E5054)", '''\
+ctron {
+    config_version = 1
+}
+
+task "a" {
+    steps = []
+}
+''', 1),
+("task 缺 steps(E5051)", '''\
+ctron {
+    config_version = 1
+}
+
+task "a" {
+    desc = "x"
+}
+''', 1),
+("缺 config_version(E5043 未知键 + E5050 缺版本键)", '''\
+ctron {
+    name = "x"
+}
+''', 2),
+("config_version = 2(E5050)", '''\
+ctron {
+    config_version = 2
+}
+''', 1),
+("未知块(E5044)", '''\
+ctron {
+    config_version = 1
+}
+
+gate {
+    steps = ["x"]
+}
+''', 1),
+("重复 task(E5045)", '''\
+ctron {
+    config_version = 1
+}
+
+task "a" {
+    steps = ["x"]
+}
+
+task "a" {
+    steps = ["y"]
+}
+''', 1),
+("steps 尾逗号(E5048)", '''\
+ctron {
+    config_version = 1
+}
+
+task "a" {
+    steps = ["x",]
+}
+''', 1),
+]
 def judge_v1(text):
-    """判定器:E=0 即通过(允许 W)。返回 (ok, diags)。"""
+    """判定器:E=0 即通过(允许 W)。返回 (ok, diags)。按首块嗅探注册表。"""
     blocks, ds, tail = parse_manifest(text)
-    ds = validate(blocks, ds)
+    sch, _ = _pick_registry(blocks)
+    ds = validate(blocks, ds, sch)
     es = [d for d in ds if d["code"].startswith("E")]
     return (len(es) == 0), ds
 
 # schema-as-CTCL 初始化(§9 L2):注册表 = ctcl_manifest_schema.ctcl 的数据
-SCHEMA, KNOWN_CAPS, BLOCK_ORDER = _load_schema(
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "ctcl_manifest_schema.ctcl"))
+_SCHEMA_DIR = os.path.dirname(os.path.abspath(__file__))
+SCHEMA, KNOWN_CAPS, BLOCK_ORDER = _load_schema(os.path.join(_SCHEMA_DIR, "ctcl_manifest_schema.ctcl"))
+CTRON_SCHEMA, _CTRON_KNOWN, CTRON_ORDER = _load_schema(os.path.join(_SCHEMA_DIR, "ctcl_ctron_schema.ctcl"))
+
+def _pick_registry(blocks):
+    """按首块名选注册表:驱动器面(ctron/task)→ ctron schema;其余 → 清单 schema。"""
+    if blocks and blocks[0]["name"] in CTRON_SCHEMA:
+        return CTRON_SCHEMA, CTRON_ORDER
+    return SCHEMA, BLOCK_ORDER
 
 # ---------------- CLI ----------------
 def selftest():
     for name, text in POS: check(name, text, 0)
     for name, text, want in NEG: check(name, text, want)
+    for name, text in POS_CTRON: check(name, text, 0)
+    for name, text, want in NEG_CTRON: check(name, text, want)
     print("\n总体:", "ALL GREEN" if not FAILURES else "HAS FAILURES: %s" % FAILURES)
     return not FAILURES
 
@@ -524,7 +618,8 @@ def cli(argv):
             print("      %s L%d: %s" % (d["code"], d["line"], d["msg"]))
         if ok and fmt_mode:
             blocks, _, tail = parse_manifest(text)
-            print(render(blocks, tail), end="")
+            sch, border = _pick_registry(blocks)
+            print(render(blocks, tail, sch, border), end="")
         if not ok: bad += 1
     print("\nctcl_check:%d/%d 通过" % (len(files) - bad, len(files)))
     return 1 if bad else 0
