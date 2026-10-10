@@ -45,6 +45,15 @@ check_decl "$SH/parsetree.ct"   60
 check_decl "$SH/ev2.ct"        107
 check_decl "$SH/cc.ct"         175
 
+echo "== 2d) Result/Option struct 载荷响亮闸(trans_stmt 三臂;槽 ct_i 64 位不载 struct 值) =="
+printf 'struct P {\n    let x: I32\n}\n\nfn mk() -> Result[P, Str] {\n    return Ok(P {\n        x: 7,\n    })\n}\n\nfn main() -> I32 {\n    let r = mk()\n    match r {\n        Ok(q) => {\n            println(q.x.to_string())\n        }\n        Err(_) => {\n            println("e")\n        }\n    }\n    return 0\n}\n' > "$T/svp.ct"
+"$COMP/ctc.sh" emit "$T/svp.ct" "$T/svp.c" > "$T/svp.out" 2>&1; rc=$?
+if [ $rc -eq 1 ] && grep -q 'struct 载荷未支持' "$T/svp.out"; then
+    ok "struct 载荷响亮闸(emit rc=1,点名型别与出路)"
+else
+    bad "struct 载荷闸异常(rc=$rc): $(tail -2 "$T/svp.out")"
+fi
+
 echo "== 2e) 自举解析器韧性(P0-E:非法输入报 E1001 不崩,native 面) =="
 for pf in 01i_semicolon 01j_impl_for; do
     "$COMP/bin/ctron-cc" run "$ROOT/tests/$pf.neg.ct" > "$T/pe_$pf.out" 2>&1

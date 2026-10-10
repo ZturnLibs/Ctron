@@ -676,6 +676,10 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                     eln("if (" + rme + ".variant == 0) \{", env)
                     var venv = env
                     if vpt[2].len > 1 && vpt[2][1][0] == "PatId" && vpt[2][1][1] != "_" {
+                        // u: 载荷闸(与 Ok 臂同款):槽 ct_i 64 位不载 struct 值
+                        if sec.len > 2 && byte_slice(sec, 0, 2) == "u:" {
+                            panic("emit:match struct 载荷未支持(槽 ct_i 64 位;" + sec + ";盒装账在册)")
+                        }
                         // T53:f 载荷位型双关(旧 (double)(long) 值直转双向失真)
                         var pvx8 = "(" + ct_ctype(sec) + ")(long)(" + rme + ".v)"
                         if sec == "f" {
@@ -1228,6 +1232,10 @@ eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -=
                 eln("if (" + rme + ".variant == 0) \{", env)
                 var senv = env
                 if spt[2].len > 1 && spt[2][1][0] == "PatId" && spt[2][1][1] != "_" {
+                    // u: 载荷闸(与 Ok 臂同款):槽 ct_i 64 位不载 struct 值
+                    if sec.len > 2 && byte_slice(sec, 0, 2) == "u:" {
+                        panic("emit:Option struct 载荷未支持(槽 ct_i 64 位;" + sec + ";盒装账在册)")
+                    }
                     // T53:f 载荷位型双关(与 let-match 臂同款;旧 (double)(long) 值直转失真)
                     var pvx9 = "(" + ct_ctype(sec) + ")(long)(" + rme + ".v)"
                     if sec == "f" {
@@ -1290,6 +1298,12 @@ eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -=
                             eln(ct_ctype(sec9) + " t_" + opt[2][1][1] + " = " + vx9 + ";", env)
                             oenv = env_bind(env, opt[2][1][1], sec9)
                         } else {
+                            // u: 载荷(f/6/7 臂判后仍为 struct 码)= 盒装账在册:载荷槽
+                            // ct_i 64 位不载 struct 值,静默绑 int32/"i" 旧致 Member@N
+                            // 惊雷或错译——响亮失败点名型别(盒装修复见 struct 值链面账)
+                            if sec9.len > 2 && byte_slice(sec9, 0, 2) == "u:" {
+                                panic("emit:Result struct 载荷未支持(槽 ct_i 64 位;" + sec9 + " 读件走 err 先行双件或等载荷盒装)")
+                            }
                             eln("int32_t t_" + opt[2][1][1] + " = (int32_t)" + rme + ".v;", env)
                             oenv = env_bind(env, opt[2][1][1], "i")
                         }
