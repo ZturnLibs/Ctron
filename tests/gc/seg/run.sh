@@ -60,4 +60,19 @@ while [ $w -lt 3 ]; do
 done
 if [ "$winfail" -gt 0 ]; then fail=$((fail+winfail)); fi
 
+# G1 探针四腿:Region.heap 任务内分段(reset 回卷 → 段不增长)× 三遍
+CTRON_STDPATH="$ROOT/lib" "$EMIT" run "$DIR/src/region.ct" > "$T/reg.c" 2>"$T/reg.err" \
+    || { echo "  FAIL region (emit): $(tail -1 "$T/reg.err")"; exit 1; }
+cc -O1 -w -pthread -o "$T/reg.bin" "$T/reg.c" || { echo "  FAIL region (cc)"; exit 1; }
+rg=0
+while [ $rg -lt 3 ]; do
+    if CTRON_GC=1 "$T/reg.bin" > "$T/reg.out" 2>&1 && grep -qE "region-probe acc=[0-9]+" "$T/reg.out"; then
+        echo "  PASS region run=$rg"
+    else
+        echo "  FAIL region run=$rg: $(tail -1 "$T/reg.out")"
+        fail=$((fail+1))
+    fi
+    rg=$((rg+1))
+done
+
 [ "$fail" -eq 0 ]

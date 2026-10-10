@@ -1485,6 +1485,11 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 if cal[1][0] == "Ident" && cal[1][1] == "Arena" { return "Q" }
                 if cal[1][0] == "Ident" && cal[1][1] == "Region" { return "K" }
             }
+            // G1-T4:Region.heap() 静态 ctor 面 → K(线程段锚定视图;无接收者,
+            // Region 类型名直呼——与 fixed 同族)
+            if m == "heap" {
+                if cal[1][0] == "Ident" && cal[1][1] == "Region" { return "K" }
+            }
             if or2(m == "mark", m == "reset") {
                 var dkt = ct_typeof(cal[1], env, file)
                 if dkt == "K" {
@@ -1501,7 +1506,13 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 }
             }
             if m == "or" {
-                // .or(默认值)型别 = 默认实参型(P0-G)
+                // .or 型别 = 接收者元素码优先(盒装/整宽载荷贯通);回落默认实参型
+                // (P0-G。旧按默认实参型:I64 载荷 rr.or(0) 的 0 字面=i32 → 全式
+                // i32 截断,9007199254740993→1,emit 实证=预存双臂分歧)
+                var orc = ct_opt_elem_expr(file, cal[1], env)
+                if orc.len > 0 && !seq2(orc, "i") {
+                    return orc
+                }
                 if e[2].len > 1 {
                     var oor = ct_typeof(e[2][1], env, file)
                     if oor.len > 0 {

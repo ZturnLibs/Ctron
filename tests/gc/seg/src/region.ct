@@ -1,0 +1,29 @@
+// G1 探针四:Region.heap 任务内分段——每轮 churn 后 reset 回卷,段不增长 → RSS 平
+// (对照:同量 churn 无 reset 即段内单调涨——p99 反证探针已录 2.5GB 形态)
+// 形态注记:前奏型 ctor 于 spawn 闭包内不解析(捕获机制限制,在册),故分段体
+// 置顶级 fn,闭包只调 fn
+fn region_job() -> I32 {
+    let r = Region.heap()
+    var i: I32 = 0
+    var acc: I64 = 0
+    while i < 5000 {
+        let m: I64 = r.mark()
+        var k: I32 = 0
+        while k < 100 {
+            let s2 = "chunk-\{i}-\{k}-padding-padding"
+            acc += s2.len.as[I64]()
+            k += 1
+        }
+        r.reset(m)
+        i += 1
+    }
+    println("region-probe acc={acc}")
+    return 0
+}
+
+fn main() {
+    scope { |s|
+        let t = s.spawn(|| { region_job() })
+        t.join()
+    }
+}

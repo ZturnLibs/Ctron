@@ -736,16 +736,21 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 return "(\{ ct_arena t_a; t_a.base = (void*)(__builtin_alloca((size_t)(" + rsz2 + "))); t_a.off = 0; t_a.cap = (int64_t)(" + rsz2 + "); t_a; })"
             }
             // T41 余债:Region 区段面 mark()/reset(m)——接收者码 K 门控(不遮同名方法):
-            // mark=off 快照;reset=ct_arena_reset 守卫回卷(负值/超前 panic)
+            // mark=off 快照;reset=守卫回卷(负值/超前 panic)。G1-T4:改走 dispatch
+            // 助手——堆形(Region.heap 视图命中线程竞技场)回卷真实段 off,栈形落回
             if or2(m == "mark", m == "reset") {
                 var rkt = ct_typeof(cal[1], env, file)
                 if rkt == "K" {
                     var rob = ct_expr(cal[1], env, file)
-                    if m == "mark" { return "((int64_t)(" + rob + ").off)" }
+                    if m == "mark" { return "ct_region_mark(&(" + rob + "))" }
                     var rmk = "0"
                     if ag.len > 1 { rmk = ct_expr(ag[1], env, file) }
-                    return "ct_arena_reset(&(" + rob + "), (int64_t)(" + rmk + "))"
+                    return "ct_region_reset(&(" + rob + "), (long long)(" + rmk + "))"
                 }
+            }
+            // G1-T4:Region.heap()——线程段锚定视图(码 K,mark/reset 同臂 dispatch)
+            if cal[1][0] == "Ident" && cal[1][1] == "Region" && m == "heap" {
+                return "ct_region_heap()"
             }
             // T41 余债:Pool 对象面 alloc()/free(i)/get(i)/set(i,v)——接收者码 J<ec>
             // 门控;alloc=空闲链头出链(用尽 panic),free=头插回链(LIFO),get/set=槽位直读直写
