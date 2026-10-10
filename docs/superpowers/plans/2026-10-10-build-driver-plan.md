@@ -1049,6 +1049,13 @@ git commit -m "feat(driver): 仓库全量门收编进 ctron gate(W1 批4)——r
 | W4 原生驱动器(std/config L1 通用面 → compiler/driver/ 逐族对拍 → 垫片翻转) | W3 齐 + W1/W2 稳 | 另立计划(对拍语料与本计划 Task 2/3 的测试面是现成基线) |
 | W5 收编收官(残余 run.sh 退役;shell ≤10;文档/tour) | W4 垫片翻转后 | 另立计划 |
 
-## 执行记录
+## 执行记录(2026-10-10,W1 四批 + 终审加固,全部落库)
 
-(执行时逐任务回写:日期、批次、门结果、CI run id、偏离与原因。)
+- **批1 `3d3a3852`**:CTCL 驱动器注册表(schema 第二张表 + 校验器注册表嗅探 + E5054/nonempty 旗标 + E5050 消息参数化,清单语料逐字节不变)。评审 clean;meta_check 两红 = 对端 E1002 在册,base 同红对拍在案。
+- **批2 `989c9744` + 修复 `e101e72d`**:读取器 + 执行器 + `ctron task`;tests/tasks 门 8→9 断言。评审 Important 一枚(fail-stop 零守卫)已修,复审 Approved。五处计划外修正全裁必要:ROOT 双层 dirname、ctron.ctcl 沙盒拷贝、T6 补任务名、反引号 `sprintf("%c",96)`(macOS /bin/sh 对 heredoc-in-$() 内反引号的解析坑)、help_cmd task 臂。
+- **批3 `636a4c49` + 修复 `2f401833`**:gate/clean + ps1/cmd 三面同文,门 9→14 断言。评审两 Important(ps1 死代码 StripComment 破坏同文语义、裸名 ctron 在 $Bin 重定位后断链)已修,复审 Approved。计划外修正两枚真缺陷:darwin 大小写不敏感 FS 上 ctron.ctcl 误中 Ctron.ctcl → 首块嗅探;fmt 旗标可在目标前(D4 内建门 fmt 腿假绿真修)。
+- **批4 `e8d1dc29`**:repo 根 ctron.ctcl(gate 21 步 + fast 4 步)+ ci.sh 内联逻辑四件逐字抽出 + ci.sh 翻转一行委派。全量门实跑 17 绿 + 4 对端在册红(commit 级归因:meta_check E1002×2 / smoke decl 锁[已由对端 `216eac9c` 修讫] / wasm dom W8901 / fmt parity Rust 臂;旧 ci.sh 同红,翻转零回归)。
+- **终审(全分支 1818ef02..e8d1dc29)**:With fixes → 加固 `ecec57ec`(三 Important:步骤循环 stdin 改 fd3 杀静默跳步假绿洞、clean --all 回补 D5 项目模式限定词、ci.sh 补 cd 恢复 cwd 无关性;三 Minor;门 14→16 断言)+ `cb49b15b`(ps1 同款双洞静态镜像)。复审 **Ready to merge: Yes**,六发现全 Resolved,T15/T16 双钉验证真红转真绿。
+- **挂账两枚(在册随触发即动)**:① ps1 Dv-EnvSetup 环境注入(无 pwsh 静态-only,随 Windows CI 腿落,勿漂移);② meta_check 2×E1002(plugins 泳道注册尾巴——W1"CI 全绿"验收条款待其清偿,非本批缺陷)。
+- **Minor 留档随终审 triage 终局**:M-T1-1/M-T1-2/M-T2-1/M-T2-2/M-T2-5/M-T3-3/M-T3-5/M-T3-7/M-T4-1/M-T4-2 = RIDE(W4 原生驱动器消息一致性批统一收口);M-T3-6 升 Important 已修;M-T2-3 部分收口(gate help 行文注引号语义非 shell 全同);M-T2-4 经终审裁定 POSIX 函数作用域自恢复,真潜伏无害。
+- **CI 注**:批1–批3 + 对端穿插件已由对端机刷推上 origin;本地终审加固两笔随下一批推送。勾选框未逐格回勾,以本记录为准。

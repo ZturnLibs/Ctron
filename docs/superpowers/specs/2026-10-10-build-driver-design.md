@@ -84,7 +84,7 @@ task "smoke" {
 | 命令 | 语义 | rc |
 |---|---|---|
 | `ctron task` | 列当前目录 `ctron.ctcl` 任务(名 + desc;无文件 → rc 2) | 0/2 |
-| `ctron task <名>` | 执行任务:逐步骤顺序执行,任一步骤非零即停,报"任务 %s 步骤 %d(rc=%d)+ 输出尾" | 0/1/2 |
+| `ctron task <名>` | 执行任务:逐步骤顺序执行,任一步骤非零即停,报"任务 %s 步骤 %d(rc=%d)"判词行(输出已直通,判词不重复内容——§5.3 口径;§4 原稿"+ 输出尾"与 §5.3 相抵,2026-10-10 终审修订) | 0/1/2 |
 | `ctron gate [名]` | ≡ `task`,缺省名 `gate`;含内建默认回落(D4) | 0/1/2 |
 | `ctron clean [--all]` | 删缓存三域;`--all` 加项目 `build/` 与 `pkgs/`(已安装依赖) | 0/2 |
 
@@ -92,6 +92,7 @@ task "smoke" {
 - 步骤中裸名 `ctron` 解析为驱动器自身可执行路径(任务里写 `ctron build` 不依赖 PATH)。
 - `ctron.ps1` / `ctron.cmd` 同文同步( house 规矩:三面同文)。
 - `--help` / `help task|gate|clean` 与 usage 同步;rc 约定 0/1/2 不变。
+- 驱动器清单存在性判定按**首块嗅探**(实现期引入的 D4 精化,2026-10-10 落地):darwin/Windows 大小写不敏感文件系统上 `ctron.ctcl` 会命中包清单 `Ctron.ctcl`,首块非 ctron/task 即视为"无驱动器清单",fail-closed 落入回落序;真实驱动器清单含垃圾仍 rc 2。
 
 ## 5. 执行器语义(本设计的核心钉子)
 
