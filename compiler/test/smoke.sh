@@ -1304,7 +1304,8 @@ if [ -x "$ROOT/compiler/bin/ctron-cc" ]; then
     else
         bad "emit std use 异常: $(tail -2 "$E2/e1.out")"
     fi
-    rm -rf "$ROOT/.cache/emit"
+    # 清缓存唯一合法口 = ctron clean(设计 build-driver-design D5/§6;此处需空 emit 缓存以证 fail-closed,经驱动器清)
+    sh "$ROOT/ctron" clean >/dev/null 2>&1
     if CTRON_STDPATH=/nonexistent "$COMP/ctc.sh" emit "$E2/mini.ct" "$E2/mini2.c" > /dev/null 2> "$E2/err.txt"; then
         bad "坏指路未 fail-closed(E2020/W8901)"
     else

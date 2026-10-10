@@ -277,6 +277,33 @@ def check_diag_catalog() -> list[str]:
     return errs
 
 
+CACHE_CLEAN_RE = re.compile(r"((?<!-)\brm\b[^#\n]*|unlink\s+)[^\n]*\.cache")
+
+
+def check_script_cache_cleanup() -> list[str]:
+    """驱动器 clean 是缓存唯一合法清理口(设计 build-driver-design D5/§6):
+    扫全部编排脚本,凡脚本私 rm/unlink .cache 路径 = 报错。只建(mkdir)不算。
+    (?<!-) 排除 docker run --rm 旗标(tests/bare 沙盒读 .cache/bare/gate_$$ 内核镜像
+    属读取非清理);行内 # 后剥除再匹配 = 注释豁免,同 check_diag_catalog 的
+    strip 注释先例。"""
+    errs: list[str] = []
+    repo = ROOT.parent
+    roots = [repo / d for d in ("examples", "tests", "tools", "selfhosted", "compiler")]
+    scripts = sorted(
+        p for root in roots if root.is_dir()
+        for p in root.rglob("*.sh") if p.is_file()
+    )
+    ci = repo / "ci.sh"
+    if ci.is_file():
+        scripts.append(ci)
+    for p in scripts:
+        for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
+            code = line.split("#", 1)[0]  # 注释豁免:# 后剥除再匹配
+            if CACHE_CLEAN_RE.search(code):
+                errs.append(f"{p.relative_to(repo)}:{i}: 脚本私清缓存(唯一合法口 = ctron clean): {line.strip()}")
+    return errs
+
+
 def main() -> int:
     all_files = sorted(p for p in ROOT.rglob("*.ct") if p.is_file())
     stats: dict[str, int] = {}
@@ -297,6 +324,10 @@ def main() -> int:
     for err in check_diag_catalog():
         failures += 1
         print(f"[FAIL] diag_msg.ct: {err}")
+
+    for err in check_script_cache_cleanup():
+        failures += 1
+        print(f"[FAIL] {err}")
 
     print()
     print(f"测试文件: {len(all_files)} 个 " + " ".join(f"{k}={v}" for k, v in sorted(stats.items())))
