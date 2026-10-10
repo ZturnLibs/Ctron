@@ -1,0 +1,94 @@
+// G1-T6 P99 载荷探针:churn 工人(短任务×10 波,段回收)×主线程逐 token churn(GC 差分载体)
+// 形态注记:计划原形=回声服务×会话(net);net 家族处对端 U8 平面 ABI 手术期且基线红
+// 在册(G1 批内归因),改通道流水线形——量纲同(分配 churn、GC 停顿、通道停车点)。
+// 判读:gc-off 主线程 bump 单调涨(RSS GB 级);gc-on 主线程 GC 堆有界(活集+超级块);
+// 工人短任务×波次=任务段跨波回收实证(段内长命单调涨是 Region.heap(T4) 的管辖面)。
+// 桶界 ns:≤1ms/≤5ms/≤20ms/≤100ms/超;w=工人轮延迟分布 r=主线程 recv+churn 轮延迟分布
+fn worker(tx: Channel[I64], rounds: I32) -> I32 {
+    var i: I32 = 0
+    while i < rounds {
+        let t0 = mono_ns()
+        var s = "0123456789abcdef"
+        var k: I32 = 0
+        while k < 60 {
+            s = s + "0123456789abcdef"
+            k += 1
+        }
+        tx.send(mono_ns() - t0).expect("send")
+        i += 1
+    }
+    return 0
+}
+
+fn main() -> I32 {
+    let (tx, rx) = Channel[I64](64)
+    let rounds: I32 = 2000
+    let waves: I32 = 10
+    var wb0: I64 = 0
+    var wb1: I64 = 0
+    var wb2: I64 = 0
+    var wb3: I64 = 0
+    var wb4: I64 = 0
+    var rb0: I64 = 0
+    var rb1: I64 = 0
+    var rb2: I64 = 0
+    var rb3: I64 = 0
+    var rb4: I64 = 0
+    var c: I32 = 0
+    var wave: I32 = 0
+    while wave < waves {
+        scope { |s|
+            let w0 = s.spawn(|| { worker(tx, rounds) })
+            let w1 = s.spawn(|| { worker(tx, rounds) })
+            let w2 = s.spawn(|| { worker(tx, rounds) })
+            let w3 = s.spawn(|| { worker(tx, rounds) })
+            let w4 = s.spawn(|| { worker(tx, rounds) })
+            let w5 = s.spawn(|| { worker(tx, rounds) })
+            var d: I32 = 0
+            while d < rounds * 6 {
+                let r0 = mono_ns()
+                let v = rx.recv().expect("recv")
+                var ms = "m"
+                var k: I32 = 0
+                while k < 10 {
+                    ms = ms + "0123456789abcdef0123456789abcdef"
+                    k += 1
+                }
+                let rd = mono_ns() - r0
+                if v <= 1000000 {
+                    wb0 += 1
+                } else if v <= 5000000 {
+                    wb1 += 1
+                } else if v <= 20000000 {
+                    wb2 += 1
+                } else if v <= 100000000 {
+                    wb3 += 1
+                } else {
+                    wb4 += 1
+                }
+                if rd <= 1000000 {
+                    rb0 += 1
+                } else if rd <= 5000000 {
+                    rb1 += 1
+                } else if rd <= 20000000 {
+                    rb2 += 1
+                } else if rd <= 100000000 {
+                    rb3 += 1
+                } else {
+                    rb4 += 1
+                }
+                d += 1
+                c += 1
+            }
+            w0.join()
+            w1.join()
+            w2.join()
+            w3.join()
+            w4.join()
+            w5.join()
+        }
+        wave += 1
+    }
+    println("p99-probe w={wb0},{wb1},{wb2},{wb3},{wb4} r={rb0},{rb1},{rb2},{rb3},{rb4} total={c}")
+    return 0
+}
