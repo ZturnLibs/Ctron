@@ -1184,8 +1184,8 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         }
         // 非提升 Drop 局部响亮拒发(C 花括号出口时序 ≠ eval 泄漏语义)
         dls_reject_unhoisted(body, envw, file, hl, "emit:while 体")
-eln("if (ct_frn.spn < 8) \{ ct_frn.sv[ct_frn.spn] = ct_frn.pn; ct_frn.spn += 1; }", env)
-                eln("while (" + ct_expr(st[1], envw, file) + ") \{", env)
+        eln("if (ct_frn.spn < 8) \{ ct_frn.sv[ct_frn.spn] = ct_frn.pn; ct_frn.spn += 1; }", env)
+        eln("while (" + ct_expr(st[1], envw, file) + ") \{", env)
         var benv = ct_stmts(body, envw, file, hl, hreg)
         var tl = body[body.len - 1]
         if tl[0] != "None" {
@@ -1195,7 +1195,7 @@ eln("if (ct_frn.spn < 8) \{ ct_frn.sv[ct_frn.spn] = ct_frn.pn; ct_frn.spn += 1; 
             ct_stmt(es, benv, file, hreg)
         }
         eln("}", env)
-eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -= 1; }", env)
+        eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -= 1; }", env)
         if cand.len > 0 {
             eln("}", env)
         }
@@ -1519,11 +1519,11 @@ eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -=
             var hi = ct_expr(it[3], env, file)
             var op2 = " < "
             if incl == "true" { op2 = " <= " }
-eln("if (ct_frn.spn < 8) \{ ct_frn.sv[ct_frn.spn] = ct_frn.pn; ct_frn.spn += 1; }", env)
-                        eln("for (int64_t t_" + v0 + " = " + lo + "; t_" + v0 + op2 + hi + "; t_" + v0 + "++) \{", env)
+            eln("if (ct_frn.spn < 8) \{ ct_frn.sv[ct_frn.spn] = ct_frn.pn; ct_frn.spn += 1; }", env)
+            eln("for (int64_t t_" + v0 + " = " + lo + "; t_" + v0 + op2 + hi + "; t_" + v0 + "++) \{", env)
             ct_block(body, env_bind(env, v0, "i"), file, hreg)
             eln("}", env)
-eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -= 1; }", env)
+            eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -= 1; }", env)
             return env
         }
         var ity = ct_typeof(it, env, file)
@@ -1533,12 +1533,12 @@ eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -=
             eln("ctron_list* t_li = (ctron_list*)(" + larr + ");", env)
             var rli = ct_reg_line("li", "L")
             if rli.len > 0 { eln(rli, env) }
-eln("if (ct_frn.spn < 8) \{ ct_frn.sv[ct_frn.spn] = ct_frn.pn; ct_frn.spn += 1; }", env)
-                        eln("for (int64_t ctron_i = 0; ctron_i < t_li->n; ctron_i++) \{", env)
+            eln("if (ct_frn.spn < 8) \{ ct_frn.sv[ct_frn.spn] = ct_frn.pn; ct_frn.spn += 1; }", env)
+            eln("for (int64_t ctron_i = 0; ctron_i < t_li->n; ctron_i++) \{", env)
             eln("    int32_t t_" + v0 + " = (int32_t)(long)t_li->items[ctron_i];", env)
             ct_block(body, env_bind(env, v0, "i"), file, hreg)
             eln("}", env)
-eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -= 1; }", env)
+            eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -= 1; }", env)
             return env
         }
         if ity.len > 1 && byte_at(ity, 0) == 118 {
@@ -1547,12 +1547,12 @@ eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -=
                 panic("ct_stmt:for 视图迭代限 Ident")
                 return env
             }
-eln("if (ct_frn.spn < 8) \{ ct_frn.sv[ct_frn.spn] = ct_frn.pn; ct_frn.spn += 1; }", env)
-                        eln("for (int64_t ctron_i = 0; ctron_i < t_" + it[1] + ".n; ctron_i++) \{", env)
+            eln("if (ct_frn.spn < 8) \{ ct_frn.sv[ct_frn.spn] = ct_frn.pn; ct_frn.spn += 1; }", env)
+            eln("for (int64_t ctron_i = 0; ctron_i < t_" + it[1] + ".n; ctron_i++) \{", env)
             eln("    " + ct_ctype(byte_slice(ity, 1, ity.len)) + " t_" + v0 + " = t_" + it[1] + ".d[ctron_i];", env)
             ct_block(body, env_bind(env, v0, byte_slice(ity, 1, ity.len)), file, hreg)
             eln("}", env)
-eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -= 1; }", env)
+            eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -= 1; }", env)
             return env
         }
         if ity.len >= 3 && byte_slice(ity, 0, 1) == "a" {
@@ -1560,12 +1560,12 @@ eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -=
             var n = byte_slice(ity, 1, ity.len - 1)
             var ec = byte_slice(ity, ity.len - 1, ity.len)
             var arr = ct_expr(it, env, file)
-eln("if (ct_frn.spn < 8) \{ ct_frn.sv[ct_frn.spn] = ct_frn.pn; ct_frn.spn += 1; }", env)
-                        eln("for (int64_t ctron_i = 0; ctron_i < " + n + "; ctron_i++) \{", env)
+            eln("if (ct_frn.spn < 8) \{ ct_frn.sv[ct_frn.spn] = ct_frn.pn; ct_frn.spn += 1; }", env)
+            eln("for (int64_t ctron_i = 0; ctron_i < " + n + "; ctron_i++) \{", env)
             eln("    " + ct_ctype(ec) + " t_" + v0 + " = " + arr + "[ctron_i];", env)
             ct_block(body, env_bind(env, v0, ec), file, hreg)
             eln("}", env)
-eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -= 1; }", env)
+            eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -= 1; }", env)
             return env
         }
         if or2(ity == "L", ct_is_lcode(ity)) {
@@ -1580,12 +1580,12 @@ eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -=
             eln("ctron_list* t_ll = (ctron_list*)(" + larrL + ");", env)
             var rll = ct_reg_line("ll", "L")
             if rll.len > 0 { eln(rll, env) }
-eln("if (ct_frn.spn < 8) \{ ct_frn.sv[ct_frn.spn] = ct_frn.pn; ct_frn.spn += 1; }", env)
-                        eln("for (int64_t ctron_i = 0; ctron_i < t_ll->n; ctron_i++) \{", env)
+            eln("if (ct_frn.spn < 8) \{ ct_frn.sv[ct_frn.spn] = ct_frn.pn; ct_frn.spn += 1; }", env)
+            eln("for (int64_t ctron_i = 0; ctron_i < t_ll->n; ctron_i++) \{", env)
             eln("    " + ct_ctype(ecodeL) + " t_" + v0 + " = " + getL + ";", env)
             ct_block(body, env_bind(env, v0, ecodeL), file, hreg)
             eln("}", env)
-eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -= 1; }", env)
+            eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -= 1; }", env)
             return env
         }
         panic("ct_stmt:for iter:" + it[0])
