@@ -1,0 +1,15 @@
+// ctron.ctcl —— Ctron 仓库驱动器面(W1:全量门收编自 ci.sh;设计 2026-10-10-build-driver-design §8)
+// 前置:宿主 seed 已构建(make -C compiler-c);gcc/python3 可用;fmt 对拍需 cargo(Rust 参考臂)。
+ctron {
+    config_version = 1
+}
+
+task "fast" {
+    steps = ["python3 tests/meta_check.py", "python3 tests/manifest/run.py", "python3 tests/manifest/diff.py", "python3 tools/ctcl_check.py --selftest"]
+    desc = "快门(静态+清单+解析器自检,不碰编译)"
+}
+
+task "gate" {
+    steps = ["python3 tests/meta_check.py", "python3 tests/manifest/run.py", "python3 tests/manifest/diff.py", "python3 tools/ctcl_check.py --selftest", "sh compiler/build.sh", "sh compiler/native.sh", "sh compiler/test/smoke.sh --full", "python3 compiler/test/suite.py", "sh tests/net/rt_core_smoke/run.sh", "sh tests/net/rt_reactor_smoke/run.sh", "sh tests/dist/ctron_smoke.sh", "sh tests/plugins/run.sh", "sh tests/bare/gate.sh", "sh tests/wasm/gate.sh", "sh compiler/bench.sh", "sh compiler/test/bench_ffi.sh", "sh tests/gc/bench.sh", "sh tests/gc/determinism.sh", "sh tests/lang/bench/bench.sh", "sh tests/gui/gate.sh", "sh tests/fmt/parity.sh"]
+    desc = "全量验证门禁(收编自 ci.sh 九步)"
+}
