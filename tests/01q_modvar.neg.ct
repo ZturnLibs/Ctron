@@ -1,0 +1,6 @@
+//@ fail: E1002
+var g_x: I64 = -1
+
+fn main() -> I32 {
+    return 0
+}

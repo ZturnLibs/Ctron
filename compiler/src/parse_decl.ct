@@ -804,6 +804,17 @@ fn p_file(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], pd
             nf.push(p_const(toks, cur, lns))
         } else if t == "static" {
             nf.push(p_static(toks, cur, lns))
+        } else if or2(t == "let", t == "var") {
+            // E1002:模块级绑定不是受支持的声明面——此前坠下方 p_fn 兜底被硬套成
+            // Fn 声明(名字吃绑定名/类型进参数位/初始化式进体),下游走查器读畸形
+            // 字段出幻影 W8040(无初始化形)或段错误(带初始化形)——F-内化批4 锚,
+            // 最小复现在案。消费至行尾,余 token 不再逐个触发。
+            var e2l = lns[cur.load()]
+            pdiags.push(e2l + ":" + cols[cur.load()] + " E1002: " + diag_text0("E1002"))
+            adv(cur)
+            while tok(toks, cur) != "NL" && tok(toks, cur) != "#EOF" {
+                adv(cur)
+            }
         } else {
             nf.push(p_fn(toks, cur, lns))
         }

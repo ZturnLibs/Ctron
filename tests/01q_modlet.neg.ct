@@ -1,0 +1,7 @@
+//@ fail: E1002
+let g_y: I64 = -1
+
+test "unaffected block-level bindings" {
+    var inner: I64 = -1
+    assert(inner == -1)
+}

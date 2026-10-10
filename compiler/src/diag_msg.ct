@@ -119,6 +119,9 @@ fn diag_tpl_en(key: Str) -> Str {
     if seq2(key, "E1001.badchar") { return "unrecognized character '%0'" }
     if seq2(key, "E1001.impl.for") { return "impl missing for" }
     if seq2(key, "E1001.trailing.dot") { return "trailing dot at end of line: method chains use leading-dot style (§1.6)" }
+    // E1002(F-内化批4 锚):模块级 let/var —— 此前坠 p_fn 硬套 Fn 声明,下游读畸形字段
+    // (幻影 W8040 / 走查器段错误;最小复现在案)。v0 声明面无此形,parse 层干净拒绝。
+    if seq2(key, "E1002") { return "module-level let/var is not a supported declaration (use fn/test/struct/enum/impl/trait/use/const/static; bindings live inside blocks)" }
     if seq2(key, "E1001.exptype") { return "expected type, got %0" }
     if seq2(key, "E1001.impl.body") { return "impl body missing \{" }
     if seq2(key, "E1001.abi") { return "extern ABI must be the \"c\" string" }
@@ -226,6 +229,7 @@ fn diag_tpl_zh(key: Str) -> Str {
     if seq2(key, "E1001.badchar") { return "无法识别的字符 '%0'" }
     if seq2(key, "E1001.impl.for") { return "impl 缺少 for" }
     if seq2(key, "E1001.trailing.dot") { return "行尾点非法:方法链统一首点式(§1.6)" }
+    if seq2(key, "E1002") { return "模块级 let/var 不是受支持的声明(声明面 = fn/test/struct/enum/impl/trait/use/const/static;绑定活在块内)" }
     if seq2(key, "E1001.exptype") { return "预期类型,实际 %0" }
     if seq2(key, "E1001.impl.body") { return "impl 体缺少 \{" }
     if seq2(key, "E1001.abi") { return "extern ABI 应为 \"c\" 字符串" }

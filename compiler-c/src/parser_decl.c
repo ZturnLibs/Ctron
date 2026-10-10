@@ -888,6 +888,14 @@ int parse_decl(cparser* p, cattr** attrs, size_t nattrs, sv* derives, cdecl* out
         out->fn_ = *f;
         return 1;
     }
+    case TOK_LET:
+    case TOK_VAR:
+        /* E1002(与自举 parse_decl.ct 同修,F-内化批4 锚):模块级绑定不是受支持的
+         * 声明面;消费至行尾(镜像 .ct 侧)。 */
+        err_here(p, "E1002", "模块级 let/var 不是受支持的声明(声明面 = fn/test/struct/enum/impl/trait/use/const/static;绑定活在块内)");
+        bump_tok(p);
+        while (!at_k(p, TOK_NEWLINE) && !at_k(p, TOK_EOF)) bump_tok(p);
+        return 0;
     default:
         err_here(p, "E1001", "顶层应为声明,实际 %s", tok_desc(p));
         bump_tok(p);
