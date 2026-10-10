@@ -42,4 +42,22 @@ else
 fi
 
 echo "gc/seg: pass=$pass fail=$fail"
+
+# G1 探针二腿:跨堆窗口压测(阈值 4KB 逼主线程高频收集)× 三遍,判词含值语义钉
+winfail=0
+CTRON_STDPATH="$ROOT/lib" "$EMIT" run "$DIR/src/window.ct" > "$T/win.c" 2>"$T/win.err" \
+    || { echo "  FAIL window (emit): $(tail -1 "$T/win.err")"; exit 1; }
+cc -O1 -w -pthread -o "$T/win.bin" "$T/win.c" || { echo "  FAIL window (cc)"; exit 1; }
+w=0
+while [ $w -lt 3 ]; do
+    if CTRON_GC=1 CTRON_GC_THRESHOLD=4096 "$T/win.bin" > "$T/win.out" 2>&1 && grep -qE "window-probe acc=340000" "$T/win.out"; then
+        echo "  PASS window run=$w"
+    else
+        echo "  FAIL window run=$w: $(tail -1 "$T/win.out")"
+        winfail=$((winfail+1))
+    fi
+    w=$((w+1))
+done
+if [ "$winfail" -gt 0 ]; then fail=$((fail+winfail)); fi
+
 [ "$fail" -eq 0 ]

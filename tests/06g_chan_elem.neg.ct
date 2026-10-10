@@ -1,0 +1,6 @@
+//@ fail: E3021
+fn main() {
+    let (tx, rx) = Channel[List[I32]](2)
+    tx.send([1, 2]).expect("send")
+    let _ = rx
+}

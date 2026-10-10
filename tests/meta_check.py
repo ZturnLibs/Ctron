@@ -28,6 +28,7 @@ ERROR_CODES = {
     "E2080": "对不可变绑定赋值(let 局部;§4.0 v0.9)",
     "E3010": "spawn 捕获了非 Send 值",
     "E3020": "channel 收发非 Send 类型",
+    "E3021": "channel 元素类型限标量或 Str(任务段边界值语义)",
     "E3030": "static var 不存在",
     "E3031": "非 Send 类型作为全局/静态存储",
     "E3040": "no_alloc 上下文中出现 GC/String 分配",

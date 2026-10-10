@@ -83,6 +83,7 @@
 | W8053 | extern 返回 fn 类型(dormant:v0.7 返回向合法化,码位保留;v0.6 §9.6) |
 | E3010 | spawn 捕获了非 Send 值 |
 | E3020 | channel 收发非 Send 类型 |
+| E3021 | channel 元素类型限标量或 Str(任务段边界值语义) |
 | E3030 | `static var` 不存在 |
 | E3031 | 非 Send 类型作为全局/静态存储 |
 | E3040 | no_alloc 上下文(own 块/`#[no_alloc]`/bare 档)中出现 GC/String 分配 |

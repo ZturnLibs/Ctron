@@ -1,0 +1,25 @@
+// G1 探针二:跨堆窗口压测——GC 阈值调小逼主线程高频收集,任务→主线程 2 万 Str 载荷过界
+// (malloc 中转边界值语义:UAF 即崩即红;定长载荷,total=320000=内容完整性校验和)
+// 登记缺口(预存在,G1 批内实证):expect() s 码载荷解包无指针 cast(recv 的 Channel
+// 接收者 elem 码已擦除不可恢复;Result[Str] 基线同断)——内联消费(用点位 cast)规避,
+// 编译器侧修复挂 G3 半端类型化一并治
+fn main() {
+    let (tx, rx) = Channel[Str](4)
+    scope { |s|
+        let t = s.spawn(|| {
+            var i: I32 = 0
+            while i < 20000 {
+                tx.send("payload-中文-ab").expect("send")
+                i += 1
+            }
+        })
+        var c: I32 = 0
+        var acc: I64 = 0
+        while c < 20000 {
+            acc += (rx.recv().expect("recv")).len.as[I64]()
+            c += 1
+        }
+        t.join()
+        println("window-probe acc={acc}")
+    }
+}

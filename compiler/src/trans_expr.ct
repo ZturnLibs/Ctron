@@ -1004,6 +1004,11 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 if pec.len > 2 && byte_slice(pec, 0, 2) == "u:" {
                     return "(\{ ct_res _r = " + obj + "; if (_r.variant) \{ ctron_panic(" + emsg + "); } (*(" + ct_ctype(pec) + "*)(long)_r.v); })"
                 }
+                // G1-T3:s 码载荷=char* 指针(通道边界 malloc 中转/Result[Str] 同表示),
+                // 裸 ct_i 对指针目标编译断——cast const char*(旧 raw 槽形仅在 int 载荷下幸存)
+                if pec == "s" {
+                    return "(\{ ct_res _r = " + obj + "; if (_r.variant) \{ ctron_panic(" + emsg + "); } ((const char*)(long)_r.v); })"
+                }
                 return "(\{ ct_res _r = " + obj + "; if (_r.variant) \{ ctron_panic(" + emsg + "); } _r.v; })"
             }
             if or2(m == "is_err", m == "is_ok") {

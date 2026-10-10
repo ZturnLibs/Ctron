@@ -83,6 +83,7 @@ fn diag_tpl_en(key: Str) -> Str {
     if seq2(key, "E2040.const") { return "const literal exceeds I64 width (range):%0" }
     if seq2(key, "E4030") { return "spawn inside a #[no_spawn] context" }
     if seq2(key, "E3020.elem") { return "channel element is non-Send (Send):channel element type" }
+    if seq2(key, "E3021.elem") { return "channel element type must be scalar or Str (task-segment boundary value semantics, G1)" }
     if seq2(key, "E4042") { return "capturing closure cannot be used as a C-ABI callback (no env slot):%0" }
     if seq2(key, "E1001.chain") { return "comparison operators cannot be chained: write a < b && b < c" }
     if seq2(key, "W8020") { return "dropped result (must-use):%0 returns Option/Result" }
@@ -193,6 +194,7 @@ fn diag_tpl_zh(key: Str) -> Str {
     if seq2(key, "E2040.const") { return "const 字面量超出 I64 宽度(值域):%0" }
     if seq2(key, "E4030") { return "no_spawn 上下文中的 spawn" }
     if seq2(key, "E3020.elem") { return "channel 元素非 Send(Send):Channel 元素类型" }
+    if seq2(key, "E3021.elem") { return "通道元素类型限标量族与 Str(任务段边界值语义,G1)" }
     if seq2(key, "E4042") { return "捕获闭包不可作 C-ABI 回调实参(无 env 槽):%0" }
     if seq2(key, "E1001.chain") { return "比较运算符不可链:写 a < b && b < c" }
     if seq2(key, "W8020") { return "结果被丢弃(must-use):%0 返回 Option/Result" }

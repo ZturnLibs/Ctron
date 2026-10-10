@@ -118,6 +118,16 @@ static int is_send_special(const char* n) {
     return 0;
 }
 
+// G1-T3:E3021——任务段边界值语义,通道元素限标量族与 Str(String 同罩;
+// 镜像自举 sem_walk.ct chan_elem_ok)
+static int chan_elem_ok(const cty* t) {
+    if (!t || t->kind != TY_NAMED) return 0;
+    const char* n = head_name(t);
+    if (!n) return 0;
+    if (strcmp(n, "String") == 0) return 1;
+    return is_prim(n);
+}
+
 // ---------- Send(§7.4):返回 1 = Send,0 = 可证明非 Send;未知保守 Send ----------
 static int ty_send(const sym* s, const cty* t, int depth) {
     if (depth > 16) return 1;
@@ -1290,13 +1300,16 @@ static void check_expr(ctx* c, cexpr* e) {
                 ? e->callee->text : e->callee->obj->text;
             check_call_infer(c, e, cname);
         }
-        // Channel[T](cap):元素须 Send(E3020)
+        // Channel[T](cap):元素须 Send(E3020);且限标量族与 Str(E3021,G1-T3
+        // 任务段边界值语义——跨界深拷仅覆盖标量/Str,镜像自举 chan_elem_ok)
         if (e->callee && e->callee->kind == EX_TYPEARGS && e->callee->obj
             && e->callee->obj->kind == EX_IDENT
             && strcmp(e->callee->obj->text, "Channel") == 0
             && e->callee->ntargs > 0) {
             if (!ty_send(c->s, e->callee->targs[0], 0))
                 diag(c->k, "E3020", "channel 元素非 Send(Send):Channel 元素类型");
+            else if (!chan_elem_ok(e->callee->targs[0]))
+                diag(c->k, "E3021", "通道元素类型限标量族与 Str(任务段边界值语义,G1)");
         }
         // 能力调用:pure/comptime 函数内通过 &Trait 接收者调用
         if ((c->fn_pure || c->fn_comptime) && receiver_is_capability_trait(c, e->callee)) {

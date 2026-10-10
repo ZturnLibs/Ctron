@@ -13,6 +13,7 @@ for d in "$DIR"/*/; do
     name=$(basename "$d")
     [ "$name" = "bench" ] && continue
     [ "$name" = "seg" ] && continue   # G1 探针专道:tests/gc/seg/run.sh
+    [ "$name" = "p99" ] && continue   # G1 探针专道:tests/gc/p99/run.sh
     CTRON_STDPATH="$ROOT/std" "$EMIT" run "$d/src/main.ct" > "$T/$name.c" 2>"$T/$name.err" \
         || { echo "  FAIL $name (emit)"; fail=$((fail+1)); continue; }
     cc -O1 -w -o "$T/$name.bin" "$T/$name.c" || { echo "  FAIL $name (cc)"; fail=$((fail+1)); continue; }

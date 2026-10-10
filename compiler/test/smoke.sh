@@ -35,7 +35,7 @@ fi
 
 echo "== 2) check 模式(自编译面,decl 锁定) =="
 "$COMP/ctc.sh" check "$COMP/build/cc_run.ct" > "$T/chk.out" 2>&1
-grep -q 'check OK decls=525' "$T/chk.out" && ok "自检 cc_run 绿,decls=525(锁 524→525:接口 v2 +1[plugin.ct:ty_text——DeriveField.ty_full 型别全文序列化镜像槽,e51a0bb9 漏抬随批补];前注:锁 522→524:W2.5b StepA +2[gui_parse.ct:gui_props_pc/gui_props_evseg——d[5] ev 尾段分节剥除+提取,props 三解析器共联];前注:锁 521→522:W2.5a +1[gui_parse.ct:gui_props_dflts——签名 默认值平行提取,检查面缺省豁免+垫值];前注:锁 519→521:W1b +2[gui_parse.ct:gui_ds_reach_filter/gui_fn_exists——合成事件表可达闭包过滤+fn 存在性探针(E8121 零参歧义分辨)];前注:锁 516→519:typed-props +3[gui_parse.ct:gui_ty_raw_node/gui_ds_list_elem/gui_ds_sfields——struct 实参路径视通道,生成 reader/items 面地基];前注:锁 515→516:E2080 let 不可变门 +1[sem_type.ct:immut_gate_hit 标记扫描判定——§4.1 let 重赋值静态拦截,成对推入纪律保持 loc/envT 平行];前注:锁 514→515:T50 S4-① +1[parse_pkg.ct:pkg_meta_dep_field 清单 dep 块字段提取泛化,blob record 面];前注:锁 513→514:FB-8 +1[eval_call.ct:arr_copy_val 数组形参深拷];前注:锁 508→513:FB-2 +2[fs_mkdir extern+fn];前注:锁 506→511:T50 随批申报五 fn[parse_pkg.ct:pkg_meta_find/pkg_meta_strval/pkg_meta_self_digest/pkg_meta_dep_digest/pkg_art_verify——D8-2 L2 工件摘要校验面];前锁 506=T49 随批申报二十六 fn[sha256 移植十三+dep 面十三];原注:T49 前锁 480=471 后对端批次 +9 fn 漏抬,T31 泳道 2026-10-03 实测代抬;GUI 泳道锁 451 起删节注])" || bad "自检 cc_run: $(cat "$T/chk.out")"
+grep -q 'check OK decls=526' "$T/chk.out" && ok "自检 cc_run 绿,decls=526(锁 525→526:G1-T3 +1[sem_walk.ct:chan_elem_ok——通道元素限标量族与 Str 判别器,E3021 边界值语义面];前注:锁 524→525:接口 v2 +1[plugin.ct:ty_text——DeriveField.ty_full 型别全文序列化镜像槽,e51a0bb9 漏抬随批补];前注:锁 522→524:W2.5b StepA +2[gui_parse.ct:gui_props_pc/gui_props_evseg——d[5] ev 尾段分节剥除+提取,props 三解析器共联];前注:锁 521→522:W2.5a +1[gui_parse.ct:gui_props_dflts——签名 默认值平行提取,检查面缺省豁免+垫值];前注:锁 519→521:W1b +2[gui_parse.ct:gui_ds_reach_filter/gui_fn_exists——合成事件表可达闭包过滤+fn 存在性探针(E8121 零参歧义分辨)];前注:锁 516→519:typed-props +3[gui_parse.ct:gui_ty_raw_node/gui_ds_list_elem/gui_ds_sfields——struct 实参路径视通道,生成 reader/items 面地基];前注:锁 515→516:E2080 let 不可变门 +1[sem_type.ct:immut_gate_hit 标记扫描判定——§4.1 let 重赋值静态拦截,成对推入纪律保持 loc/envT 平行];前注:锁 514→515:T50 S4-① +1[parse_pkg.ct:pkg_meta_dep_field 清单 dep 块字段提取泛化,blob record 面];前注:锁 513→514:FB-8 +1[eval_call.ct:arr_copy_val 数组形参深拷];前注:锁 508→513:FB-2 +2[fs_mkdir extern+fn];前注:锁 506→511:T50 随批申报五 fn[parse_pkg.ct:pkg_meta_find/pkg_meta_strval/pkg_meta_self_digest/pkg_meta_dep_digest/pkg_art_verify——D8-2 L2 工件摘要校验面];前锁 506=T49 随批申报二十六 fn[sha256 移植十三+dep 面十三];原注:T49 前锁 480=471 后对端批次 +9 fn 漏抬,T31 泳道 2026-10-03 实测代抬;GUI 泳道锁 451 起删节注])" || bad "自检 cc_run: $(cat "$T/chk.out")"
 check_decl() { # <源.ct> <期望decl>
    "$COMP/ctc.sh" check "$1" > "$T/cd.out" 2>&1
     grep -q "check OK decls=$2" "$T/cd.out" && ok "$(basename "$1") decls=$2(与 C 解析器锁定一致)" || bad "$(basename "$1") 期望 decls=$2, got $(cat "$T/cd.out")"
@@ -45,13 +45,13 @@ check_decl "$SH/parsetree.ct"   60
 check_decl "$SH/ev2.ct"        107
 check_decl "$SH/cc.ct"         175
 
-echo "== 2d) Result/Option struct 载荷响亮闸(trans_stmt 三臂;槽 ct_i 64 位不载 struct 值) =="
+echo "== 2d) Result struct 载荷盒装(创建面 u: 堆盒+读侧解引用;五读侧配对) =="
 printf 'struct P {\n    let x: I32\n}\n\nfn mk() -> Result[P, Str] {\n    return Ok(P {\n        x: 7,\n    })\n}\n\nfn main() -> I32 {\n    let r = mk()\n    match r {\n        Ok(q) => {\n            println(q.x.to_string())\n        }\n        Err(_) => {\n            println("e")\n        }\n    }\n    return 0\n}\n' > "$T/svp.ct"
 "$COMP/ctc.sh" emit "$T/svp.ct" "$T/svp.c" > "$T/svp.out" 2>&1; rc=$?
-if [ $rc -eq 1 ] && grep -q 'struct 载荷未支持' "$T/svp.out"; then
-    ok "struct 载荷响亮闸(emit rc=1,点名型别与出路)"
+if [ $rc -eq 0 ] && cc -o "$T/svp" "$T/svp.c" 2>/dev/null && [ "$("$T/svp" 2>/dev/null)" = "7" ]; then
+    ok "struct 载荷盒装(emit→cc→运行 7,Ok 绑读成员)"
 else
-    bad "struct 载荷闸异常(rc=$rc): $(tail -2 "$T/svp.out")"
+    bad "struct 载荷盒装异常(rc=$rc): $(tail -2 "$T/svp.out")"
 fi
 
 echo "== 2e) 自举解析器韧性(P0-E:非法输入报 E1001 不崩,native 面) =="
