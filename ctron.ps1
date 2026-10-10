@@ -707,6 +707,12 @@ function Cmd-Task($rest) {
 function Cmd-Gate($rest) {
 	$gname = 'gate'
 	if ($rest.Count -ge 1) { $gname = $rest[0] }
+	# 旗标形实参不转发(sh ecec57ec 对齐):Cmd-Task 会把 "-f" 当悬空清单名静默列任务
+	# rc 0(fail-open)——gate 只收名实参,旗标形 = 用法错 rc 2
+	if ($gname.StartsWith('-')) {
+		[Console]::Error.WriteLine("ctron: gate: 未知旗标/名字不合法: $gname(用法: ctron gate [名])")
+		exit 2
+	}
 	if (Dv-IsDriverManifest 'ctron.ctcl') { Cmd-Task @($gname) }   # 只转发名实参(sh cmd_task "$GATE_NAME" 对齐;-f 歧义消除)
 	if ($gname -eq 'gate' -and (Test-Path 'Ctron.ctcl' -PathType Leaf)) {
 		Write-Output 'ctron: 内建默认门(build + fmt --check;项目自定义门:写 ctron.ctcl 的 task "gate")'
@@ -737,7 +743,11 @@ function Cmd-Clean($rest) {
 			Write-Output "ctron: 已清理 .cache/$d"
 		}
 	}
-	if ($all) {
+	# -All 的 build/pkgs 是项目域(D5 项目模式限定词;sh ecec57ec 对齐):仅项目目录
+	# (包清单在场)才动;非项目目录静默跳过(缓存三域照清),破坏性半径不越 cwd。
+	# 清单探测同 Cmd-Gate 回落腿的既有拼写 Test-Path 'Ctron.ctcl'(NTFS 大小写不敏感,
+	# 与 sh 面 [ -f Ctron.ctcl ] 同效)
+	if ($all -and (Test-Path 'Ctron.ctcl' -PathType Leaf)) {
 		foreach ($d in @('build', 'pkgs')) {
 			if (Test-Path $d -PathType Container) {
 				Remove-Item $d -Recurse -Force
