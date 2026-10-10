@@ -1509,6 +1509,13 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     }
                 }
             }
+            if m == "expect" {
+                // .expect(msg) 型别 = 接收者元素码(盒装读侧配对;u: struct 载荷贯通)
+                var xpc = ct_opt_elem_expr(file, cal[1], env)
+                if xpc.len > 0 {
+                    return xpc
+                }
+            }
             if m == "splat" {
                 // Simd[F32,N].splat(v)(P1-C2):接收者为 TypeArgs-Simd → 同码传播
                 var crt2 = ct_typeof(cal[1], env, file)

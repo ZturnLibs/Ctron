@@ -929,6 +929,12 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 if dt == "f" {
                     return "(((" + obj + ").variant == 0) ? ((union \{ double _d; ct_i _i; })\{ ._i = (ct_i)(" + obj + ").v })._d : (" + dflt + "))"
                 }
+                // u: struct 载荷解引用三目(盒装写侧配对)
+                var pec9 = ct_opt_elem_expr(file, cal[1], env)
+                if pec9.len > 2 && byte_slice(pec9, 0, 2) == "u:" {
+                    var dct9 = ct_ctype(pec9)
+                    return "((" + obj + ").variant == 0 ? (*(" + dct9 + "*)(long)(" + obj + ").v) : (" + dflt + "))"
+                }
                 return "(" + dct + ")((" + obj + ").variant == 0 ? (ct_i)(long)(" + obj + ").v : (ct_i)(long)(" + dflt + "))"
             }
             if objt.len > 1 && byte_at(objt, 0) == 113 {
@@ -987,6 +993,10 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 var pec = ct_opt_elem_expr(file, cal[1], env)
                 if pec == "f" {
                     return "(\{ ct_res _r = " + obj + "; if (_r.variant) \{ ctron_panic(" + emsg + "); } ((union \{ double _d; ct_i _i; })\{ ._i = (ct_i)(_r.v) })._d; })"
+                }
+                // u: struct 载荷解引用(与 ct_res_wrap u: 盒装写侧配对)
+                if pec.len > 2 && byte_slice(pec, 0, 2) == "u:" {
+                    return "(\{ ct_res _r = " + obj + "; if (_r.variant) \{ ctron_panic(" + emsg + "); } (*(" + ct_ctype(pec) + "*)(long)_r.v); })"
                 }
                 return "(\{ ct_res _r = " + obj + "; if (_r.variant) \{ ctron_panic(" + emsg + "); } _r.v; })"
             }
@@ -1707,6 +1717,10 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         var qv = "t_q" + nline(e)
         if ec == "f" {
             return "(\{ ct_res " + qv + " = " + ct_expr(e[1], env, file) + "; if (" + qv + ".variant != 0) \{ return " + qv + "; } ((union \{ double _d; ct_i _i; })\{ ._i = (ct_i)(" + qv + ".v) })._d; })"
+        }
+        // u: struct 载荷解引用(盒装写侧配对)
+        if ec.len > 2 && byte_slice(ec, 0, 2) == "u:" {
+            return "(\{ ct_res " + qv + " = " + ct_expr(e[1], env, file) + "; if (" + qv + ".variant != 0) \{ return " + qv + "; } (*(" + ct_ctype(ec) + "*)(long)" + qv + ".v); })"
         }
         return "(\{ ct_res " + qv + " = " + ct_expr(e[1], env, file) + "; if (" + qv + ".variant != 0) \{ return " + qv + "; } (" + ct_ctype(ec) + ")(" + qv + ".v); })"
     }

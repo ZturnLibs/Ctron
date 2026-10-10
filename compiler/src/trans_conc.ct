@@ -1015,7 +1015,8 @@ fn ct_emit_clov(site: List[Str], clo: List[Str], env: List[Str], file: List[Str]
 // F64 载荷位型双关(union 复合字面量)——旧 (ct_i) 直转截断小数
 //(param_f64.or(0.0)==2.5 探针;interp v_value D 位原生双精度的发射等价)
 fn ct_res_wrap(code: Str, x: Str) -> Str {
-    if code.len > 2 && byte_slice(code, 0, 2) == "E:" {
+    // E: 枚举与 u: struct 载荷同款堆盒(amalloc 竞技场托管,指针入槽;读侧解引用配对)
+    if code.len > 2 && or2(byte_slice(code, 0, 2) == "E:", byte_slice(code, 0, 2) == "u:") {
         var ct = ct_ctype(code)
         return "(\{ " + ct + "* _b = (" + ct + "*)ctron_amalloc(sizeof(" + ct + ")); *_b = " + x + "; (ct_i)(long)_b; })"
     }
