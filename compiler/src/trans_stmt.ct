@@ -847,6 +847,17 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                     }
                 }
                 eln(vt + " t_" + pat[1] + " = " + ct_expr(st[4], env, file) + ";", env)
+                // R 码绑定挂 #elem 侧条目(P0-G;泛型尾位——后位形态块对本形态不可达,
+                // Result/Option 载荷查询(.or/.expect/元素码)经此贯通)
+                if st[4][0] == "Call" && st[4][1][0] == "Ident" {
+                    var gd8 = ct_fn_decl(file, st[4][1][1])
+                    if gd8.len > 0 {
+                        var elc8 = ct_opt_elem_of(file, gd8[4])
+                        if elc8 != "i" {
+                            return env_bind(env_bind(env, "#elem:" + pat[1], elc8), pat[1], ty)
+                        }
+                    }
+                }
                 return env_bind(env, pat[1], ty)
             }
             if ty.len > 2 && byte_at(ty, 0) == 119 {
@@ -861,11 +872,16 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 eln(vt + " t_" + pat[1] + " = (" + vt + ")(" + rhs + ");", env)
                 return env_bind(env, pat[1], ty)
             }
-            if ty == "R" && st[4][0] == "Call" && st[4][1][0] == "Ident" {
-                // R 码绑定挂 #elem 侧条目(P0-G):let x = parse(…) 的载荷型别可查
+            if st[4][0] == "Call" && st[4][1][0] == "Ident" {
+                // R 码绑定挂 #elem 侧条目(P0-G):let x = parse(…) 的载荷型别可查。
+                // 闸改被调声明直驱(旧 ty=="R" 依赖 ct_typeof 解用户 fn 调用返回,
+                // 不达 → #elem 缺 → .or(字面默认) 按 i32 截断,9007199254740993→1)
                 var gd7 = ct_fn_decl(file, st[4][1][1])
                 if gd7.len > 0 {
-                    env = env_bind(env, "#elem:" + pat[1], ct_opt_elem_of(file, gd7[4]))
+                    var elc7 = ct_opt_elem_of(file, gd7[4])
+                    if elc7 != "i" {
+                        env = env_bind(env, "#elem:" + pat[1], elc7)
+                    }
                 }
             }
             // P0-2/seam②:fn 值绑定(F/G 码)且初值为直调声明 fn 时挂 #fret 侧条目——

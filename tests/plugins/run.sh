@@ -78,14 +78,18 @@ else
     bad "derive_unsupported 陷阱" "$T/uns.out"
 fi
 
-# 8) 嵌套 round-trip(W2;interp 专臂——emit 臂余 .or(字面默认) i32 截断账:
-#    I64 载荷 rr.or(0) 的 0 字面=i32 → 9007199254740993→1(sv_g 复现),变量默认
-#    双臂全对;#elem 登记 Let 臂拓扑+ct_typeof or 元素码优先两已在树,销账即升双臂)
+# 8) 嵌套 round-trip(W2;or 元素码账销后升双臂,2026-10-10)
 "$CC" run "$ROOT/tests/plugins/json_demo/src/nested.ct" > "$T/nested.out" 2>&1
 if [ $? -eq 0 ] && grep -q 'rt2-ok' "$T/nested.out"; then
-    ok "json_demo_nested interp 专臂(嵌套 round-trip)"
+    ok "json_demo_nested interp(嵌套 round-trip)"
 else
-    bad "json_demo_nested interp 专臂" "$T/nested.out"
+    bad "json_demo_nested interp" "$T/nested.out"
+fi
+"$EMIT" run "$ROOT/tests/plugins/json_demo/src/nested.ct" > "$T/nested.c" 2>"$T/nested.err"
+if [ $? -eq 0 ] && cc -o "$T/nestedbin" "$T/nested.c" 2>/dev/null && "$T/nestedbin" > "$T/nested_native.out" 2>&1 && grep -q 'rt2-ok' "$T/nested_native.out"; then
+    ok "json_demo_nested emit(嵌套 round-trip 双臂同判)"
+else
+    bad "json_demo_nested emit" "$T/nested.err"
 fi
 
 echo "== 插件沙箱阶梯:$pass 过 / $fail 败 =="
