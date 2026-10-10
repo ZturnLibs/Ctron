@@ -33,6 +33,121 @@ pub fn exists(path: Str) -> Bool {
     return fs_exists(path)
 }
 
+// ---- walk(递归遍历;W4 驱动器测试发现/缓存枚举底座)----
+// 口径:DFS 前序;每层条目字节序插入排序(pkg_dep 名称平表惯例)=全序确定;
+// 目录含自身入列;root 缺失/不可读 = 空表;空目录与文件 = 叶;深度上限 64
+// (无 stat 内建,符号链接环以深度守卫,v0)。read_dir 双口径沿 pkg_dep.ct
+// 的 match 形(自宿两臂实证编译面);空目录 read_dir 返非空换行尾,以名解析。
+fn walk_lt(a: Str, b: Str) -> Bool {
+    var i: I32 = 0
+    while i < a.len && i < b.len {
+        if byte_at(a, i) != byte_at(b, i) {
+            return byte_at(a, i) < byte_at(b, i)
+        }
+        i += 1
+    }
+    return a.len < b.len
+}
+
+fn walk_sort(names: List[Str]) {
+    var a: I32 = 1
+    while a < names.len {
+        var v = names[a]
+        var b: I32 = a - 1
+        while b >= 0 {
+            if walk_lt(v, names[b]) {
+                names[b + 1] = names[b]
+                b -= 1
+            } else {
+                break
+            }
+        }
+        names[b + 1] = v
+        a += 1
+    }
+}
+
+// 条目名表(字节序);不可读 = 空表
+fn walk_entries(dir: Str) -> List[Str] {
+    var out = List[Str]()
+    match read_dir(dir) {
+        Some(ls) => {
+            var cur = ""
+            var i: I32 = 0
+            while i < ls.len {
+                var c = byte_at(ls, i)
+                if c == 10 {
+                    if cur.len > 0 {
+                        out.push(cur)
+                    }
+                    cur = ""
+                } else {
+                    cur = cur + byte_slice(ls, i, i + 1)
+                }
+                i += 1
+            }
+            if cur.len > 0 {
+                out.push(cur)
+            }
+        }
+        None => {}
+    }
+    walk_sort(out)
+    return out
+}
+
+fn walk_into(dir: Str, out: List[Str], depth: I32) {
+    if depth >= 64 {
+        return
+    }
+    var names = walk_entries(dir)
+    var i: I32 = 0
+    while i < names.len {
+        var full = dir + "/" + names[i]
+        out.push(full)
+        var sub = walk_entries(full)
+        if sub.len > 0 {
+            walk_into(full, out, depth + 1)
+        }
+        i += 1
+    }
+}
+
+// 递归遍历:返回 root 前缀路径表(确定性:每层字节序+DFS 前序);
+// root 存在即含自身(文件根 = 单元素),缺失 = 空表;空目录根 = 单元素
+pub fn walk(root: Str) -> List[Str] {
+    var out = List[Str]()
+    if fs_exists(root) {
+        out.push(root)
+        walk_into(root, out, 0)
+    }
+    return out
+}
+
+test "walk deterministic depth-first byte order" {
+    var root = "/tmp/ctron_std_fs_walk_{now_ms()}"
+    assert(fs_mkdir(root))
+    assert(fs_mkdir(root + "/x"))
+    assert(fs_mkdir(root + "/a"))
+    assert(fs_mkdir(root + "/a/b"))
+    assert(fs_write(root + "/f1", "1"))
+    assert(fs_write(root + "/a/f2", "2"))
+    assert(fs_write(root + "/a/b/f3", "3"))
+    var got = walk(root)
+    assert(got.len == 7)
+    assert(got[0] == root)
+    assert(got[1] == root + "/a")
+    assert(got[2] == root + "/a/b")
+    assert(got[3] == root + "/a/b/f3")
+    assert(got[4] == root + "/a/f2")
+    assert(got[5] == root + "/f1")
+    assert(got[6] == root + "/x")
+    assert(walk(root + "/missing").len == 0)
+    assert(fs_delete(root + "/f1"))
+    assert(fs_delete(root + "/a/f2"))
+    assert(fs_delete(root + "/a/b/f3"))
+}
+
 test "read_or hits and defaults" {
     var p = "/tmp/ctron_std_fs_test.txt"
     if fs_exists(p) {
@@ -45,3 +160,4 @@ test "read_or hits and defaults" {
     assert(fs_delete(p))
     assert(!exists(p))
 }
+
