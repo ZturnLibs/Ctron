@@ -1,0 +1,37 @@
+// G1 探针一:任务段回收——重复 spawn+join 大 churn,段整链释放 → max RSS 有界
+// (段若泄漏,150 轮 × 每轮两任务 ≈ 数 GB 必越 1GB 界;释放则稳态远低)
+// 判词行 "seg-probe ok acc=..." 三档(gc=on/off/precise-only)恒在
+fn churn(n: I64) -> I64 {
+    var acc: I64 = 0
+    var i: I64 = 0
+    while i < n {
+        var s = "0123456789abcdef"
+        var k: I64 = 0
+        while k < 100 {
+            s = s + "0123456789abcdef"
+            k += 1
+        }
+        acc += s.len.as[I64]()
+        i += 1
+    }
+    return acc
+}
+
+fn main() -> I32 {
+    let (tx, rx) = Channel[I64](2)
+    var round: I32 = 0
+    var acc: I64 = 0
+    while round < 150 {
+        scope { |s|
+            let t0 = s.spawn(|| { tx.send(churn(300)).expect("send") })
+            let t1 = s.spawn(|| { tx.send(churn(300)).expect("send") })
+            acc += rx.recv().expect("recv")
+            acc += rx.recv().expect("recv")
+            t0.join()
+            t1.join()
+        }
+        round += 1
+    }
+    println("seg-probe ok acc=\{acc}")
+    return 0
+}
