@@ -69,7 +69,7 @@ fn main() -> I32 {
                 return 5
             }
 
-            var buf: I64[4096] = [0, 0, 0, 0]
+            var buf: U8[4096] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             let n = tls_read(net2, conn, buf, 4096, 5000)
             if n != 9 {
                 return 6
@@ -112,7 +112,7 @@ fn main() -> I32 {
 
         let w = tls_write_str(net, cc, "tls-ping!")
         assert(w == 9)
-        var buf: I64[4096] = [0, 0, 0, 0]
+        var buf: U8[4096] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         let n = tls_read(net, cc, buf, 4096, 5000)
         if n < 0 {
             panic("client read: " + tls_last_error().message)
