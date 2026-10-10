@@ -1,7 +1,21 @@
 // ctron.ctcl —— Ctron 仓库驱动器面(W1:全量门收编自 ci.sh;设计 2026-10-10-build-driver-design §8)
 // 前置:宿主 seed 已构建(make -C compiler-c);gcc/python3 可用;fmt 对拍需 cargo(Rust 参考臂)。
+// W2 批2:ex-gui-calc / ex-todo-v10 试点收编自两例 run.sh(task.cwd 指例子目录;
+// headless 断言经 env(1) 直 exec 注入 CTRON_GUI_HEADLESS——argv 直 exec 无 shell 中间层,rc 直传)。
 ctron {
     config_version = 1
+}
+
+task "ex-gui-calc" {
+    steps = ["mkdir -p build", "sh ../../vendor/gui/build.sh", "sh ../../compiler/ctc.sh build src/main.ct -o build/gui_calc.bin", "echo gui_calc: 构建+链接 OK - ctc build 自动链接", "env CTRON_GUI_HEADLESS=1 build/gui_calc.bin"]
+    desc = "gui_calc 试点收编(原 run.sh 无条件核心:vendor 构建→ctc build 清单自动链接→headless 断言;产物 build/gui_calc.bin);真窗交互路径(--run)未收编,已随 run.sh 删除,手工命令见 git 史"
+    cwd = "examples/gui_calc"
+}
+
+task "ex-todo-v10" {
+    steps = ["mkdir -p build", "sh ../../vendor/gui/build.sh", "sh ../../compiler/ctc.sh emit src/main.ct build/todo_v10.c", "cc -O1 -w -I../../vendor/gui/clay -I../../vendor/gui/raylib -I../../vendor/gui/freetype/include -o build/todo_v10.bin build/todo_v10.c ../../pkgs/gui/c_src/ctron_gui.c ../../pkgs/gui/c_src/ft_shim.c ../../vendor/gui/build/libfreetype.a ../../vendor/gui/build/libraylib.a -framework Cocoa -framework OpenGL -framework IOKit -framework CoreFoundation -framework CoreVideo", "env CTRON_GUI_HEADLESS=1 build/todo_v10.bin", "echo todo_v10: §10.3 合成面 headless 全绿"]
+    desc = "todo_v10 试点收编(原 run.sh 无条件核心:vendor 构建→emit→cc 手工链接→headless 断言;cc 链接参数取 darwin 臂,linux 臂未收编归 W5 链接面归一);真窗交互路径(CTRON_GUI_RUN=1)未收编,已随 run.sh 删除,手工命令见 git 史"
+    cwd = "examples/todo_v10"
 }
 
 task "fast" {
@@ -13,3 +27,4 @@ task "gate" {
     steps = ["python3 tests/meta_check.py", "python3 tests/manifest/run.py", "python3 tests/manifest/diff.py", "python3 tools/ctcl_check.py --selftest", "sh compiler/build.sh", "sh compiler/native.sh", "sh compiler/test/smoke.sh --full", "python3 compiler/test/suite.py", "sh tests/net/rt_core_smoke/run.sh", "sh tests/net/rt_reactor_smoke/run.sh", "sh tests/dist/ctron_smoke.sh", "sh tests/plugins/run.sh", "sh tests/bare/gate.sh", "sh tests/wasm/gate.sh", "sh compiler/bench.sh", "sh compiler/test/bench_ffi.sh", "sh tests/gc/bench.sh", "sh tests/gc/determinism.sh", "sh tests/lang/bench/bench.sh", "sh tests/gui/gate.sh", "sh tests/fmt/parity.sh"]
     desc = "全量验证门禁(收编自 ci.sh 九步)"
 }
+
