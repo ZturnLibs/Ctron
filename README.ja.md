@@ -202,7 +202,7 @@ issue、サンプル、ドキュメント、コード、いずれも歓迎しま
 
 ```bash
 git clone https://github.com/ZturnLibs/Ctron && cd Ctron
-bash ci.sh    # ひとつのコマンドで:ツールチェーンをブートストラップし、9 段階の受け入れゲートをすべて実行
+bash ci.sh    # ひとつのコマンドで:ツールチェーンをブートストラップし、受け入れゲートをすべて実行(ctron gate の 21 ステップ;ctron.ctcl を参照)
 ```
 
 PR は `ci.sh` がグリーンの状態で取り込んでください。`ctron`(sh)と `ctron.ps1` / `ctron.cmd` の挙動は同一に保ってください。コミットメッセージは conventional commits(`feat:` / `fix:` / `docs:`)に従います。

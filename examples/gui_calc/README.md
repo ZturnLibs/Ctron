@@ -7,9 +7,11 @@
 ## 运行
 
 ```sh
-sh run.sh          # 构建 + headless 全自动断言(四则/链式/除零/溢出/小数/键盘)
-sh run.sh --run    # 真实窗口:鼠标点按键;键盘 0-9 . + - * / = Enter ESC %
+ctron task ex-gui-calc    # 仓库根执行:构建 + headless 全自动断言(四则/链式/除零/溢出/小数/键盘)
 ```
+
+真窗交互路径未收编进任务表(真实窗口:鼠标点按键;键盘 0-9 . + - * / = Enter
+ESC %),手工命令见 `ctron.ctcl` 中 `ex-gui-calc` 任务的 `desc`。
 
 ## 亮点
 

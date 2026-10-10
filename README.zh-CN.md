@@ -202,7 +202,7 @@ Issue、示例、文档、代码都欢迎——多数贡献不需要了解编译
 
 ```bash
 git clone https://github.com/ZturnLibs/Ctron && cd Ctron
-bash ci.sh    # 一条命令:引导自举工具链,跑满 9 级验收门禁
+bash ci.sh    # 一条命令:引导自举工具链,跑满全量验收门禁(经 ctron gate,21 步;见 ctron.ctcl)
 ```
 
 PR 以 `ci.sh` 全绿为准。`ctron`(sh)与 `ctron.ps1` / `ctron.cmd` 保持行为同文。提交信息遵循 conventional commits(`feat:` / `fix:` / `docs:`)。

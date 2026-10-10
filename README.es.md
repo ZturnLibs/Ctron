@@ -202,7 +202,7 @@ Se aceptan issues, ejemplos, documentación y código — la mayoría de las con
 
 ```bash
 git clone https://github.com/ZturnLibs/Ctron && cd Ctron
-bash ci.sh    # un solo comando: genera por bootstrap la cadena de herramientas y ejecuta la puerta de aceptación completa de 9 etapas
+bash ci.sh    # un solo comando: genera por bootstrap la cadena de herramientas y ejecuta la puerta de aceptación completa (21 etapas vía ctron gate; ver ctron.ctcl)
 ```
 
 Los PR deben aterrizar con `ci.sh` en verde. Mantener `ctron` (sh) y `ctron.ps1` / `ctron.cmd` con comportamiento idéntico. Los mensajes de commit siguen conventional commits (`feat:` / `fix:` / `docs:`).

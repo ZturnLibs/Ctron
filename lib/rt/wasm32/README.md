@@ -64,6 +64,6 @@ UTF-8 原样、宿主零分配(读 linear memory 视图)。`dom.title()` 读
 
 ## 验收门
 
-`tests/wasm/run.sh`(ci.sh [6/9] 前挂载;门序:注册表/hello/arith/strfmt 真跑
+`tests/wasm/run.sh`(`ctron.ctcl` gate 步挂载;门序:注册表/hello/arith/strfmt 真跑
 + ffi 负锚 + 体积报告)。node 三通道(PATH → 打包内置运行时 → docker node 镜像),
 全缺 = 环境登记 SKIP。

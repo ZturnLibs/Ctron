@@ -202,7 +202,7 @@ Issues, Beispiele, Dokumentation und Code sind gleichermaßen willkommen — die
 
 ```bash
 git clone https://github.com/ZturnLibs/Ctron && cd Ctron
-bash ci.sh    # ein Befehl: bootstrapt die Toolchain und durchläuft das vollständige 9-stufige Abnahme-Gate
+bash ci.sh    # ein Befehl: bootstrapt die Toolchain und durchläuft das vollständige Abnahme-Gate (21 Schritte via ctron gate; siehe ctron.ctcl)
 ```
 
 PRs sollten erst mit grünem `ci.sh` landen. `ctron` (sh) und `ctron.ps1` / `ctron.cmd` verhaltensidentisch halten. Commit-Messages folgen Conventional Commits (`feat:` / `fix:` / `docs:`).

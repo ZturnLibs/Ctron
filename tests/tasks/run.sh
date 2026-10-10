@@ -138,6 +138,23 @@ task "build" {
 EOF2
 OUT=$(cd "$SBOX" && CTRON_DRV_ROOT="$SBOX" $DRV task -f cwd_bad.ctcl build < /dev/null 2>&1)
 if [ $? -eq 2 ] && printf '%s' "$OUT" | grep -q "cwd 目录不存在"; then ok; else bad "task.cwd 缺目录: rc2+判词 期望,实得: $OUT"; fi
+# T19 生产门路径钉:cwd ctron.ctcl 定义 task "gate" 时,默认名走表不走内建回落
+# (覆写夹具清单为含 task "gate" 的表;gate 只收名实参无 -f,故须落在 ctron.ctcl 供嗅探分派)
+cat > "$SBOX/ctron.ctcl" <<'EOF2'
+ctron {
+    config_version = 1
+}
+
+task "gate" {
+    steps = ["sh data/ok.sh"]
+}
+EOF2
+OUT=$(cd "$SBOX" && CTRON_DRV_ROOT="$SBOX" $DRV gate < /dev/null 2>&1)
+if [ $? -eq 0 ] && printf '%s' "$OUT" | grep -q "ran ok" && ! printf '%s' "$OUT" | grep -q "内建默认门"; then ok; else bad "生产门路径: $OUT"; fi
+# T20 fmt 腿钉:脏文件使内建默认门 fmt --check 腿真咬人(rc1)
+(cd "$SBOX/proj" && printf 'fn  main( ) {\n    println("hi")\n}\n' > src/main.ct)   # 故意脏(双空格/括号内空格;fmt --check 实测必改)
+OUT=$(cd "$SBOX/proj" && CTRON_DRV_ROOT="$SBOX" $DRV gate < /dev/null 2>&1)
+if [ $? -eq 1 ] && printf '%s' "$OUT" | grep -q "待格式化"; then ok; else bad "fmt 腿: rc1+待格式化 期望,实得: $OUT"; fi
 
 echo "tests/tasks: $PASS 过 / $FAIL 败"
 [ "$FAIL" -eq 0 ]
