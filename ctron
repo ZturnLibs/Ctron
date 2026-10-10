@@ -29,6 +29,196 @@ sha256_file() {
     if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | cut -d' ' -f1; else sha256sum "$1" | cut -d' ' -f1; fi
 }
 
+CTRON_SELF=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/$(basename -- "$0")
+
+# ---- 驱动器面 ctron.ctcl 读取器(W1 过渡形态;fail-closed 一错即停;E 码族复用) ----
+DRV_READER_AWK=$(cat <<'AWK'
+function fail(msg) { printf "ctron: ctron.ctcl:%d: %s\n", NR, msg > "/dev/stderr"; bad = 1; exit 1 }
+function rtrim(s) { sub(/[ \t\r]+$/, "", s); return s }
+function ltrim(s) { sub(/^[ \t]+/, "", s); return s }
+function strip_comment(s,  i, c, inq, bs, out) {
+    inq = 0; bs = 0; out = ""
+    for (i = 1; i <= length(s); i++) {
+        c = substr(s, i, 1)
+        if (inq) {
+            out = out c
+            if (bs) bs = 0
+            else if (c == "\\") bs = 1
+            else if (c == "\"") inq = 0
+        } else {
+            if (c == "\"") { inq = 1; out = out c }
+            else if (c == "/" && substr(s, i, 2) == "//") return out
+            else out = out c
+        }
+    }
+    return out
+}
+function unquote(s,  body, i, c, out) {
+    UQ_OK = 1
+    if (length(s) < 2 || substr(s, 1, 1) != "\"" || substr(s, length(s), 1) != "\"") { UQ_OK = 0; return "" }
+    body = substr(s, 2, length(s) - 2)
+    out = ""
+    i = 1
+    while (i <= length(body)) {
+        c = substr(body, i, 1)
+        if (c == "\\") {
+            if (i == length(body)) { UQ_OK = 0; return "" }
+            c = substr(body, i + 1, 1)
+            if (c != "\"" && c != "\\") { UQ_OK = 0; return "" }
+            out = out c
+            i += 2
+        } else { out = out c; i += 1 }
+    }
+    return out
+}
+{
+    line = rtrim(ltrim(strip_comment($0)))
+    if (line == "") next
+    if (blk == "") {
+        if (line ~ /^\[/) fail("本语言不用 [section] 段头;请用块:ctron { ... } / task \"名\" { ... }")
+        head = line
+        if (substr(head, length(head), 1) != "{") fail("块头 { 必须行尾:ctron { ... } / task \"名\" { ... }")
+        head = rtrim(substr(head, 1, length(head) - 1))
+        if (match(head, /[ \t]/) == 0) { id = head; arg = "" }
+        else { id = substr(head, 1, RSTART - 1); arg = rtrim(substr(head, RSTART + 1)) }
+        if (id != "ctron" && id != "task") fail("E5044 未知块 " id ";合法块:ctron, task")
+        if (id == "ctron") {
+            if (arg != "") fail("E5041 ctron 是记录块,不带名字实参")
+            if (saw_ctron) fail("E5045 ctron 块最多一个")
+            saw_ctron = 1
+        } else {
+            if (arg == "") fail("E5041 task 是键控块:task \"名\" { ... }")
+            arg = unquote(arg)
+            if (!UQ_OK) fail("E5040 task 名实参非法")
+            if (arg !~ /^[a-z][a-z0-9_-]*$/) fail("E5046 task 名非法(形:[a-z][a-z0-9_-]*):" arg)
+            if (arg in seen_task) fail("E5045 重复的 task \"" arg "\"")
+            seen_task[arg] = 1
+            cur = arg; nsteps = 0; has_steps = 0; desc = ""
+        }
+        blk = id
+        next
+    }
+    if (line == "}") {
+        if (blk == "task") {
+            if (!has_steps) fail("E5051 task \"" cur "\" 缺必填键 steps")
+            if (nsteps == 0) fail("E5054 steps 不允许空列表(空 steps 的任务不合法)")
+            printf "TASK\t%s\t%s\n", cur, desc
+        }
+        blk = ""; cur = ""
+        next
+    }
+    if (index(line, "{") || index(line, "}")) fail("E5040 块内禁止嵌套块/单行块(深度恒 1)")
+    eq = index(line, "=")
+    if (eq == 0) fail("E5040 块内每行必须是 键 = 值")
+    key = rtrim(substr(line, 1, eq - 1))
+    val = ltrim(substr(line, eq + 1))
+    if (key !~ /^[a-z_][a-z0-9_]*$/) fail("E5040 块内每行必须是 键 = 值")
+    if (blk == "ctron") {
+        if (key != "config_version") fail("E5043 块 ctron 中未知键 " key ";合法键:config_version")
+        if (seen_cfg) fail("E5045 重复键 " key)
+        seen_cfg = 1
+        if (val !~ /^-?(0|[1-9][0-9]*)$/) fail("E5046 config_version 的类型应为 int")
+        if (val != "1") fail("E5050 config_version 必须为 1")
+        cfg_ok = 1
+        next
+    }
+    if (key != "steps" && key != "desc") fail("E5043 块 task 中未知键 " key ";合法键:steps, desc")
+    if ((cur SUBSEP key) in seen_key) fail("E5045 重复键 " key)
+    seen_key[cur SUBSEP key] = 1
+    if (key == "desc") {
+        if (substr(val, 1, 1) != "\"") fail("E5046 desc 的类型应为 str")
+        desc = unquote(val)
+        if (!UQ_OK) fail("E5048 desc 字符串非法(转义仅 \\\" 与 \\\\)")
+        next
+    }
+    if (substr(val, 1, 1) != "[") fail("E5046 steps 的类型应为 list")
+    if (substr(val, length(val), 1) != "]") fail("E5040 列表必须单行且以 ] 结尾")
+    inner = ltrim(rtrim(substr(val, 2, length(val) - 2)))
+    if (inner == "") fail("E5054 steps 不允许空列表(空 steps 的任务不合法)")
+    if (substr(inner, length(inner), 1) == ",") fail("E5048 列表不允许尾逗号(最后元素后直接 ])")
+    has_steps = 1
+    rest = inner
+    while (1) {
+        inq = 0; bs = 0; elem = ""
+        m = length(rest)
+        for (j = 1; j <= m; j++) {
+            c = substr(rest, j, 1)
+            if (inq) {
+                elem = elem c
+                if (bs) bs = 0
+                else if (c == "\\") bs = 1
+                else if (c == "\"") inq = 0
+            } else {
+                if (c == "\"") { inq = 1; elem = elem c }
+                else if (c == ",") break
+                else elem = elem c
+            }
+        }
+        e2 = rtrim(ltrim(elem))
+        if (e2 == "") { UQ_OK = 0 }
+        else { v = unquote(e2) }
+        if (!UQ_OK) fail("E5048 列表元素必须是双引号字符串(转义仅 \\\" 与 \\\\)")
+        nsteps++
+        printf "STEP\t%s\t%s\n", cur, v
+        if (j > m) break
+        rest = substr(rest, j + 1)
+    }
+    next
+}
+END {
+    if (bad) exit 1
+    if (blk != "") { printf "ctron: ctron.ctcl: 块未闭合(缺 })\n" > "/dev/stderr"; exit 1 }
+    if (!saw_ctron) { printf "ctron: ctron.ctcl: E5047 缺 ctron 块\n" > "/dev/stderr"; exit 1 }
+    if (!cfg_ok) { printf "ctron: ctron.ctcl: E5050 ctron 缺语言版本键 config_version(必须存在且 = 1)\n" > "/dev/stderr"; exit 1 }
+}
+AWK
+)
+
+DRV_SPLIT_AWK=$(cat <<'AWK'
+# 注:反引号经 sprintf("%c",96) 构造——heredoc 内的字面反引号会让 macOS /bin/sh
+# (bash)的 $() 解析器误扫嵌套反引号,语法报错;语义与字面量逐字节等价。
+function fail(msg) { printf "ctron: %s\n", msg > "/dev/stderr"; bad = 1; exit 1 }
+BEGIN { BT = sprintf("%c", 96) }
+{
+    s = $0
+    if (index(s, "|") || index(s, "&") || index(s, ";") || index(s, "$") ||
+        index(s, BT) || index(s, "<") || index(s, ">") || index(s, "(") ||
+        index(s, ")") || index(s, "*") || index(s, "?")) {
+        fail("E5040 步骤含 shell 元字符(| & ; $ " BT " < > ( ) * ?):" s ";两条出路:改写为多步骤 / 写脚本文件后以 sh 调用")
+    }
+    i = 1
+    n = length(s)
+    while (i <= n) {
+        c = substr(s, i, 1)
+        if (c == " " || c == "\t") { i++; continue }
+        arg = ""
+        if (c == "\"") {
+            i++
+            closed = 0
+            while (i <= n) {
+                c = substr(s, i, 1)
+                if (c == "\\") {
+                    if (i == n) fail("步骤串孤立的尾部反斜杠:" s)
+                    arg = arg substr(s, i + 1, 1)
+                    i += 2
+                } else if (c == "\"") { closed = 1; i++; break }
+                else { arg = arg c; i++ }
+            }
+            if (!closed) fail("步骤串引号未闭合:" s)
+        } else {
+            while (i <= n) {
+                c = substr(s, i, 1)
+                if (c == " " || c == "\t" || c == "\"") break
+                arg = arg c
+                i++
+            }
+        }
+        print arg
+    }
+}
+AWK
+)
+
 usage() {
 cat <<'USAGE'
 ctron —— Ctron 工具链驱动
@@ -66,6 +256,7 @@ ctron —— Ctron 工具链驱动
   ctron pkg log query <日志仓> [名]
                              日志查询:列名或列某名的 digest+公证要点
   ctron new <dir>              脚手架:hello + Ctron.ctcl
+  ctron task [-f <file>] [名]  列出/执行 ctron.ctcl 任务(驱动器面;步骤直 exec,拒 shell 元字符)
   ctron --version              版本
   ctron --help | help [cmd]    帮助(亦可 ctron <cmd> --help)
 环境变量:CC(默认 cc)、CTRON_STDPATH(覆盖标准库位置)
@@ -104,6 +295,7 @@ H
     lock) echo "ctron lock —— 依赖解析并生成/校验 Ctron.lock(T49 内容寻址;= ctron-dep run Ctron.ctcl)";;
     pkg) echo "ctron pkg verify <artifact-dir> [--deep] / pkg trace record|replay —— verify: 密封工件摘要自洽校验(D8-2 L1;SHA256SUMS 逐成员+self_digest 重算,fail-closed rc=1;--deep = ctron-verify 发射验证器 L3 载体);trace: 纯函数黄金轨迹录制/复放(S3-α,值=to_string 规范形);trace 复放腿接线与效果函数 FakeFs 归 S3-β";;
     new) echo "ctron new <dir> —— 生成 <dir>/Ctron.ctcl + src/main.ct(hello)";;
+    task) echo "ctron task [-f <file>] [名] —— 列出/执行 ctron.ctcl 任务(驱动器面;步骤直 exec,拒 shell 元字符);-f 指定清单(缺省 ./ctron.ctcl),步骤以清单所在目录为 cwd";;
     *) usage;;
 esac
 }
@@ -745,11 +937,92 @@ cmd_pkg_seal() {
     exit 0
 }
 
+# drv_env_setup():任务面环境注入(Task 3 的 gate 复用;cmd_task 经分派臂先调)。
+# CTRON_DRV_ROOT 沙盒覆盖缺省 DEVROOT;lib/std 在场才导 CTRON_STDPATH。
+drv_env_setup() {
+    DRV_ROOT=${CTRON_DRV_ROOT:-$DEVROOT}
+    if [ -d "$DRV_ROOT/lib/std" ]; then
+        CTRON_STDPATH="$DRV_ROOT/lib/std"
+        export CTRON_STDPATH
+    fi
+}
+
+# run_step <步骤串>:切分 argv(裸名 ctron → $CTRON_SELF)并在当前 shell 直 exec。
+# rc 由 waitpid 直取——无 shell 中间层,管道假 rc 在结构上不存在。
+run_step() {
+    STEP_FILE=$(mktemp "${TMPDIR:-/tmp}/ctron_step.XXXXXX")
+    if ! printf '%s\n' "$1" | awk "$DRV_SPLIT_AWK" > "$STEP_FILE"; then
+        rm -f "$STEP_FILE"
+        return 2
+    fi
+    set --
+    while IFS= read -r STEP_ARG; do
+        [ "$STEP_ARG" = "ctron" ] && STEP_ARG=$CTRON_SELF
+        set -- "$@" "$STEP_ARG"
+    done < "$STEP_FILE"
+    rm -f "$STEP_FILE"
+    "$@"
+}
+
+# drv_load <ctcl 文件>:读注册表 → 全局 TASKS_CFG(临时文件,三行式 TAB 制)。
+# 输出 NULL_MAN=1 表示文件不存在(fail-closed 判定交调用方)。
+drv_load() {
+    TASKS_CFG=$(mktemp "${TMPDIR:-/tmp}/ctron_drv.XXXXXX")
+    if ! awk "$DRV_READER_AWK" "$1" > "$TASKS_CFG"; then
+        rm -f "$TASKS_CFG"
+        return 2
+    fi
+    return 0
+}
+
+cmd_task() {
+    TASK_FILE=./ctron.ctcl
+    TASK_NAME=""
+    TASK_ARG_PREV=0
+    for TA in "$@"; do
+        if [ "$TASK_ARG_PREV" = 1 ]; then TASK_FILE=$TA; TASK_ARG_PREV=0; continue; fi
+        case $TA in
+            -f) TASK_ARG_PREV=1 ;;
+            -f=*) TASK_FILE=${TA#-f=} ;;
+            *) TASK_NAME=$TA ;;
+        esac
+    done
+    [ -f "$TASK_FILE" ] || die2 "task: 缺清单 $TASK_FILE(驱动器面;试: ctron task -f <文件> 或先 ctron new)"
+    # §5.4 cwd 契约:步骤一律以清单所在目录为工作目录(相对路径 = 清单相对)
+    TASK_FILE=$(CDPATH= cd -- "$(dirname -- "$TASK_FILE")" && pwd)/$(basename -- "$TASK_FILE")
+    cd -- "$(dirname -- "$TASK_FILE")" || exit 2
+    drv_load "$TASK_FILE" || exit 2
+    if [ -z "$TASK_NAME" ]; then
+        awk -F '\t' '$1 == "TASK" { printf "%s\t%s\n", $2, $3 }' "$TASKS_CFG"
+        rm -f "$TASKS_CFG"
+        exit 0
+    fi
+    awk -F '\t' -v t="$TASK_NAME" '$1 == "TASK" && $2 == t { found = 1 } END { exit !found }' "$TASKS_CFG" \
+        || { rm -f "$TASKS_CFG"; die2 "task: 未知任务 $TASK_NAME(试: ctron task 列表)"; }
+    STEP_LIST=$(mktemp "${TMPDIR:-/tmp}/ctron_steps.XXXXXX")
+    awk -F '\t' -v t="$TASK_NAME" '$1 == "STEP" && $2 == t { sub(/^[^\t]*\t[^\t]*\t/, ""); print }' "$TASKS_CFG" > "$STEP_LIST"
+    TOTAL=$(wc -l < "$STEP_LIST" | tr -d ' ')
+    N=0
+    while IFS= read -r STEP; do
+        N=$((N+1))
+        echo "ctron: task $TASK_NAME 步骤 $N/$TOTAL: $STEP"
+        run_step "$STEP"
+        RC=$?
+        if [ "$RC" -ne 0 ]; then
+            rm -f "$STEP_LIST" "$TASKS_CFG"
+            echo "ctron: task $TASK_NAME 在步骤 $N 失败(rc=$RC)" >&2
+            exit "$RC"
+        fi
+    done < "$STEP_LIST"
+    rm -f "$STEP_LIST" "$TASKS_CFG"
+    echo "ctron: task $TASK_NAME 完成($N 步)"
+}
+
 [ $# -lt 1 ] && { usage; exit 2; }
 CMD=$1; shift
 # <cmd> --help / <cmd> -h:子命令详助入口(usage 宣传的第四帮助入口),先于各分派臂拦截
 case $CMD in
-    run|check|build|test|new|fmt|doc|lint|bench|add|publish|lock|pkg)
+    run|check|build|test|new|fmt|doc|lint|bench|add|publish|lock|pkg|task)
         case ${1-} in --help|-h) help_cmd "$CMD"; exit 0 ;; esac ;;
 esac
 case $CMD in
@@ -841,6 +1114,10 @@ case $CMD in
         printf 'pkg {\n    manifest_version = 1\n    name = "%s"\n    version = "0.1.0"\n}\n' "$(basename "$1")" > "$1/Ctron.ctcl"
         printf 'fn main() {\n    println("hello, ctron")\n}\n' > "$1/src/main.ct"
         echo "ctron: 已生成 $1/(ctron run $1/src/main.ct 试跑)"
+        ;;
+    task)
+        drv_env_setup
+        cmd_task "$@"
         ;;
     lint)
         [ $# -ge 1 ] || die2 "lint 需要输入文件或 pkg 目录"

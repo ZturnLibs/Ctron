@@ -1,0 +1,7 @@
+ctron {
+    config_version = 1
+}
+
+task "a" {
+    steps = []
+}

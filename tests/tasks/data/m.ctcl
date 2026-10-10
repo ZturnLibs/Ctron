@@ -1,0 +1,13 @@
+ctron {
+    config_version = 1
+}
+
+task "hello" {
+    desc = "跑一个必然成功的脚本"
+    steps = ["sh data/ok.sh"]
+}
+
+task "quotes" {
+    desc = "切分与转义"
+    steps = ["sh data/args.sh \"say \\\"hi\\\"\""]
+}
