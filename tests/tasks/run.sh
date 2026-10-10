@@ -93,6 +93,23 @@ if [ $? -eq 0 ] && [ ! -d "$SBOX/.cache/emit" ] && [ ! -d "$SBOX/.cache/bare" ] 
 # T14 clean 未知旗标
 OUT=$(cd "$SBOX" && CTRON_DRV_ROOT="$SBOX" $DRV clean --nope 2>&1)
 if [ $? -eq 2 ]; then ok; else bad "clean 旗标: rc 2 期望"; fi
+# T15 stdin 洞钉:步骤循环走专用 fd3,子步骤 stdin 不指 STEP_LIST——中间的 cat 步骤
+# 读不到步骤行,三步全跑(有洞时 cat 吃掉剩余清单行,循环静默提前收敛,非 3 步)
+cat > "$SBOX/stdin.ctcl" <<'EOF2'
+ctron {
+    config_version = 1
+}
+
+task "multistep" {
+    steps = ["sh data/ok.sh", "cat", "sh data/ok.sh"]
+}
+EOF2
+OUT=$(cd "$SBOX" && CTRON_DRV_ROOT="$SBOX" $DRV task -f stdin.ctcl multistep < /dev/null 2>&1)
+if [ $? -eq 0 ] && printf '%s' "$OUT" | grep -q "完成(3 步)"; then ok; else bad "stdin 洞: 完成(3 步) 期望,实得: $OUT"; fi
+# T16 clean --all 项目模式限定词钉:非项目目录(无 Ctron.ctcl)跳过 build/pkgs,缓存域照清
+mkdir -p "$SBOX/nonproj/build" "$SBOX/.cache/emit"
+OUT=$(cd "$SBOX/nonproj" && CTRON_DRV_ROOT="$SBOX" $DRV clean --all 2>&1)
+if [ $? -eq 0 ] && [ ! -d "$SBOX/.cache/emit" ] && [ -d "$SBOX/nonproj/build" ]; then ok; else bad "clean --all 项目守卫: rc 0+缓存清+build 留 期望,实得: $OUT"; fi
 
 echo "tests/tasks: $PASS 过 / $FAIL 败"
 [ "$FAIL" -eq 0 ]

@@ -953,8 +953,10 @@ drv_env_setup() {
     fi
 }
 
-# run_step <步骤串>:切分 argv(裸名 ctron → $CTRON_SELF)并在当前 shell 直 exec。
+# run_step <步骤串>:切分 argv(仅 argv[0] 的裸名 ctron → $CTRON_SELF;他位的字面
+# ctron 是用户数据,如 grep ctron file,不得改写)并在当前 shell 直 exec。
 # rc 由 waitpid 直取——无 shell 中间层,管道假 rc 在结构上不存在。
+# 切分文件走专用 fd3 读:fd0 不动,子步骤继承调用方原 stdin(不吃切分中间文件)。
 run_step() {
     STEP_FILE=$(mktemp "${TMPDIR:-/tmp}/ctron_step.XXXXXX")
     if ! printf '%s\n' "$1" | awk "$DRV_SPLIT_AWK" > "$STEP_FILE"; then
@@ -962,16 +964,19 @@ run_step() {
         return 2
     fi
     set --
-    while IFS= read -r STEP_ARG; do
-        [ "$STEP_ARG" = "ctron" ] && STEP_ARG=$CTRON_SELF
+    STEP_NARG=0
+    while IFS= read -r STEP_ARG <&3; do
+        STEP_NARG=$((STEP_NARG+1))
+        if [ "$STEP_NARG" -eq 1 ] && [ "$STEP_ARG" = "ctron" ]; then STEP_ARG=$CTRON_SELF; fi
         set -- "$@" "$STEP_ARG"
-    done < "$STEP_FILE"
+    done 3< "$STEP_FILE"
     rm -f "$STEP_FILE"
     "$@"
 }
 
-# drv_load <ctcl 文件>:读注册表 → 全局 TASKS_CFG(临时文件,三行式 TAB 制)。
-# 输出 NULL_MAN=1 表示文件不存在(fail-closed 判定交调用方)。
+# drv_load <ctcl 文件>:读注册表 → 全局 TASKS_CFG(临时文件;成功时含 TASK/STEP
+# 记录,TAB 制)。rc 2 = 清单解析失败(诊断已由读取器落 stderr,fail-closed 一错即
+# 停);清单缺席的判定在调用方([ -f ] 先行),本函数不产 NULL_MAN 之类的额外输出。
 drv_load() {
     TASKS_CFG=$(mktemp "${TMPDIR:-/tmp}/ctron_drv.XXXXXX")
     if ! awk "$DRV_READER_AWK" "$1" > "$TASKS_CFG"; then
@@ -1009,7 +1014,9 @@ cmd_task() {
     awk -F '\t' -v t="$TASK_NAME" '$1 == "STEP" && $2 == t { sub(/^[^\t]*\t[^\t]*\t/, ""); print }' "$TASKS_CFG" > "$STEP_LIST"
     TOTAL=$(wc -l < "$STEP_LIST" | tr -d ' ')
     N=0
-    while IFS= read -r STEP; do
+    # 清单走专用 fd3 读:子步骤继承脚本原 stdin(fd0 不指 STEP_LIST)——否则任何
+    # 读 stdin 的步骤(如 cat)会吃掉剩余步骤行,循环静默提前收敛(假绿类洞)
+    while IFS= read -r STEP <&3; do
         N=$((N+1))
         echo "ctron: task $TASK_NAME 步骤 $N/$TOTAL: $STEP"
         run_step "$STEP"
@@ -1019,7 +1026,7 @@ cmd_task() {
             echo "ctron: task $TASK_NAME 在步骤 $N 失败(rc=$RC)" >&2
             exit "$RC"
         fi
-    done < "$STEP_LIST"
+    done 3< "$STEP_LIST"
     rm -f "$STEP_LIST" "$TASKS_CFG"
     echo "ctron: task $TASK_NAME 完成($N 步)"
 }
@@ -1040,6 +1047,11 @@ drv_is_driver_manifest() {
 cmd_gate() {
     GATE_NAME=""
     [ $# -ge 1 ] && GATE_NAME=$1
+    # 旗标形实参不转发:cmd_task 会把 "-f" 当悬空清单名静默列任务 rc 0(fail-open)
+    # ——gate 只收名实参,旗标形 = 用法错 rc 2
+    case $GATE_NAME in
+        -*) die2 "gate: 未知旗标/名字不合法: $GATE_NAME(用法: ctron gate [名])" ;;
+    esac
     [ -n "$GATE_NAME" ] || GATE_NAME=gate
     if drv_is_driver_manifest ctron.ctcl; then
         cmd_task "$GATE_NAME"
@@ -1077,7 +1089,9 @@ cmd_clean() {
             echo "ctron: 已清理 .cache/$CD"
         fi
     done
-    if [ "$CLEAN_ALL" = 1 ]; then
+    # --all 的 build/pkgs 是项目域(D5 项目模式限定词):仅项目目录(清单在场)才
+    # 动;非项目目录静默跳过(缓存三域照清),破坏性半径不越 cwd
+    if [ "$CLEAN_ALL" = 1 ] && [ -f Ctron.ctcl ]; then
         for CD in build pkgs; do
             if [ -d "$CD" ]; then
                 rm -rf "$CD"
