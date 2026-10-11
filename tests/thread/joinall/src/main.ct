@@ -1,0 +1,23 @@
+// G3-W1:scope 退出 join-all——不显式 join 的任务必在块退出前完成
+// (spec §07「作用域退出必然 join 全部子任务」;detached 静默丢失自此不存在)
+fn work(w: Channel[I64], v: I64) -> I32 {
+    w.send(v).expect("send")
+    return 0
+}
+
+fn main() -> I32 {
+    let (tx, rx) = Channel[I64](8)
+    var got: I64 = 0
+    scope { |s|
+        let a = s.spawn(|| { work(tx, 10) })
+        let b = s.spawn(|| { work(tx, 20) })
+        var c: I32 = 0
+        while c < 2 {
+            got += rx.recv().expect("recv")
+            c += 1
+        }
+        // a/b 不显式 join——join-all 在块退出兜底
+    }
+    println("joinall-probe got={got}")
+    return 0
+}

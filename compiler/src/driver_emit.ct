@@ -170,12 +170,13 @@ println("static ctron_list* ctron_list_new(void) \{ ctron_list* l = (ctron_list*
             // T25 &Trait 胖指针(§3.5):{data, vtable} 值传递
             println("typedef struct \{ void* data; void* vtable; } ct_obj;")
             println("static void* deref_ptr(void* p) \{ return p; }")
-            println("typedef struct ct_scope \{ int cancelled; pthread_mutex_t mu; } ct_scope;")
+            println("typedef struct ct_scope \{ int cancelled; pthread_mutex_t mu; struct ct_task* head; struct ct_task* tail; } ct_scope;")
+            // G3-W1:任务链=scope 属主线程单写(spawn 于属主线程,join-all 走查免锁)
             println("static ct_scope* ct_scope_new(void) \{ ct_scope* s = (ct_scope*)calloc(1, sizeof(ct_scope)); pthread_mutex_init(&s->mu, 0); return s; }")
             println("static pthread_mutex_t ct_gm = PTHREAD_MUTEX_INITIALIZER;")
             println("static void ct_glock(void) \{ pthread_mutex_lock(&ct_gm); }")
             println("static void ct_gunlock(void) \{ pthread_mutex_unlock(&ct_gm); }")
-            println("typedef struct ct_task \{ pthread_t th; void* env; void* (*shim)(void*); ct_i result; int state; char pmsg[128]; ct_scope* scope; void* arn; jmp_buf jmp; } ct_task;")
+            println("typedef struct ct_task \{ pthread_t th; void* env; void* (*shim)(void*); ct_i result; int state; char pmsg[128]; ct_scope* scope; void* arn; int joined; struct ct_task* snext; jmp_buf jmp; } ct_task;")
             println("static __thread ct_task* ct_tls_task = 0;")
             println("__attribute__((noinline)) static ct_task** ct_tls_slot(void) \{ return &ct_tls_task; }")
             println("typedef struct ct_chan \{ pthread_mutex_t mu; pthread_cond_t cv_full, cv_empty; ct_i* buf; int head, tail, cnt, cap; int is_str; } ct_chan;")
@@ -313,10 +314,14 @@ println("static ctron_list* ctron_list_new(void) \{ ctron_list* l = (ctron_list*
             println("static const char* ctron_i64_to_string(int64_t v) \{ char* r = (char*)ct_gc_alloc(32); snprintf(r, 32, \"%lld\", (long long)v); return r; }")
             // Phase 4 并发运行时(函数部):任务 trampoline/spawn/join/Channel/parallel
             println("static void* ct_shim_tramp(void* p) \{ ct_task* t = (ct_task*)p; if (!ct_rt_active()) \{ ct_arn* ta = (ct_arn*)calloc(1, sizeof(ct_arn)); ta->cur = (ct_ablk*)ct_ablk_new((size_t)16384); ct_tls_arn = ta; t->arn = ta; } *ct_tls_slot() = t; if (setjmp(t->jmp) == 0) \{ t->shim(t->env); t->state = 1; } ct_fp = 0; if (ct_rt_active()) ctron_rt_notify_done((void*)t); return 0; }")
-            println("static ct_task* ct_spawn(void* (*shim)(void*), void* env, ct_scope* sc) \{ ct_task* t = (ct_task*)calloc(1, sizeof(ct_task)); t->shim = shim; t->env = env; t->scope = sc; if (ct_rt_active() || ct_rt_env_coro()) \{ ct_gc_conc = 1; } if (!ct_rt_active() && ct_rt_env_coro()) ctron_rt_init(0); if (ct_rt_active()) \{ ctron_rt_run((void (*)(void*))ct_shim_tramp, t, (void*)t); return t; } pthread_create(&t->th, 0, ct_shim_tramp, t); return t; }")
+            println("static ct_task* ct_spawn(void* (*shim)(void*), void* env, ct_scope* sc) \{ ct_task* t = (ct_task*)calloc(1, sizeof(ct_task)); t->shim = shim; t->env = env; t->scope = sc; if (sc) \{ if (sc->tail) \{ sc->tail->snext = t; } else \{ sc->head = t; } sc->tail = t; } if (ct_rt_active() || ct_rt_env_coro()) \{ ct_gc_conc = 1; } if (!ct_rt_active() && ct_rt_env_coro()) ctron_rt_init(0); if (ct_rt_active()) \{ ctron_rt_run((void (*)(void*))ct_shim_tramp, t, (void*)t); return t; } pthread_create(&t->th, 0, ct_shim_tramp, t); return t; }")
             println("static void ct_task_seg_free(ct_task* t) \{ if (t && t->arn) \{ ct_arn* a = (ct_arn*)t->arn; ct_ablk* b = a->cur; while (b) \{ ct_ablk* nx = b->nx; free(b); b = nx; } free(a); t->arn = 0; } }")
-            println("static ct_i ct_join(ct_task* t) \{ void* r; if (ct_rt_active()) \{ ctron_rt_join_key((void*)t); } else \{ pthread_join(t->th, &r); } if (t->state == 2) \{ ct_task_seg_free(t); ctron_panic(t->pmsg); } ct_i v = t->result; ct_task_seg_free(t); return v; }")
-            println("static ct_res ct_join_or(ct_task* t) \{ void* r; if (ct_rt_active()) \{ ctron_rt_join_key((void*)t); } else \{ pthread_join(t->th, &r); } ct_task_seg_free(t); ct_res res; if (t->state == 2) \{ res.variant = 1; res.v = (ct_i)(long)\"task panic\"; } else \{ res.variant = 0; res.v = t->result; } return res; }")
+            println("static ct_i ct_join(ct_task* t) \{ void* r; if (ct_rt_active()) \{ ctron_rt_join_key((void*)t); } else \{ pthread_join(t->th, &r); } t->joined = 1; if (t->state == 2) \{ ct_task_seg_free(t); ctron_panic(t->pmsg); } ct_i v = t->result; ct_task_seg_free(t); return v; }")
+            println("static ct_res ct_join_or(ct_task* t) \{ void* r; if (ct_rt_active()) \{ ctron_rt_join_key((void*)t); } else \{ pthread_join(t->th, &r); } t->joined = 1; ct_task_seg_free(t); ct_res res; if (t->state == 2) \{ res.variant = 1; res.v = (ct_i)(long)\"task panic\"; } else \{ res.variant = 0; res.v = t->result; } return res; }")
+            // G3-W1:scope 退出 join-all——spec §07「作用域退出必然 join 全部子任务」
+            // 兑现;链表=属主线程单写(全 spawn 于属主程序序),走查免锁;已显式
+            // join 跳过(joined 置位),panic 重抛/段回收/joined 语义全复用 ct_join
+            println("static void ct_scope_join_all(ct_scope* sc) \{ if (!sc) \{ return; } ct_task* t = sc->head; while (t) \{ ct_task* nx = t->snext; if (!t->joined) \{ ct_join(t); } t = nx; } }")
             // G1-T3 通道边界值语义(Str 元素):send 拷入 malloc 中转块(线程安全,
             // 任务段指针不出境),recv 拷入接收方分配域(任务=本段,主线程=GC 堆/
             // 全局)后 free 中转块——中转块对 GC 不可见,「pop→使用」窗口结构性消失;
