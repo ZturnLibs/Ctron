@@ -790,7 +790,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                         return ""
                     }
                     var mclo = ct_emit_clo(e, ag[2], env, file, 1)
-                    return "ct_parallel_mapL((ctron_list*)(" + marr + "), " + mclo + ")"
+                    return "ct_pmap_par((ctron_list*)(" + marr + "), " + mclo + ")"
                 }
                 if m == "reduce" {
                     if ag.len < 4 {
@@ -800,7 +800,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     var rarr = ct_expr(ag[1], env, file)
                     var rinit = ct_expr(ag[2], env, file)
                     var rclo = ct_emit_clo(e, ag[3], env, file, 2)
-                    return "ct_parallel_reduceL((ctron_list*)(" + rarr + "), (ct_i)(" + rinit + "), " + rclo + ")"
+                    return "ct_pred_par((ctron_list*)(" + rarr + "), (ct_i)(" + rinit + "), " + rclo + ")"
                 }
                 panic("emit:parallel." + m)
                 return ""
