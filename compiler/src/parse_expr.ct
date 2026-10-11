@@ -118,6 +118,19 @@ fn p_add(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str
 
 fn p_mul(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str] {
     var l = p_una(toks, cur, lns, al)
+    // G1-T8(W1):`**` repeat 后缀(1009 裁决:拼写 [v] ** N;专节点 Repeat
+    // [elem, count] + nstamp,不复用 Binary——count 编译期/结果维度相乘,规则
+    // 特异防污染 Mul 通道)。非结合:`a ** b ** c` 直接 E1001(嵌套 repeat 无语义)。
+    if tok(toks, cur) == "**" {
+        adv(cur)
+        var rc = p_una(toks, cur, lns, al)
+        var nr = mk("Repeat")
+        nr.push(l)
+        nr.push(rc)
+        nstamp(nr, lns[cur.load()])
+        l = nr
+        // 双重 ** 非结合:第二 ** 记号悬垂,交既有「非期望记号」错误机器(E1001)
+    }
     var go = true
     while go {
         var t = tok(toks, cur)

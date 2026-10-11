@@ -68,6 +68,7 @@ fn nl_set_line_end(t: Str) -> Bool {
     ops.push(">=")
     ops.push("(")
     ops.push("[")
+    ops.push("**")
     ops.push("\{")
     ops.push("|")
     var i: I32 = 0
@@ -378,6 +379,10 @@ fn scan5(src: Str, toks: List[Str], lns: List[Str], cols: List[Str], pdiags: Lis
                 i += 2
             } else if b == 45 && i + 1 < n && byte_at(src, i + 1) == 61 {
                 rpush(toks, lns, cols, tstarts, tends, line, c0, i, i + 2, "-=")
+                i += 2
+            } else if b == 42 && i + 1 < n && byte_at(src, i + 1) == 42 {
+                // G1-T8(W1):** repeat 后缀(最大 munch,先于单 *;行尾延续集已录)
+                rpush(toks, lns, cols, tstarts, tends, line, c0, i, i + 2, "**")
                 i += 2
             } else if b == 42 && i + 1 < n && byte_at(src, i + 1) == 61 {
                 rpush(toks, lns, cols, tstarts, tends, line, c0, i, i + 2, "*=")
