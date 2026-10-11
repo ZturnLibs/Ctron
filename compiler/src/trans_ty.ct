@@ -344,7 +344,7 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
 //   m<内>=Mutex 单元(ct_mcell_<内>*)/ P<内>=内值指针伪码(with_mut 体内 Ident 解引用)
 // List 码族:T14-② + T54 —— "L"(char* 槽)/"LI"(int 槽)/"L6"(int64 槽)/"Lu:<名>"(struct 装箱槽)
 fn ct_is_lcode(code: Str) -> Bool {
-    if code.len > 3 {
+    if code.len > 2 {
         if byte_slice(code, 0, 3) == "Lu:" {
             return true
         }
@@ -1762,6 +1762,18 @@ fn ct_opt_elem_expr(file: List[Str], inner: List[Str], env: List[Str]) -> Str {
         var elv = "#elem:" + inner[1]
         if ct_env_has(env, elv) {
             return ct_env_ty(env, elv)
+        }
+        return "i"
+    }
+    if inner[0] == "Member" {
+        // struct 字段接收者:字段声明型为 Option/Result → 元素码(q3.lead 形;
+        // match 监视体/or 接收者的 struct 载荷查询贯通,容器锚 emit 升双臂件)
+        var mty = ct_typeof(inner[1], env, file)
+        if mty.len > 2 && byte_slice(mty, 0, 2) == "u:" {
+            var ftn = ct_field_ty_node(file, byte_slice(mty, 2, mty.len), inner[3])
+            if ftn.len > 0 && ftn[0] == "Named" {
+                return ct_opt_elem_of(file, ftn)
+            }
         }
         return "i"
     }
