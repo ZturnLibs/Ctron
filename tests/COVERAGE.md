@@ -1863,3 +1863,11 @@ repeat 字面量(F25 语言面)未执行——既有计划 2026-10-09-repeat-lit
 当轮口径=gc 族 9/0+seg 全腿+suite 115/116·116/116+p99 6/0+bench 1.000);coro 档退避维持(协程
 迁移 TLS 段不安全,登记);通道 List/struct 载荷跨界=E3021 限面(真深拷挂 G3 半端类型化);
 expect() recv 接收者 elem 码擦除不可恢复=G3 一并治。
+
+**T8 repeat 字面量批(2026-10-11,W1+W2+W3 落库 93896aed/9aea1313,W5-lite 随批)**:`[v] ** N`
+全链(词法 munch/Repeat 专节点/sem arr_fit_gate 三钉 E2010.arrfit·runcount·repneg/解释臂块物化
+[零逐元素 eval=comptime 预算前置]/发射臂 let 初值位零块 memset 特判+F25 正解/短字面量禁令
+[I32[8]=[1,2] 双口径 E2010,chk+run 同门]/ctecho 活标本改写 [0]**512 3/3)。**W4 挂账**:const/
+static 位聚合发射双红(comptime fn 数组返回/const 字面量管线 E1001/伪 .c 治理)= F25 的 const
+位半边,既有计划独立波次;count 的 const 名支持随 W4。门:suite neg 39/39·119/120+120/120
+(07a 预存)+ctecho 3/3;pos 夹具 4+neg 3 双宿。
