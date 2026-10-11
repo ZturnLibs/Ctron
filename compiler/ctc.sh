@@ -407,13 +407,19 @@ case $mode in
         sed "s|ANCHORINPUT|$IN|" "$DIR/build/cc_emit.ct" | sed "s|ANCHORLANG|$DIAGLANG|" > "$TMP"
         # S4-⑤:emit 管线注入 std 根(dev 布局 seed 宿主三探皆空,std use 曾静默
         # fail-open 产废品 C;装机态/显式指路不受影响 ${:-} 保用户覆写)
-        CTRON_STDPATH="${CTRON_STDPATH:-$ROOT/lib/std}" "$HOST" run "$TMP" > "$OUTC"
+        # G1-T8(W4③):暂存发射——失败即失败,部分产物/错误文本不得落 $OUTC
+        # (旧直写 > $OUTC:seed 早夭时错误行进产物首行=伪 .c,cc 二次误导)
+        CTRON_STDPATH="${CTRON_STDPATH:-$ROOT/lib/std}" "$HOST" run "$TMP" > "$OUTC.wip"
         rc=$?
         if [ $rc -eq 0 ]; then
+            mv "$OUTC.wip" "$OUTC"
             mkdir -p "$CACHE_DIR"
             cp "$OUTC" "$CACHED" 2>/dev/null
             echo "ctc.sh: 已发射 $OUTC(编译: cc -O2 $OUTC -o bin;运行: ./bin run $IN)"
             emit_link_summary "$OUTC"
+        else
+            rm -f "$OUTC.wip"
+            echo "ctc.sh: 发射失败(无产物落盘): $IN" >&2
         fi
         ;;
     build)

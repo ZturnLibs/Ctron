@@ -833,6 +833,47 @@ println("static ct_i ct_parallel_reduceL(ctron_list* a, ct_i init, ct_fn2 f) \{ 
                     var cst2 = List[Str]()
                     cst2.push("0")
                     var cvr = ceval_expr(file, st[3], ccN, ccV, cst2)
+                    // G1-T8(W4①):ceval v0 数值域失手(u)→ CVM 回退——check 侧
+                    // sem_comptime 已以预算试求值放行,发射侧同机器补折叠(cc_emit
+                    // 含 CORE=eval 机器);数组注解位直落静态聚合声明
+                    if cvr[0] != "k" {
+                        if st[2].len > 1 && seq2(st[2][0], "ArrayT") {
+                            var evr = eval_expr(file, statics_env(file), "", st[3])
+                            if evr.kind == "k" && evr.v.tag == 8 {
+                                var acode = ct_ty_code(st[2], file)
+                                var aec = ct_ctype(a_elem(acode))
+                                var acc5 = ""
+                                var q5: I32 = 1
+                                var first5 = true
+                                while q5 < cx_of(evr.v).len {
+                                    if !first5 { acc5 = acc5 + ", " }
+                                    first5 = false
+                                    var ev5 = v_unbox(cx_of(evr.v)[q5])
+                                    var et5 = vtag_str(ev5)
+                                    if et5 == "I" {
+                                        acc5 = acc5 + dvi_str(ev5.iv.as[I32]())
+                                    } else if et5 == "6" {
+                                        acc5 = acc5 + v6t(ev5) + "LL"
+                                    } else if et5 == "B" {
+                                        if ev5.b { acc5 = acc5 + "1" } else { acc5 = acc5 + "0" }
+                                    } else if et5 == "S" {
+                                        acc5 = acc5 + ct_str_cquote(ev5.s)
+                                    } else if et5 == "D" {
+                                        acc5 = acc5 + ev5.s
+                                    } else {
+                                        acc5 = acc5 + "0"
+                                    }
+                                    q5 += 1
+                                }
+                                println("static " + aec + " t_" + st[1] + "[" + (cx_of(evr.v).len - 1).to_string() + "] = \{" + acc5 + "};")
+                                // 链式 const 引用(后续 const 呼名本件)不登记=ceval 域
+                                // 未知名,后续波次;v1 直落声明即达所辖
+                                println("//CV:" + st[1] + ":arr")
+                                stq += 1
+                                continue
+                            }
+                        }
+                    }
                     println("//CV:" + st[1] + ":" + cvr[0])
                     if cvr[0] == "k" {
                         var cvv = v_unbox(cvr[2])
