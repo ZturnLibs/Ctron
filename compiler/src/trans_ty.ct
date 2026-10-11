@@ -326,6 +326,7 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
         return "L"
     }
     if or2(nt[1] == "Sender", or2(nt[1] == "Receiver", nt[1] == "Channel")) { return "h" }
+    if nt[1] == "TaskPool" { return "k" } // G3-W4:池句柄(ct_tpool*)
     if nt[1] == "Atomic" { return "A" }
     // P0-A:Mutex[X] 注解 → m<X 码>(镜像 ct_typeof Call-TypeArgs 臂)。struct 字段
     // 注解位(App.todos: Mutex[List[Todo]])此前无臂落 "i"——槽型/布局/with 接收者
@@ -443,6 +444,7 @@ fn ct_ctype(code: Str) -> Str {
     if code == "g" { return "ct_scope*" }
     if code == "k" { return "ct_task*" }
     if code == "h" { return "ct_chan*" }
+    if code == "k" { return "ct_tpool*" } // G3-W4
     if code == "R" { return "ct_res" }
     if code.len > 1 && byte_at(code, 0) == 109 {
         var ir = byte_slice(code, 1, code.len)
@@ -1762,6 +1764,18 @@ fn ct_opt_elem_expr(file: List[Str], inner: List[Str], env: List[Str]) -> Str {
         var elv = "#elem:" + inner[1]
         if ct_env_has(env, elv) {
             return ct_env_ty(env, elv)
+        }
+        return "i"
+    }
+    if inner[0] == "Member" {
+        // struct 字段接收者:字段声明型为 Option/Result → 元素码(q3.lead 形;
+        // match 监视体/or 接收者的 struct 载荷查询贯通,容器锚 emit 升双臂件)
+        var mty = ct_typeof(inner[1], env, file)
+        if mty.len > 2 && byte_slice(mty, 0, 2) == "u:" {
+            var ftn = ct_field_ty_node(file, byte_slice(mty, 2, mty.len), inner[3])
+            if ftn.len > 0 && ftn[0] == "Named" {
+                return ct_opt_elem_of(file, ftn)
+            }
         }
         return "i"
     }
