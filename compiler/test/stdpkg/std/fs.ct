@@ -125,6 +125,13 @@ pub fn walk(root: Str) -> List[Str] {
     return out
 }
 
+// 条目名表(非递归顶层;字节序)= walk_entries 的 pub 化薄壳:与 walk 的递归面
+// 互补(walk = 全树前缀路径,list = 单层裸名);与 sh `find <dir> -maxdepth 1` 同义
+// (W4 驱动器 fmt/lint 目录展开底座:排序口径同 LC_ALL=C,同名表字节序全序确定)
+pub fn list(dir: Str) -> List[Str] {
+    return walk_entries(dir)
+}
+
 test "walk deterministic depth-first byte order" {
     var root = "/tmp/ctron_std_fs_walk_{now_ms()}"
     assert(fs_mkdir(root))
@@ -160,4 +167,22 @@ test "read_or hits and defaults" {
     assert(exists(p))
     assert(fs_delete(p))
     assert(!exists(p))
+}
+
+test "list top-level names byte order (non-recursive)" {
+    var root = "/tmp/ctron_std_fs_list_{now_ms()}"
+    assert(fs_mkdir(root))
+    assert(fs_mkdir(root + "/sub"))
+    assert(fs_write(root + "/b.txt", "x"))
+    assert(fs_write(root + "/a.ct", "1"))
+    assert(fs_write(root + "/sub/c.ct", "2"))
+    var got = list(root)
+    assert(got.len == 3)
+    assert(got[0] == "a.ct")
+    assert(got[1] == "b.txt")
+    assert(got[2] == "sub")
+    assert(list(root + "/missing").len == 0)
+    assert(fs_delete(root + "/a.ct"))
+    assert(fs_delete(root + "/b.txt"))
+    assert(fs_delete(root + "/sub/c.ct"))
 }

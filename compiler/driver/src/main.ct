@@ -1,4 +1,4 @@
-// main.ct —— ctron 原生用户驱动器(W4 波1:骨架批1 + 委派族批2)
+// main.ct —— ctron 原生用户驱动器(W4 波1:骨架批1 + 委派族批2 + fmt/lint 批3)
 // sh 参考 = 仓库根 ctron 脚本:usage :231-275 / help_cmd :281-313 / dispatch :1120-1548。
 // 帮助文本逐字复刻(逐行 println,ctgrep 范式;生成自 sh 原文,非手抄)——
 // 字节级对拍门 = tests/drv_parity/run.sh(stdout+stderr 合流 diff + rc 对比)。
@@ -6,7 +6,11 @@
 // 未知子命令 rc2;批2 委派族 run/check/doc/test(镜像 sh :1133-1150/:1162-1165):
 // 组 argv → W3 proc.run_argv_rc 直 exec 兄弟件 → rc 直通。cwd 空串 = 继承
 // (ctron_proc.c chdir 分支 `cwd[0] != 0 &&` 显式跳过——读码钉定,= sh exec 语义);
-// stdout/stderr/stdin/env 全继承 → 编译器诊断透传即逐字。fmt/lint 仍占位(批3)。
+// stdout/stderr/stdin/env 全继承 → 编译器诊断透传即逐字。批3 fmt/lint 真逻辑
+// (镜像 sh fmt 臂 :1166-1214 / cmd_lint :338-380):逐文件 proc 捕获形(run/run_argv,
+// stdout 捕获、stderr 直通 = sh `> tmp` 重定向同构)——捕获缓冲 [0]*8 定长 literal
+// 复制清零底座 + NUL 终界扫描 + UTF-8 解码→utf8_enc 再编码(有效 UTF-8 往返逐字节
+// 保真;先例 http/client.ct cx_slice_str 的 U8[]→Str 攒形)。staging 集空,已删。
 // 定位:ctron_exe_path() → bin = 其父,仓库根 = bin 父的父(compiler/bin → compiler → 根);
 // VERSION 在场 → "ctron <内容>"(镜像 sh $(cat) 尾换行剥离),缺席 → "ctron dev"。
 // 注:native.sh 壳层剥除发射模板的 C main --version 劫持臂(模板版串≠sh 语义),
@@ -15,8 +19,11 @@
 //     extern 底座(argv_off=1:args[0]=首用户参;eval_call.ct:33-36 前例,模板 T26 同源)。
 // 委派族进程面:use proc(W3)——run_argv_rc(rc 型,stdout/stderr 直通父进程)+ argv_to_blob
 //     (argv 列表 → NUL 块);垫片 ctron_proc.c 由 native.sh 驱动链行同链(纯 emit 单文件缺符号)。
+// fmt/lint 目录面:use std.fs.{list}(walk_entries pub 化薄壳,W4 批3 同批)——
+//     非递归顶层名表字节序 = sh `find -maxdepth 1 | LC_ALL=C sort` 同序。
 
-use proc.{run_argv_rc, argv_to_blob}
+use proc.{run, run_argv, run_argv_rc, argv_to_blob}
+use std.fs.{list}
 
 fn usage() {
     println("ctron —— Ctron 工具链驱动")
@@ -221,13 +228,8 @@ fn is_known16(c: Str) -> Bool {
     return false
 }
 
-fn is_w1_delegate(c: Str) -> Bool {
-    // 波1 已登记占位族(真逻辑批3 落地;补臂同步补语料,诚实账)
-    // ——批2 已落委派族 run/check/doc/test(见 main 分派臂),余 fmt/lint 待批3
-    if c == "fmt" { return true }
-    if c == "lint" { return true }
-    return false
-}
+// 波1 占位族 staging 集(fmt/lint)已随批3 全量落地删除(曾位:is_w1_delegate
+// + main 分派 rc2 臂;集空即撤,诚实账闭环)。
 
 extern "c" fn ctron_prog_args_n() -> I64
 extern "c" fn ctron_prog_args_at(i: I64) -> Str
@@ -351,6 +353,172 @@ fn delegate(argv: List[Str]) -> I32 {
     return run_argv_rc("", blob, n.as[I64](), "")
 }
 
+// ---- fmt/lint 捕获面(W4 波1 批3;sh `> 临时件` 重定向同构)----
+// 捕获缓冲容量 262144(256KB;sh 临时件无上限——超限截断=异,登记在案)
+
+// 捕获缓冲清零(decl 位 8×0 literal 复制分支已整容清零,迭代间重清防前文件残尾
+// 串进 NUL 终界扫描——sh `>` 截断重建的逐文件同构)
+fn capture_zero(var buf: U8[]) {
+    var i: I32 = 0
+    while i < buf.len {
+        buf[i] = 0
+        i += 1
+    }
+}
+
+// 捕获逻辑长(NUL 终界扫描;捕获文本无内嵌 NUL——劣例登记在案)。
+// 底座对齐:ctron_amalloc 不清零 → 靠 decl 复制清零 + 本扫描双保险。
+fn capture_len(var buf: U8[]) -> I32 {
+    var i: I32 = 0
+    while i < buf.len {
+        if buf[i].as[I64]() == 0 {
+            return i
+        }
+        i += 1
+    }
+    return buf.len
+}
+
+// 捕获字节 → Str:UTF-8 序列解码 → utf8_enc 再编码(有效 UTF-8 往返逐字节保真
+// = ctron-fmt/ctron-chk 文本输出全域;劣序列 → 单码点替形,病理面登记在案)。
+// 选择缘起:bytes_to_str 内建只收 read_file_bytes 堆对象(tag Y),U8[] 视图不收;
+// 先例 = http/client.ct cx_slice_str 的 U8[]→Str 逐字节攒形(彼 ASCII 白名单,
+// 此全 UTF-8 域)。
+fn capture_str(var buf: U8[]) -> Str {
+    var s = ""
+    var n = capture_len(buf)
+    var i: I32 = 0
+    while i < n {
+        var b0: I64 = buf[i].as[I64]()
+        var cp: I64 = b0
+        var adv: I32 = 1
+        if b0 >= 194 && b0 < 224 && i + 1 < n {
+            var b1: I64 = buf[i + 1].as[I64]()
+            if b1 >= 128 && b1 < 192 {
+                cp = (b0 - 192) * 64 + (b1 - 128)
+                adv = 2
+            }
+        } else if b0 >= 224 && b0 < 240 && i + 2 < n {
+            var b1: I64 = buf[i + 1].as[I64]()
+            var b2: I64 = buf[i + 2].as[I64]()
+            if b1 >= 128 && b1 < 192 && b2 >= 128 && b2 < 192 {
+                cp = (b0 - 224) * 4096 + (b1 - 128) * 64 + (b2 - 128)
+                adv = 3
+            }
+        } else if b0 >= 240 && b0 < 245 && i + 3 < n {
+            var b1: I64 = buf[i + 1].as[I64]()
+            var b2: I64 = buf[i + 2].as[I64]()
+            var b3: I64 = buf[i + 3].as[I64]()
+            if b1 >= 128 && b1 < 192 && b2 >= 128 && b2 < 192 && b3 >= 128 && b3 < 192 {
+                cp = (b0 - 240) * 262144 + (b1 - 128) * 4096 + (b2 - 128) * 64 + (b3 - 128)
+                adv = 4
+            }
+        }
+        s = s + utf8_enc(cp.as[I32]())
+        i += adv
+    }
+    return s
+}
+
+// 捕获 vs 磁盘逐字节比对(sh cmp -s 同判):文件缺 = 异(cmp 打不开即 rc2 非零);
+// 双域字节面(捕获缓冲 U8[] vs read_file_bytes;bytes_at 实证无符号,探针 228)。
+// NUL 终界扫描长 vs bytes_len 全等后再逐字节;容量截断 = 异(sh 无上限,登记在案)。
+fn capture_differs(var buf: U8[], f: Str) -> Bool {
+    if !fs_exists(f) {
+        return true
+    }
+    var fb = read_file_bytes(f)
+    var flen: I32 = bytes_len(fb).as[I32]()
+    var i: I32 = 0
+    while i < buf.len {
+        if buf[i].as[I64]() == 0 {
+            break
+        }
+        if i >= flen {
+            return true
+        }
+        if buf[i].as[I64]() != bytes_at(fb, i).as[I64]() {
+            return true
+        }
+        i += 1
+    }
+    if i < flen {
+        return true
+    }
+    return false
+}
+
+// ---- fmt/lint 目标展开(sh `find -maxdepth 1 -type f -name '*.ct' | LC_ALL=C sort` 同义)----
+
+fn is_dir_target(t: Str) -> Bool {
+    // sh -d 同判:read_dir 开得动 = 目录(空目录 Some("")/文件 None 两宿同形,
+    // pkg_dep match 形先例)
+    match read_dir(t) {
+        Some(_d) => {
+            return true
+        }
+        None => {}
+    }
+    return false
+}
+
+fn has_ct_suffix(nm: Str) -> Bool {
+    // sh find -name '*.ct' 同义(名尾 ".ct";`*` 匹配空 = 裸 ".ct" 亦合)
+    var nl = nm.len
+    if nl < 3 {
+        return false
+    }
+    return byte_at(nm, nl - 3) == 46 && byte_at(nm, nl - 2) == 99 && byte_at(nm, nl - 1) == 116
+}
+
+fn expand_dir_files(dir: Str) -> List[Str] {
+    // 目录 → 顶层 .ct 全路径表(list 名表字节序 = LC_ALL=C sort 同序:同名前缀,
+    // 全序确定)。已知偏差登记:sh -type f 排除 .ct 名目录(病理面;native 无
+    // stat 型判内建,不模拟),文件名含空格 sh 分词裂、native 保真(同上)。
+    var out = List[Str]()
+    var names = list(dir)
+    var i: I32 = 0
+    while i < names.len {
+        var nm = names[i]
+        if has_ct_suffix(nm) {
+            out.push(dir + "/" + nm)
+        }
+        i += 1
+    }
+    return out
+}
+
+// fmt/lint 共用:目录 → src 优先否则直下(sh `[ -d "$t/src" ] && DIR=$t/src`)
+fn target_files(t: Str) -> List[Str] {
+    if is_dir_target(t) {
+        var dir = t
+        if is_dir_target(t + "/src") {
+            dir = t + "/src"
+        }
+        return expand_dir_files(dir)
+    }
+    var out = List[Str]()
+    out.push(t)
+    return out
+}
+
+// stdout 单行直写(/bin/echo 子进程,fd1 继承直落):fmt --check/-w 的文件名行走
+// 此路——发射 println = printf(重定向文件态块缓冲),父进程尾部计数行走 eprint
+// (stderr 无缓冲)会反超缓冲中的名行(sh 合流捕获口径 = 名行在前);echo 子进程
+// 即时物理写,保序逐字(= sh echo "$f" 内建行的 exec 同构;delegate 家族先例
+// run_argv_rc 不捕全继承)。已知病理面:文件名恰为 "-n"/"-e" 形会被 echo 吞作
+// 旗标(sh 内建 echo 同病,对拍语料不含)。
+fn echo_line(s: Str) {
+    var argv = List[Str]()
+    argv.push("/bin/echo")
+    argv.push(s)
+    var blob: U8[4096] = [0, 0, 0, 0, 0, 0, 0, 0]
+    let n = argv_to_blob(argv, blob)
+    if n >= 0 {
+        run_argv_rc("", blob, n.as[I64](), "")
+    }
+}
+
 fn main() -> I32 {
     var n: I64 = ctron_prog_args_n()
     // 无参 = 整版 usage + rc 2(sh:[ $# -lt 1 ])
@@ -469,10 +637,211 @@ fn main() -> I32 {
         // ≡ run(sh :789-792 同为 exec ctron-cc run "$1";仅缺参报文异)
         return delegate(argv)
     }
-    // 波1 占位族:与未知名同款 rc2(sh 对已知名有真行为,对拍语料不含未实现臂)
-    if is_w1_delegate(cmd) {
-        eprint(unknown_line(cmd))
-        return 2
+    if cmd == "fmt" {
+        // W4 波1 批3:镜像 sh fmt 臂(:1166-1214)。旗标可在目标前——目标 = 首个
+        // 非旗标实参,-w|--write/--check 之外静默忽略(sh case 无 * 之分照抄);
+        // 缺目标 = die2 逐字(sh :1170/:1180 同文 rc2)。
+        if n < 2 {
+            eprint("ctron: fmt 需要输入文件或 pkg 目录\n")
+            return 2
+        }
+        var w: Bool = false
+        var chk: Bool = false
+        var target = ""
+        var ai: I64 = 1
+        while ai < n {
+            var a = ctron_prog_args_at(ai)
+            if a == "-w" {
+                w = true
+            } else if a == "--write" {
+                w = true
+            } else if a == "--check" {
+                chk = true
+            } else {
+                if target.len == 0 {
+                    target = a
+                }
+            }
+            ai += 1
+        }
+        if target.len == 0 {
+            eprint("ctron: fmt 需要输入文件或 pkg 目录\n")
+            return 2
+        }
+        // 目标集:目录 → 顶层 .ct(list 字节序 = LC_ALL=C sort 同序);单文件直通
+        // (sh 对缺席单文件不作守卫,ctron-fmt 空 out 即 cat 空形——照抄)。
+        // 目录无 .ct = 零迭代静默 rc0(sh fmt 无 lint 的 die2 臂,语义同构)。
+        var files = target_files(target)
+        var err: Bool = false
+        var unf: I32 = 0
+        var bin = bin_dir() + "/ctron-fmt"
+        var buf: U8[262144] = [0, 0, 0, 0, 0, 0, 0, 0]
+        var k: I32 = 0
+        while k < files.len {
+            var f = files[k]
+            capture_zero(buf)
+            // proc.run 定形 argv = [bin, "run", arg] —— arg = 文件路径裸串
+            // (sh `"$BIN/ctron-fmt" run "$f"` 同构;勿再拼 "run " 前缀)
+            let rc = run("", bin, f, buf)
+            if rc != 0 {
+                // sh:cat 临时件 >&2(捕获物全量转 stderr)+ err 置位续跑
+                eprint(capture_str(buf))
+                err = true
+                k += 1
+                continue
+            }
+            if chk {
+                // sh:cmp -s 异 → 打印文件名计数(名行 = echo 子进程直写,保序)
+                if capture_differs(buf, f) {
+                    echo_line(f)
+                    unf += 1
+                }
+            } else if w {
+                // sh:异则 cp 写回(产物 = 捕获字节,fs_write 经 Str 逐字节保真),
+                // echo 文件名无条件(未变亦打)
+                if capture_differs(buf, f) {
+                    fs_write(f, capture_str(buf))
+                }
+                echo_line(f)
+            } else {
+                // sh:cat 临时件(裸 print,不加行——捕获物自带换行)
+                print(capture_str(buf))
+            }
+            k += 1
+        }
+        if err {
+            return 1
+        }
+        if chk && unf > 0 {
+            eprint(unf.to_string() + " 个文件待格式化\n")
+            return 1
+        }
+        return 0
+    }
+    if cmd == "lint" {
+        // W4 波1 批3:镜像 sh cmd_lint(:338-380)。首参 = 目标(sh $1 恒目标,与
+        // fmt 的"首非旗标"异),余参只认 --trusted/--strict,未知即 die2 逐字;
+        // 目录展开同 fmt,目录无 .ct = die2(sh :352)。逐文件 run_argv 捕获
+        // (--trusted 须 4 段 argv,proc.run 定形不敷)→ 行首 E/W+4 数字字节扫计数
+        // (grep -c '^E[0-9]{4}' 同义)→ rc≥2 且无 E 行 = 硬错误(信号死 native 映
+        // -1,一并计硬 = sh 139≥2 同判;sh 侧崩时泄 shell 作业行含 PID,不可对拍,
+        // 登记在案不入谱)→ 汇总行逐字 → 退出三态(错红 / --strict 警告红)。
+        if n < 2 {
+            eprint("ctron: lint 需要输入文件或 pkg 目录\n")
+            return 2
+        }
+        var target = ctron_prog_args_at(1)
+        var trusted: Bool = false
+        var strict: Bool = false
+        var ai: I64 = 2
+        while ai < n {
+            var a = ctron_prog_args_at(ai)
+            if a == "--trusted" {
+                trusted = true
+            } else if a == "--strict" {
+                strict = true
+            } else {
+                eprint("ctron: lint 未知旗标: " + a + "(支持: --trusted --strict)\n")
+                return 2
+            }
+            ai += 1
+        }
+        var files = List[Str]()
+        if is_dir_target(target) {
+            files = target_files(target)
+            if files.len == 0 {
+                eprint("ctron: lint 目录无 .ct 文件: " + target + "\n")
+                return 2
+            }
+        } else {
+            if !fs_exists(target) {
+                eprint("ctron: lint 目标不存在: " + target + "\n")
+                return 2
+            }
+            files.push(target)
+        }
+        var bin = bin_dir() + "/ctron-chk"
+        var buf: U8[262144] = [0, 0, 0, 0, 0, 0, 0, 0]
+        var nf: I32 = 0
+        var totE: I32 = 0
+        var totW: I32 = 0
+        var hard: I32 = 0
+        var k: I32 = 0
+        while k < files.len {
+            var f = files[k]
+            nf += 1
+            // sh:`[ $LINT_NF -gt 1 ] && echo "-- $f"`(第 2 件起_stdout 分隔行)
+            if nf > 1 {
+                println("-- " + f)
+            }
+            capture_zero(buf)
+            var argv = List[Str]()
+            argv.push(bin)
+            argv.push("run")
+            argv.push(f)
+            if trusted {
+                argv.push("--trusted")
+            }
+            var blob: U8[4096] = [0, 0, 0, 0, 0, 0, 0, 0]
+            var rc: I32 = 127
+            let bn = argv_to_blob(argv, blob)
+            if bn >= 0 {
+                rc = run_argv("", blob, bn.as[I64](), buf)
+            }
+            // 行扫单趟:'^check OK' 行滤(grep -v 打印面);行首 E/W + ≥4 数字计数;
+            // 末行无换行 = grep 同款裸出(不补行);空行照印(非 check OK)。
+            var captured = capture_str(buf)
+            var fe: I32 = 0
+            var fw: I32 = 0
+            var start: I32 = 0
+            var p: I32 = 0
+            while p <= captured.len {
+                var isEnd: Bool = p == captured.len
+                if isEnd || byte_at(captured, p) == 10 {
+                    var elen = p - start
+                    var isOk: Bool = elen >= 8 && byte_at(captured, start) == 99 && byte_at(captured, start + 1) == 104 && byte_at(captured, start + 2) == 101 && byte_at(captured, start + 3) == 99 && byte_at(captured, start + 4) == 107 && byte_at(captured, start + 5) == 32 && byte_at(captured, start + 6) == 79 && byte_at(captured, start + 7) == 75
+                    if !isOk {
+                        if elen > 0 || !isEnd {
+                            print(byte_slice(captured, start, p))
+                            if !isEnd {
+                                print("\n")
+                            }
+                        }
+                    }
+                    if elen >= 5 {
+                        var c0 = byte_at(captured, start)
+                        if c0 == 69 || c0 == 87 {
+                            if byte_at(captured, start + 1) >= 48 && byte_at(captured, start + 1) <= 57 && byte_at(captured, start + 2) >= 48 && byte_at(captured, start + 2) <= 57 && byte_at(captured, start + 3) >= 48 && byte_at(captured, start + 3) <= 57 && byte_at(captured, start + 4) >= 48 && byte_at(captured, start + 4) <= 57 {
+                                if c0 == 69 {
+                                    fe += 1
+                                } else {
+                                    fw += 1
+                                }
+                            }
+                        }
+                    }
+                    start = p + 1
+                }
+                if isEnd {
+                    break
+                }
+                p += 1
+            }
+            if (rc >= 2 || rc < 0) && fe == 0 {
+                hard += 1
+            }
+            totE += fe
+            totW += fw
+            k += 1
+        }
+        println("lint: " + nf.to_string() + " 文件," + (totE + hard).to_string() + " 个错误 / " + totW.to_string() + " 警告")
+        if totE + hard > 0 {
+            return 1
+        }
+        if strict && totW > 0 {
+            return 1
+        }
+        return 0
     }
     // 其余一切名字 = sh 同款未知子命令(stderr + rc 2)
     eprint(unknown_line(cmd))

@@ -7,7 +7,9 @@
 # 缺件 = SKIP 显式登记,门绿(镜像 bare/wasm 环境门惯例):sh 参考或原生驱动器缺席
 # (后者先跑 compiler/native.sh)。
 # 语料波1 = 已实现臂全集(--version|-V/--help|-h/help/help <cmd>/<cmd> --help 拦截/
-# 未知子命令/无参);未实现已知名(bench/add/…的行为臂)不进语料——sh 有真行为而
+# 未知子命令/无参);批2 委派族 run/check/doc/test;批3 fmt/lint 全态(唯一目录
+# 夹具现造现清:-w 双版各写,sh/native 各侧跑前各重建,同路径基防打印路径分叉;
+# -w 例加产物树 diff -r 全树逐字节)。未实现已知名不进语料——sh 有真行为而
 # 原生为占位 rc2(诚实账),波2/3 补臂时同步补语料行。
 set -u
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -45,6 +47,47 @@ run_case() { # $1=label,其余 = 语料参数
     sh "$SHREF" "$@" > "$T/sh.out" 2>&1; r1=$?
     "$NAT" "$@" > "$T/nat.out" 2>&1; r2=$?
     report "$label" "$r1" "$r2"
+}
+
+# ---- fmt/lint 语料(W4 波1 批3)----
+# 纪律:-w 会写目标文件 → 夹具每例现造现清,sh/native 各跑前各重建一次
+# (同一路径基 $FX = 套件 mktemp 下固定名,两侧打印路径同串;-w 例另比对
+#  产物树,sh 写后存档、native 写后 diff -r 全树逐字节)。
+FX="$T/fx"
+mk_fx() {
+    rm -rf "$FX"
+    mkdir -p "$FX/pkg1/src" "$FX/pkg2" "$FX/pkg3/src"
+    printf 'fn main() {\n    println("ok")\n}\n' > "$FX/clean.ct"
+    printf 'fn main() {\n    let x=1\n        println("hi")\n}\n' > "$FX/dirty.ct"
+    printf 'fn main() {\n    let x: I32 = "s"\n}\n' > "$FX/ew.ct"
+    printf 'fn main() {\n    let unused_x = 1\n}\n' > "$FX/wonly.ct"
+    printf 'fn a() {\n    let p=1\n}\n' > "$FX/pkg1/src/a_clean.ct"
+    printf 'fn b() {\n    let q=2\n        println("z")\n}\n' > "$FX/pkg1/src/z_dirty.ct"
+    printf 'fn c() {\n    let r=3\n}\n' > "$FX/pkg2/flat.ct"
+}
+fx_case() { # 非写例:各侧跑前重建夹具,比对 stdout+stderr+rc
+    label=$1; shift
+    mk_fx
+    sh "$SHREF" "$@" > "$T/sh.out" 2>&1; r1=$?
+    mk_fx
+    "$NAT" "$@" > "$T/nat.out" 2>&1; r2=$?
+    report "$label" "$r1" "$r2"
+}
+tree_case() { # -w 例:sh 跑后存档产物树 → 重建 → native 跑 → diff -r 全树
+    label=$1; shift
+    mk_fx
+    sh "$SHREF" "$@" > "$T/sh.out" 2>&1; r1=$?
+    rm -rf "$T/sh.tree"; cp -R "$FX" "$T/sh.tree"
+    mk_fx
+    "$NAT" "$@" > "$T/nat.out" 2>&1; r2=$?
+    if [ "$r1" = "$r2" ] && cmp -s "$T/sh.out" "$T/nat.out" && diff -r "$T/sh.tree" "$FX" > "$T/tree.diff" 2>&1; then
+        pass=$((pass+1)); echo "  ok  : $label(rc=$r2;逐字节+rc+产物树 一致)"
+    else
+        fail=$((fail+1))
+        echo "  FAIL: $label(sh_rc=$r1 native_rc=$r2)"
+        diff "$T/sh.out" "$T/nat.out" 2>&1 | sed 's/^/    /' | sed -n '1,10p'
+        sed 's/^/    tree: /' "$T/tree.diff" 2>/dev/null | sed -n '1,10p'
+    fi
 }
 
 echo "== tests/drv_parity 原生驱动器对拍门(W4 波1:骨架)=="
@@ -89,6 +132,33 @@ run_case "run(缺参 rc2)"                run
 sh "$SHREF" > "$T/sh.out" 2>&1; r1=$?
 "$NAT" > "$T/nat.out" 2>&1; r2=$?
 report "无参(usage rc2)" "$r1" "$r2"
+
+# ---- fmt 臂(W4 波1 批3;夹具唯一目录现造现清,防 -w 双版互踩)----
+fx_case "fmt --check 干净(rc0 静默)"        fmt "$FX/clean.ct" --check
+fx_case "fmt --check 脏(点名+计数 rc1)"     fmt "$FX/dirty.ct" --check
+fx_case "fmt --check 缺席单文件(cmp 同判)"   fmt "$FX/nope.ct" --check
+tree_case "fmt -w 脏(写回+点名+产物树)"      fmt -w "$FX/dirty.ct"
+tree_case "fmt -w 干净(未变亦点名,零写)"     fmt -w "$FX/clean.ct"
+fx_case "fmt 默认打印脏(格式化文直出)"       fmt "$FX/dirty.ct"
+fx_case "fmt 目录形 --check(src 优先+字节序)" fmt "$FX/pkg1" --check
+fx_case "fmt 平层目录 --check(无 src 直下)"  fmt "$FX/pkg2" --check
+fx_case "fmt 空 .ct 目录 --check(静默 rc0)"  fmt "$FX/pkg3" --check
+fx_case "fmt 目录形默认(拼接直出 rc0)"       fmt "$FX/pkg1"
+tree_case "fmt -w 目录形(多文件写回+全树)"    fmt --write "$FX/pkg1"
+fx_case "fmt 缺参(rc2)"                    fmt
+fx_case "fmt --check 无目标(rc2)"            fmt --check
+
+# ---- lint 臂(W4 波1 批3;--trusted/--strict/--缺目标/汇总行全谱)----
+fx_case "lint 干净(check OK 滤后 0/0)"       lint "$FX/clean.ct"
+fx_case "lint E+W(计数 rc1)"                lint "$FX/ew.ct"
+fx_case "lint W-only(默认不红)"              lint "$FX/wonly.ct"
+fx_case "lint W-only --strict(警告也红)"      lint "$FX/wonly.ct" --strict
+fx_case "lint W-only --trusted(透传)"        lint "$FX/wonly.ct" --trusted
+fx_case "lint 目录形(分隔行+多文件汇总)"      lint "$FX/pkg1"
+fx_case "lint 目录无 .ct(rc2)"              lint "$FX/pkg3"
+fx_case "lint 目标不存在(rc2)"              lint "$FX/nope.ct"
+fx_case "lint 缺参(rc2)"                    lint
+fx_case "lint 未知旗标(rc2)"                 lint "$FX/clean.ct" --bogus
 
 echo "== drv_parity: $pass ok / $fail fail =="
 [ "$fail" -eq 0 ] || exit 1
