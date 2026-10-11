@@ -1867,7 +1867,8 @@ expect() recv 接收者 elem 码擦除不可恢复=G3 一并治。
 **T8 repeat 字面量批(2026-10-11,W1+W2+W3 落库 93896aed/9aea1313,W5-lite 随批)**:`[v] ** N`
 全链(词法 munch/Repeat 专节点/sem arr_fit_gate 三钉 E2010.arrfit·runcount·repneg/解释臂块物化
 [零逐元素 eval=comptime 预算前置]/发射臂 let 初值位零块 memset 特判+F25 正解/短字面量禁令
-[I32[8]=[1,2] 双口径 E2010,chk+run 同门]/ctecho 活标本改写 [0]**512 3/3)。**W4 挂账**:const/
-static 位聚合发射双红(comptime fn 数组返回/const 字面量管线 E1001/伪 .c 治理)= F25 的 const
-位半边,既有计划独立波次;count 的 const 名支持随 W4。**F25 实证:U8[65536]=[0]**65536 前端 peak RSS 75MB(F25 病理形态 3.4-5.8GB,三数量级降;产物 memset,运行 0)**。门:suite neg 39/39·119/120+120/120
+[I32[8]=[1,2] 双口径 E2010,chk+run 同门]/ctecho 活标本改写 [0]**512 3/3)。**W4 已落(75d42f94)**:const 位聚合发射双红销账——Const 臂 ceval 失手 CVM 回退(comptime fn
+循环填表全链收口,TAB=build() 折叠 {0,1,4,9} 实证)+ctc.sh 暂存发射(伪 .c 治理,失败零残留)。
+**F25 全域关闭**(局部 memset 特判+const 位静态聚合;字面量膨胀根因=巨型零字面量 AST,双面断根)。
+挂账仅链式 const 引用(const 呼名后续件)与 count const 名=后续小波。**F25 实证:U8[65536]=[0]**65536 前端 peak RSS 75MB(F25 病理形态 3.4-5.8GB,三数量级降;产物 memset,运行 0)**。门:suite neg 39/39·119/120+120/120
 (07a 预存)+ctecho 3/3;pos 夹具 4+neg 3 双宿。
