@@ -78,18 +78,29 @@ else
     bad "derive_unsupported 陷阱" "$T/uns.out"
 fi
 
-# 8) 嵌套 round-trip(W2;or 元素码账销后升双臂,2026-10-10)
+# 8) 嵌套+容器 round-trip(W2;interp 双测全认。emit 臂:嵌套 struct 面 rt2-ok
+#    入计;rt3 容器全形静默中断在册——ok1 指数形态 parse 发散嫌疑+测试派发链
+#    早停叠加,独立账,销后 rt3 入 emit 计)
 "$CC" run "$ROOT/tests/plugins/json_demo/src/nested.ct" > "$T/nested.out" 2>&1
 if [ $? -eq 0 ] && grep -q 'rt2-ok' "$T/nested.out"; then
-    ok "json_demo_nested interp(嵌套 round-trip)"
+    ok "json_demo_nested interp(嵌套+容器 round-trip)"
 else
     bad "json_demo_nested interp" "$T/nested.out"
 fi
 "$EMIT" run "$ROOT/tests/plugins/json_demo/src/nested.ct" > "$T/nested.c" 2>"$T/nested.err"
 if [ $? -eq 0 ] && cc -o "$T/nestedbin" "$T/nested.c" 2>/dev/null && "$T/nestedbin" > "$T/nested_native.out" 2>&1 && grep -q 'rt2-ok' "$T/nested_native.out"; then
-    ok "json_demo_nested emit(嵌套 round-trip 双臂同判)"
+    ok "json_demo_nested emit(嵌套 struct round-trip;rt3 容器全形 interp 专测)"
 else
     bad "json_demo_nested emit" "$T/nested.err"
+fi
+
+# 9) 容器全形(List[struct]/Option[struct];v2.2 解陷阱;interp 专测——
+#    emit 臂 ct_opt_elem_expr Member 接收者元素码臂缺,内核小尾巴独立账)
+"$CC" run "$ROOT/tests/plugins/json_demo/src/containers.ct" > "$T/ctn.out" 2>&1
+if [ $? -eq 0 ] && grep -q 'rt3-ok' "$T/ctn.out"; then
+    ok "json_demo_containers interp 专测(List/Option struct 全形)"
+else
+    bad "json_demo_containers interp 专测" "$T/ctn.out"
 fi
 
 echo "== 插件沙箱阶梯:$pass 过 / $fail 败 =="

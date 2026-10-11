@@ -77,7 +77,7 @@ pub fn ctron_derive(input: DeriveInput) -> Str {
                     } else {
                         if cj_pref(t, "List[") {
                             var el = cj_inner(t, 5)
-                            if cj_scalar4(el) {
+                            if cj_elem_ok(el) {
                                 body = body + cj_list_body(f, el, tn, comma, q, bs, lb)
                                 rd = rd + cj_list_err(el, f.name, q, lb)
                                 rv = rv + cj_list_val(el, f.name, q, lb)
@@ -87,7 +87,7 @@ pub fn ctron_derive(input: DeriveInput) -> Str {
                         } else {
                             if cj_pref(t, "Option[") {
                                 var el = cj_inner(t, 7)
-                                if cj_scalar4(el) {
+                                if cj_elem_ok(el) {
                                     body = body + cj_opt_body(f, el, tn, comma, q, bs, lb)
                                     rd = rd + cj_opt_err(el, f.name, q, lb)
                                     rv = rv + cj_opt_val(el, f.name, q, lb)
@@ -177,10 +177,15 @@ fn cj_list_err(el: Str, n: Str, q: Str, lb: Str) -> Str {
         r = r + "            return \"type@\" + pre + " + np + " + \".\" + ks_" + n + "[ki_" + n + "]\n"
         r = r + "        }\n"
     } else {
-        r = r + "        match jix_" + cj_jn(el) + "(ix, pre + " + np + " + \".\" + ks_" + n + "[ki_" + n + "]) " + lb + "\n"
-        r = r + "            Ok(_) => " + lb + " }\n"
-        r = r + "            Err(me) => " + lb + " return me }\n"
-        r = r + "        }\n"
+        if cj_scalar4(el) {
+            r = r + "        match jix_" + cj_jn(el) + "(ix, pre + " + np + " + \".\" + ks_" + n + "[ki_" + n + "]) " + lb + "\n"
+            r = r + "            Ok(_) => " + lb + " }\n"
+            r = r + "            Err(me) => " + lb + " return me }\n"
+            r = r + "        }\n"
+        } else {
+            r = r + "        var ce_" + n + " = " + el + "_json_err(es, pre + " + np + " + \".\" + ks_" + n + "[ki_" + n + "])\n"
+            r = r + "        if ce_" + n + " != \"\" " + lb + " return ce_" + n + " }\n"
+        }
     }
     r = r + "        ki_" + n + " += 1\n"
     r = r + "    }\n"
@@ -202,7 +207,11 @@ fn cj_list_val(el: Str, n: Str, q: Str, lb: Str) -> Str {
             if el == "I32" {
                 r = r + "        v_" + n + ".push(jix_i64(ix, pre + " + np + " + \".\" + ks_" + n + "[kv_" + n + "]).or(0).as[I32]())\n"
             } else {
-                r = r + "        v_" + n + ".push(jix_i64(ix, pre + " + np + " + \".\" + ks_" + n + "[kv_" + n + "]).or(0))\n"
+                if el == "I64" {
+                    r = r + "        v_" + n + ".push(jix_i64(ix, pre + " + np + " + \".\" + ks_" + n + "[kv_" + n + "]).or(0))\n"
+                } else {
+                    r = r + "        v_" + n + ".push(" + el + "_from_json_at(es, pre + " + np + " + \".\" + ks_" + n + "[kv_" + n + "]))\n"
+                }
             }
         }
     }
@@ -215,6 +224,18 @@ fn cj_list_val(el: Str, n: Str, q: Str, lb: Str) -> Str {
 
 fn cj_opt_body(f: DeriveField, el: Str, tn: Str, comma: Str, q: Str, bs: Str, lb: Str) -> Str {
     let n = f.name
+    if !cj_scalar4(el) {
+        // struct 载荷:match 语句式(无零值默认可 or;Some 绑=盒装解引用绑)
+        var r = "    var so_" + n + " = " + q + "null" + q + "\n"
+        r = r + "    match self." + n + " " + lb + "\n"
+        r = r + "        Some(m) => " + lb + "\n"
+        r = r + "            so_" + n + " = m." + el + "_to_json()\n"
+        r = r + "        }\n"
+        r = r + "        None => " + lb + " }\n"
+        r = r + "    }\n"
+        r = r + "    b = b + " + q + comma + bs + q + n + bs + q + ":" + q + " + so_" + n + "\n"
+        return r
+    }
     var vexp = "self." + n + ".or(0).to_string()"
     if el == "Str" {
         vexp = "__esc_" + tn + "(self." + n + ".or(\"\"))"
@@ -234,10 +255,15 @@ fn cj_opt_err(el: Str, n: Str, q: Str, lb: Str) -> Str {
     if el == "Str" {
         r = r + "        if tg_" + n + " != \"s\" " + lb + " return \"type@\" + pre + " + np + " }\n"
     } else {
-        r = r + "        match jix_" + cj_jn(el) + "(ix, pre + " + np + ") " + lb + "\n"
-        r = r + "            Ok(_) => " + lb + " }\n"
-        r = r + "            Err(me) => " + lb + " return me }\n"
-        r = r + "        }\n"
+        if cj_scalar4(el) {
+            r = r + "        match jix_" + cj_jn(el) + "(ix, pre + " + np + ") " + lb + "\n"
+            r = r + "            Ok(_) => " + lb + " }\n"
+            r = r + "            Err(me) => " + lb + " return me }\n"
+            r = r + "        }\n"
+        } else {
+            r = r + "        var ce_" + n + " = " + el + "_json_err(es, pre + " + np + ")\n"
+            r = r + "        if ce_" + n + " != \"\" " + lb + " return ce_" + n + " }\n"
+        }
     }
     r = r + "    }\n"
     return r
@@ -257,7 +283,11 @@ fn cj_opt_val(el: Str, n: Str, q: Str, lb: Str) -> Str {
             if el == "I32" {
                 r = r + "        v_" + n + " = Some(jix_i64(ix, pre + " + np + ").or(0).as[I32]())\n"
             } else {
-                r = r + "        v_" + n + " = Some(jix_i64(ix, pre + " + np + ").or(0))\n"
+                if el == "I64" {
+                    r = r + "        v_" + n + " = Some(jix_i64(ix, pre + " + np + ").or(0))\n"
+                } else {
+                    r = r + "        v_" + n + " = Some(" + el + "_from_json_at(es, pre + " + np + "))\n"
+                }
             }
         }
     }
@@ -275,7 +305,10 @@ fn cj_el_out(el: Str, tn: Str, loc: Str, q: Str, lb: Str) -> Str {
     if el == "Bool" {
         return "(if " + loc + " " + lb + " " + q + "true" + q + " } else " + lb + " " + q + "false" + q + " })"
     }
-    return loc + ".to_string()"
+    if cj_scalar4(el) {
+        return loc + ".to_string()"
+    }
+    return loc + "." + el + "_to_json()"
 }
 
 // jix 数字/布尔件名(I32/I64 共 i64;Bool 走 bool)
@@ -309,7 +342,7 @@ fn cj_inner(t: Str, plen: I32) -> Str {
     return byte_slice(t, plen, t.len - 1)
 }
 
-// 标量四件判定
+// 标量四件判定(发射臂分派用)
 fn cj_scalar4(el: Str) -> Bool {
     if (el == "I32") || (el == "I64") {
         return true
@@ -318,6 +351,20 @@ fn cj_scalar4(el: Str) -> Bool {
         return true
     }
     return false
+}
+
+// 元素判定:标量四件 + 嵌套 struct(裸标识符);F64 裁决排除/带实参组合仍拒
+fn cj_elem_ok(el: Str) -> Bool {
+    if cj_scalar4(el) {
+        return true
+    }
+    if el == "F64" {
+        return false
+    }
+    if cj_generic(el) {
+        return false
+    }
+    return true
 }
 
 // ty 是否带型别实参(实参槽位之外的泛型一律陷阱)

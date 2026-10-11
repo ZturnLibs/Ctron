@@ -1,0 +1,65 @@
+// json_demo/containers —— List[struct]/Option[struct] 容器全形 round-trip
+// (v2.2 解陷阱;interp 专测:emit 臂 ct_opt_elem_expr Member 接收者元素码臂缺
+// = match 监视体 Member 表达式的载荷码不可达,内核小尾巴独立账,销后升双臂)
+use std.json.{ jix_bool, jix_i64, jix_new, jix_tag, jix_val, jw_keys, parse }
+
+@derive(Json)
+struct CIn {
+    let v: I64
+    let ok: Bool
+}
+
+@derive(Json)
+struct Team {
+    let members: List[CIn]
+    let lead: Option[CIn]
+}
+
+test "derive json struct containers round trip" {
+    let m1 = CIn {
+        v: 1,
+        ok: true
+    }
+    let m2 = CIn {
+        v: 2,
+        ok: false
+    }
+    let members = List[CIn]()
+    members.push(m1)
+    members.push(m2)
+    let team = Team {
+        members: members,
+        lead: Some(m1)
+    }
+    assert_eq(team.Team_to_json(), "\{" + "\"members\":[\{\"v\":1,\"ok\":true},\{\"v\":2,\"ok\":false}],\"lead\":\{\"v\":1,\"ok\":true}" + "}")
+    let rt3 = parse(team.Team_to_json())
+    if !rt3.is_some() {
+        assert(false)
+    } else {
+        let es3 = rt3.or(List[List[Str]]())
+        let e3 = Team_json_err(es3, "$")
+        if e3 != "" {
+            println(e3)
+            assert(false)
+        } else {
+            let q3 = Team_from_json_at(es3, "$")
+            assert_eq(q3.members.len, 2)
+            let q0 = q3.members[0]
+            assert_eq(q0.v, 1)
+            assert_eq(q0.ok, true)
+            let q1 = q3.members[1]
+            assert_eq(q1.v, 2)
+            assert_eq(q1.ok, false)
+            assert_eq(q3.lead.is_some(), true)
+            match q3.lead {
+                Some(ld) => {
+                    assert_eq(ld.v, m1.v)
+                }
+                None => {
+                    assert(false)
+                }
+            }
+        }
+    }
+    println("rt3-ok")
+}

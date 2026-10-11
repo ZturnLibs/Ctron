@@ -1249,38 +1249,40 @@ test "numbers strict per RFC ABNF" {
     assert_eq(qtag(v_ok1, "$.0"), "n")
     assert_eq(qval(v_ok1, "$.1"), "10")
     assert_eq(qval(v_ok1, "$.4"), "-2E-3")
-    let n1 = match bad1 {
-        Ok(v) => v
-        Err(m) => {
-            println(m)
-            return 1
+    // 负例四件:RFC 8259 违例必须 Err(旧形倒装期待 Ok 空表+Err 臂 return 1,
+    // 解释臂吞没假绿、emit 臂真传播中断测试派发链——双臂同判形修正,噪音同除)
+    match bad1 {
+        Ok(_) => {
+            assert(false)
+        }
+        Err(_) => {
+            assert(true)
         }
     }
-    assert_eq(n1.len, 0)
-    let n2 = match bad2 {
-        Ok(v) => v
-        Err(m) => {
-            println(m)
-            return 1
+    match bad2 {
+        Ok(_) => {
+            assert(false)
+        }
+        Err(_) => {
+            assert(true)
         }
     }
-    assert_eq(n2.len, 0)
-    let n3 = match bad3 {
-        Ok(v) => v
-        Err(m) => {
-            println(m)
-            return 1
+    match bad3 {
+        Ok(_) => {
+            assert(false)
+        }
+        Err(_) => {
+            assert(true)
         }
     }
-    assert_eq(n3.len, 0)
-    let n4 = match bad4 {
-        Ok(v) => v
-        Err(m) => {
-            println(m)
-            return 1
+    match bad4 {
+        Ok(_) => {
+            assert(false)
+        }
+        Err(_) => {
+            assert(true)
         }
     }
-    assert_eq(n4.len, 0)
 }
 
 test "parse array of scalars" {
