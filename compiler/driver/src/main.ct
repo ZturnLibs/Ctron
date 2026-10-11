@@ -1,0 +1,290 @@
+// main.ct —— ctron 原生用户驱动器(W4 波1 批1:骨架)
+// sh 参考 = 仓库根 ctron 脚本:usage :231-275 / help_cmd :281-313 / dispatch :1120-1548。
+// 帮助文本逐字复刻(逐行 println,ctgrep 范式;生成自 sh 原文,非手抄)——
+// 字节级对拍门 = tests/drv_parity/run.sh(stdout+stderr 合流 diff + rc 对比)。
+// 波1 行为面:--version|-V / --help|-h / help [cmd] / <cmd> --help 拦截(16 名)+
+// 未知子命令 rc2;run/check/doc/test/fmt/lint 已登记占位(真逻辑波2/3,补臂同步补语料)。
+// 定位:ctron_exe_path() → bin = 其父,仓库根 = bin 父的父(compiler/bin → compiler → 根);
+// VERSION 在场 → "ctron <内容>"(镜像 sh $(cat) 尾换行剥离),缺席 → "ctron dev"。
+// 注:native.sh 壳层剥除发射模板的 C main --version 劫持臂(模板版串≠sh 语义),
+//     本文件的 --version 臂才可达——详见 native.sh 驱动器段注释。
+// 参数面:env.args() 无发射翻译(解释口径专属)——裸执行取参走 ctron_prog_args_n/at
+//     extern 底座(argv_off=1:args[0]=首用户参;eval_call.ct:33-36 前例,模板 T26 同源)。
+
+fn usage() {
+    println("ctron —— Ctron 工具链驱动")
+    println("用法:")
+    println("  ctron run <file.ct>          解释执行(不需要 C 编译器)")
+    println("  ctron check <file.ct> [--format=json] [--profile=bare]")
+    println("                             静态检查")
+    println("  ctron doc <file.ct> [--format=json]")
+    println("                             iface 投影:pub 符号表 + trait/impl 面 + 契约注释")
+    println("  ctron build <file.ct>        发射 C → 本机 cc → 可执行 <stem>(C 侧 <stem>.c)")
+    println("  ctron build                  项目模式:读 Ctron.ctcl(入口 src/main.ct,链接 c_src/*.c)")
+    println("  ctron test <file.ct>         test 块执行(无 main 走解释;含 main 文件的 test 执行挂账)")
+    println("  ctron fmt <file|pkg目录> [-w|--check]")
+    println("                             规范格式化(docs/fmt-spec.md):默认打印;-w 原位写回;")
+    println("                             --check 列出待格式化文件后非零退出")
+    println("  ctron lint <file|pkg目录> [--trusted] [--strict]")
+    println("                             lint 汇总:错误红(rc=1),警告默认只汇总;")
+    println("                             --trusted 信任审计枚举(§9.6);--strict 警告也红")
+    println("  ctron bench [族]            基准族入口(lang/gc/http/net/ffi;dev 布局)")
+    println("  ctron add <名>[@<版本约束>] 装包:写 dep 块 + pkgs/ 安装 + 刷新 Ctron.lock(T49 本地 registry)")
+    println("  ctron publish               发布当前目录单文件包到本地 registry(T49;CTRON_REGPATH,缺省 ~/.ctron/registry)")
+    println("  ctron lock                  解析依赖并生成/校验 Ctron.lock(内容寻址)")
+    println("  ctron pkg verify <artifact-dir>")
+    println("                             密封工件(.ctart)摘要自洽校验(D8-2 L1):SHA256SUMS 逐成员重算")
+    println("                             + self_digest 重算;fail-closed,不过即 rc=1;--deep 走")
+    println("                             in-language 发射验证器(ctron-verify,C 速,L3 载体)")
+    println("  ctron pkg trace record <src.ct> --case <fn>=<args 字面量> [--case ...]")
+    println("                             黄金轨迹录制(S3:纯函数+效果函数 γ):值=to_string 规范形,--fs 种子挂 case,落")
+    println("                             traces/<stem>.ctrt;含 main 源不支持")
+    println("  ctron pkg trace replay <src.ct>")
+    println("                             轨迹复放:逐字比对,不符即 rc=1 点名双值(S3)")
+    println("  ctron pkg log append <日志仓> <工件目录>")
+    println("                             透明日志追加(§7.1 公证层):records/<名>/<digest>/attest")
+    println("                             内容寻址不可变,append-only git 仓;零网络")
+    println("  ctron pkg log query <日志仓> [名]")
+    println("                             日志查询:列名或列某名的 digest+公证要点")
+    println("  ctron new <dir>              脚手架:hello + Ctron.ctcl")
+    println("  ctron task [-f <file>] [名]  列出/执行 ctron.ctcl 任务(驱动器面;步骤直 exec,拒 shell 元字符;")
+    println("                             task 可带 cwd = 相对清单目录,步骤以其为工作目录)")
+    println("  ctron gate [名]              ≡ task,缺省名 gate;无 ctron.ctcl 时项目模式")
+    println("                             回落内建默认门(build + fmt --check)")
+    println("  ctron clean [--all]          清工具链缓存三域(.cache/emit|bare|wasm);")
+    println("                             --all 加项目 build/ 与 pkgs/")
+    println("  ctron --version              版本")
+    println("  ctron --help | help [cmd]    帮助(亦可 ctron <cmd> --help)")
+    println("环境变量:CC(默认 cc)、CTRON_STDPATH(覆盖标准库位置)")
+    println("rc 约定:0 成功 / 1 程序诊断失败 / 2 ctron 环境或用法错误")
+}
+
+fn help_cmd(cmd: Str) -> I32 {
+    if cmd == "build" {
+        println("ctron build —— 发射 C 并编译为可执行")
+        println("  ctron build <file.ct>   产物 <stem> 与 <stem>.c(与源同目录)")
+        println("  ctron build             项目模式:入口 src/main.ct,产物 build/<name>;")
+        println("                        Ctron.ctcl 同目录 c_src/*.c 一并链接")
+        println("前置:本机 C 编译器(可用 CC 覆盖);缺失时 C 照常发射,并给出两条出路")
+        return 0
+    }
+    if cmd == "check" {
+        println("ctron check <file.ct> [--format=json] [--profile=bare] —— 静态检查,不改任何文件")
+        return 0
+    }
+    if cmd == "doc" {
+        println("ctron doc <file.ct> [--format=json] —— iface 投影:pub 符号表/trait/impl 面 + 模块头与 per-fn 契约注释(§5.3),不改任何文件")
+        return 0
+    }
+    if cmd == "run" {
+        println("ctron run <file.ct> —— 解释执行;不需要 C 编译器")
+        return 0
+    }
+    if cmd == "test" {
+        println("ctron test <file.ct> —— 执行 test 块(无 main 文件);含 main 文件的 test 执行暂走宿主口径挂账")
+        return 0
+    }
+    if cmd == "fmt" {
+        println("ctron fmt <file|pkg目录> [-w|--check] —— 规范格式化(docs/fmt-spec.md);默认打印,-w 原位写回,--check 列出待格式化并不零退出")
+        return 0
+    }
+    if cmd == "lint" {
+        println("ctron lint <file.ct|pkg目录> [--trusted] [--strict] —— check 命令化+汇总(§9.7):错误 rc=1;警告默认只汇总不红,--strict 才红;--trusted 信任边界审计枚举 #[trusted] extern(§9.6)")
+        return 0
+    }
+    if cmd == "bench" {
+        println("ctron bench [族] —— tests/ 基准族统一入口(T43;dev 布局,脚本自定位仓库根,任目录可跑)")
+        println("  lang   own/热点算术核 vs C 同构对照(T44;门 ≤1.05,WARN 档)")
+        println("  gc     GC 档 vs bump 档 churn(T32;门 ≤1.15)")
+        println("  http   http_parse_head vs picohttpparser(CTRON_HTTP_BENCH=1 启用)")
+        println("  net    吞吐/协程切换三门禁(CTRON_NET_BENCH=1 启用)")
+        println("  ffi    FFI 边界微基准四场景(报告制)")
+        println("无族名列出注册表;未注册族名清晰诊断(fail-closed)。")
+        return 0
+    }
+    if cmd == "add" {
+        println("ctron add <name>[@<版本约束>] —— 本地 registry 装包(T49):写 dep 块 + pkgs/<名>/ 安装(module+manifest)+ ctron-dep 刷新 Ctron.lock;registry = CTRON_REGPATH 或 ~/.ctron/registry;零网络")
+        return 0
+    }
+    if cmd == "publish" {
+        println("ctron publish —— 当前目录单文件包发布到本地 registry(T49):manifest+module+sha256 三件落 <reg>/<名>/<版>/;版本不可覆盖;零网络(对外发布面启用仍须经用户确认)")
+        return 0
+    }
+    if cmd == "lock" {
+        println("ctron lock —— 依赖解析并生成/校验 Ctron.lock(T49 内容寻址;= ctron-dep run Ctron.ctcl)")
+        return 0
+    }
+    if cmd == "pkg" {
+        println("ctron pkg verify <artifact-dir> [--deep] / pkg trace record|replay —— verify: 密封工件摘要自洽校验(D8-2 L1;SHA256SUMS 逐成员+self_digest 重算,fail-closed rc=1;--deep = ctron-verify 发射验证器 L3 载体);trace: 纯函数黄金轨迹录制/复放(S3-α,值=to_string 规范形);trace 复放腿接线与效果函数 FakeFs 归 S3-β")
+        return 0
+    }
+    if cmd == "new" {
+        println("ctron new <dir> —— 生成 <dir>/Ctron.ctcl + src/main.ct(hello)")
+        return 0
+    }
+    if cmd == "task" {
+        println("ctron task [-f <file>] [名] —— 列出/执行 ctron.ctcl 任务(驱动器面;步骤直 exec,拒 shell 元字符);-f 指定清单(缺省 ./ctron.ctcl),步骤以清单所在目录为 cwd")
+        return 0
+    }
+    if cmd == "gate" {
+        println("ctron gate [名] —— ≡ task,缺省名 gate;无 ctron.ctcl 时项目模式回落内建默认门(build + fmt --check);步骤引号语义非 shell 全同")
+        return 0
+    }
+    if cmd == "clean" {
+        println("ctron clean [--all] —— 清工具链缓存三域(.cache/emit|bare|wasm);--all 加项目 build/ 与 pkgs/;CTRON_DRV_ROOT 可覆盖缓存根")
+        return 0
+    }
+    // 未知命令臂 = 整版 usage(sh help_cmd * 臂)
+    usage()
+    return 0
+}
+
+fn dir_of(p: Str) -> Str {
+    // 路径父目录(末个 '/' 前截断;无 '/' = "")——壳层无 dirname,自筹
+    var cut: I32 = -1
+    var i: I32 = 0
+    while i < p.len {
+        if byte_at(p, i) == 47 {
+            cut = i
+        }
+        i += 1
+    }
+    if cut < 0 {
+        return ""
+    }
+    return byte_slice(p, 0, cut)
+}
+
+fn version_line() -> Str {
+    // 逐字镜像 sh:VERSION 在场 → "ctron $(cat $ROOT/VERSION)",缺席 → "ctron dev";
+    // $(cat) 吃掉结尾换行 → 逐个剥离尾部 \n(字节 10)至尽
+    var bin = dir_of(ctron_exe_path())
+    var compiler = dir_of(bin)
+    var root = dir_of(compiler)
+    var vp = root + "/VERSION"
+    if fs_exists(vp) {
+        match read_file(vp) {
+            Some(s) => {
+                var t = s
+                var strip: Bool = true
+                while strip {
+                    if t.len > 0 {
+                        if byte_at(t, t.len - 1) == 10 {
+                            t = byte_slice(t, 0, t.len - 1)
+                        } else {
+                            strip = false
+                        }
+                    } else {
+                        strip = false
+                    }
+                }
+                return "ctron " + t
+            }
+            None => {
+                return "ctron dev"
+            }
+        }
+    }
+    return "ctron dev"
+}
+
+fn unknown_line(cmd: Str) -> Str {
+    // sh 同款:stderr 一行 + rc 2(\n 自附——eprint 裸写不补行)
+    return "ctron: 未知子命令 '" + cmd + "'(详见 ctron --help)\n"
+}
+
+fn is_known16(c: Str) -> Bool {
+    // sh <cmd> --help 拦截面全集(:1124-1126 名单;help 面先行,行为分期不受此限)
+    if c == "run" { return true }
+    if c == "check" { return true }
+    if c == "build" { return true }
+    if c == "test" { return true }
+    if c == "new" { return true }
+    if c == "fmt" { return true }
+    if c == "doc" { return true }
+    if c == "lint" { return true }
+    if c == "bench" { return true }
+    if c == "add" { return true }
+    if c == "publish" { return true }
+    if c == "lock" { return true }
+    if c == "pkg" { return true }
+    if c == "task" { return true }
+    if c == "gate" { return true }
+    if c == "clean" { return true }
+    return false
+}
+
+fn is_w1_delegate(c: Str) -> Bool {
+    // 波1 已登记占位族(真逻辑波2/3 落地;补臂同步补语料,诚实账)
+    if c == "run" { return true }
+    if c == "check" { return true }
+    if c == "doc" { return true }
+    if c == "test" { return true }
+    if c == "fmt" { return true }
+    if c == "lint" { return true }
+    return false
+}
+
+extern "c" fn ctron_prog_args_n() -> I64
+extern "c" fn ctron_prog_args_at(i: I64) -> Str
+
+fn main() -> I32 {
+    var n: I64 = ctron_prog_args_n()
+    // 无参 = 整版 usage + rc 2(sh:[ $# -lt 1 ])
+    if n == 0 {
+        usage()
+        return 2
+    }
+    var cmd = ctron_prog_args_at(0)
+    // <cmd> --help|-h 拦截(sh :1124-1128,先于分派臂)
+    if n >= 2 {
+        if is_known16(cmd) {
+            var sub = ctron_prog_args_at(1)
+            if sub == "--help" {
+                return help_cmd(cmd)
+            }
+            if sub == "-h" {
+                return help_cmd(cmd)
+            }
+        }
+    }
+    // --help|-h|help:带参 → help_cmd(未知名也落 usage 臂),无参 → 整版 usage;rc 0
+    if cmd == "--help" {
+        if n >= 2 {
+            return help_cmd(ctron_prog_args_at(1))
+        }
+        usage()
+        return 0
+    }
+    if cmd == "-h" {
+        if n >= 2 {
+            return help_cmd(ctron_prog_args_at(1))
+        }
+        usage()
+        return 0
+    }
+    if cmd == "help" {
+        if n >= 2 {
+            return help_cmd(ctron_prog_args_at(1))
+        }
+        usage()
+        return 0
+    }
+    // --version|-V:VERSION 语义面(见 version_line)
+    if cmd == "--version" {
+        println(version_line())
+        return 0
+    }
+    if cmd == "-V" {
+        println(version_line())
+        return 0
+    }
+    // 波1 占位族:与未知名同款 rc2(sh 对已知名有真行为,对拍语料不含未实现臂)
+    if is_w1_delegate(cmd) {
+        eprint(unknown_line(cmd))
+        return 2
+    }
+    // 其余一切名字 = sh 同款未知子命令(stderr + rc 2)
+    eprint(unknown_line(cmd))
+    return 2
+}

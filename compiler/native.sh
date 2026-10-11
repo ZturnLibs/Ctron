@@ -90,3 +90,28 @@ echo "native: bin/ctron-verify(工件深验驱动,T50/L3 载体)← $(wc -l < "$
 
 cc -O2 -w -o "$BIN/ctron-ast" "$TMP/ctron_ast.c"
 echo "native: bin/ctron-ast(封印/序列化驱动,T50/S4-④)← $(wc -l < "$TMP/ctron_ast.c") 行 C"
+
+# W4 波1:用户驱动器 bin/ctron(Ctron 自写,compiler/driver/src/main.ct 单文件;
+# 委派族+fmt/lint 波2/3 补臂;对拍门 tests/drv_parity)。
+# 两步走而非 ctc.sh build:发射模板的 C main 包装层劫持 argv[1]=="--version"
+# (puts 模板版串,≠sh "ctron <VERSION 内容>/dev" 语义)且 argv[1]=="run" 时
+# 重偏 args(off=3)——emit 后剥除两臂再链接,驱动器自带的 --version/--help 面
+# (自读 VERSION;args 稳在 argv[1:])才可达;模板变形即 grep 守卫响(fail-loud)。
+# driver 树缺席 = SKIP(幂等:重跑整段重建)。
+if [ -f "$DIR/driver/src/main.ct" ]; then
+    echo "== build driver: bin/ctron =="
+    DRV_C="$TMP/ctron_drv.c"
+    "$DIR/ctc.sh" emit "$DIR/driver/src/main.ct" "$DRV_C" > /dev/null
+    DRV_A='if (argc >= 2 && !strcmp(argv[1], "--version")) { puts(ctron_version); return 0; }'
+    DRV_B='if (argc >= 3 && strcmp(argv[1], "run") == 0) { ctron_cli_input = argv[2]; ctron_argv_off = 3; }'
+    if ! grep -qF "$DRV_A" "$DRV_C" || ! grep -qF "$DRV_B" "$DRV_C"; then
+        echo "native: 驱动器发射 C 缺模板包装臂(发射模板已变?守卫失败)" >&2
+        exit 1
+    fi
+    DRV_SED_A='if (argc >= 2 && !strcmp(argv\[1\], "--version")) { puts(ctron_version); return 0; }'
+    DRV_SED_B='if (argc >= 3 && strcmp(argv\[1\], "run") == 0) { ctron_cli_input = argv\[2\]; ctron_argv_off = 3; }'
+    sed -e "s|$DRV_SED_A||" -e "s|$DRV_SED_B||" "$DRV_C" > "$DRV_C.s"
+    mv "$DRV_C.s" "$DRV_C"
+    cc -O2 -w -o "$BIN/ctron" "$DRV_C"
+    echo "native: bin/ctron(用户驱动器,W4 波1)← $(wc -l < "$DIR/driver/src/main.ct") 行 Ctron"
+fi
