@@ -985,6 +985,16 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             }
             if m == "join" { return "(int32_t)ct_join((ct_task*)(" + obj + "))" }
             if m == "join_or" { return "ct_join_or((ct_task*)(" + obj + "))" }
+            // G3-W3:join_t 超时形(Result;超时任务续跑,join/join-all 兜底收口)
+            if m == "join_t" {
+                if ag.len < 2 { panic("emit:join_t 实参") }
+                return "ct_join_t((ct_task*)(" + obj + "), (long long)(" + ct_expr(ag[1], env, file) + "))"
+            }
+            // G3-W3:scope.cancel()(接收者 g=scope 绑定码)
+            if m == "cancel" {
+                var sco = ct_typeof(cal[1], env, file)
+                if sco == "g" { return "ct_scope_cancel((ct_scope*)(" + obj + "))" }
+            }
             if m == "send" {
                 if ag.len < 2 {
                     panic("emit:send 实参")
@@ -994,6 +1004,11 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 return "ct_ch_send((ct_chan*)(" + obj + "), " + ct_wrap_i(s0t, ct_expr(ag[1], env, file)) + ")"
             }
             if m == "recv" { return "ct_ch_recv((ct_chan*)(" + obj + "))" }
+            // G3-W3:recv_t 超时形(Result;Str 载荷边界拷贝与 recv 同)
+            if m == "recv_t" {
+                if ag.len < 2 { panic("emit:recv_t 实参") }
+                return "ct_ch_recv_t((ct_chan*)(" + obj + "), (long long)(" + ct_expr(ag[1], env, file) + "))"
+            }
             if m == "fetch_add" {
                 // 真原子(§7.3;T13):__atomic RMW 替全局锁;SEQ_CST 对齐 rt 语义
                 var f0 = "0"

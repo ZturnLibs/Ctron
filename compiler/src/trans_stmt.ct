@@ -779,6 +779,14 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 // 的 `var rs: List[Route[S]]` 嵌套 TPar 旧落 ct_ty_code "i" →
                 // Lu:Route__I 错实例(与 #Router 槽/字段码三面劈叉)
                 ty = ct_ty_code(ct_targ_env(st[3], env), file)
+                // G3-W3:Result/Option 注解 let 挂 #elem(首实参码)——match Ok 臂
+                // 载荷槽/expect/or 恢复面从此可达(成员调用 init 无被调声明可查,
+                // edbd2703 直驱线之外的注解直驱线)
+                if st[3][0] == "Named" && st[3][1] == "Result" || st[3][0] == "Named" && st[3][1] == "Option" {
+                    if st[3][2].len > 1 && st[3][2][1].len > 1 {
+                        env = env_bind(env, "#elem:" + pat[1], ct_ty_code(st[3][2][1], file))
+                    }
+                }
             } else {
                 ty = ct_typeof(st[4], env, file)
             }
@@ -919,6 +927,14 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                     if elc7 != "i" {
                         env = env_bind(env, "#elem:" + pat[1], elc7)
                     }
+                }
+            }
+            // G3-W3:成员调用 init(recv_t/join_t 族)+Result/Option 注解 → 注解首
+            // 实参码挂 #elem(被调声明直驱线对成员形态不可达;match Ok 臂载荷槽
+            // 依赖此条目,缺即 int32 截断指针=段错误)
+            if st[4][0] == "Call" && st[4][1][0] == "Member" && st[3][0] == "Named" && st[3][2].len > 1 && st[3][2][1].len > 1 {
+                if or2(st[3][1] == "Result", st[3][1] == "Option") {
+                    env = env_bind(env, "#elem:" + pat[1], ct_ty_code(st[3][2][1], file))
                 }
             }
             // P0-2/seam②:fn 值绑定(F/G 码)且初值为直调声明 fn 时挂 #fret 侧条目——

@@ -1569,6 +1569,9 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if m == "spawn" { return "k" }
             if e[3] == "join" { return "i" }
             if or2(m == "join_or", or2(m == "send", m == "recv")) { return "R" }
+            // G3-W3:超时形同 Result 面;cancel=void
+            if or2(m == "join_t", m == "recv_t") { return "R" }
+            if m == "cancel" { return "v" }
             if m == "fetch_add" { return "i" }
             // with/with_mut 值位型别=闭包体尾型(T27-B 残债清偿:语句位时代硬编码
             // v/i 在值位即错——let w = m.with_mut(...) 落 void 声明 cc 错)。镜像

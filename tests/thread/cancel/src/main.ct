@@ -1,0 +1,38 @@
+// G3-W3:取消风暴——cancel 后阻塞 recv/join_t 即时 Err(ScopeCancelled)
+fn main() {
+    let (tx, rx) = Channel[I64](1)
+    var errs: I32 = 0
+    scope { |s|
+        let t = s.spawn(|| {
+            var i: I32 = 0
+            while i < 50 {
+                tx.send(i).expect("send")
+                i += 1
+            }
+        })
+        var c: I32 = 0
+        while c < 3 {
+            let r = rx.recv_t(200)
+            match r {
+                Ok(_) => {
+                }
+                Err(_) => {
+                    errs += 1
+                }
+            }
+            c += 1
+        }
+        s.cancel()
+        let r2 = rx.recv_t(200)
+        match r2 {
+            Err(e) => {
+                errs += 1
+                println("cancel-probe errs={errs} last={e}")
+            }
+            Ok(_) => {
+                println("cancel-probe errs={errs} last=received")
+            }
+        }
+        t.join_t(100)
+    }
+}

@@ -1,0 +1,30 @@
+// G3-W3:recv_t 超时形(空队到点 Err;数据到达 Ok;I64 载荷标量判词)
+fn main() {
+    let (tx, rx) = Channel[I64](4)
+    var to: I32 = -1
+    let r0 = rx.recv_t(50)
+    match r0 {
+        Ok(_) => {
+            to = 1
+        }
+        Err(_) => {
+            to = 0
+        }
+    }
+    tx.send(77)
+    var got: I64 = -1
+    let r1 = rx.recv_t(500)
+    match r1 {
+        Ok(v) => {
+            got = v.as[I64]()
+        }
+        Err(_) => {
+            got = -2
+        }
+    }
+    if to == 0 && got == 77 {
+        println("timeout-probe ok to0 got77")
+    } else {
+        println("timeout-probe bad to={to} got={got}")
+    }
+}

@@ -1168,6 +1168,10 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
     }
     // 并发域(顺序化模拟:spawn 即刻完整执行;结果与调度无关的测试面)
     if recv.tag == 8 {
+        // G3-W3:scope.cancel interp=顺序化域 no-op(无并发可取消,文档化)
+        if seq2(cx_of(recv)[0], "SCOPE") && seq2(m, "cancel") && vals.len == 0 {
+            return e4("k", ob.env, vV2(), ob.out)
+        }
         if seq2(cx_of(recv)[0], "SCOPE") && seq2(m, "spawn") && vals.len == 1 {
             var noargs = List[Str]()
             var sr = call_cv(file, ob.env, ob.out, v_unbox(vals[0]), noargs)
@@ -1207,6 +1211,21 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
                 jr.push(cx_of(recv)[2])
             }
             return e4("k", ob.env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(jr) }, ob.out)
+        }
+        // G3-W3:join_t interp=顺序化即成(任务先行完备,忽略超时;文档化)
+        if seq2(cx_of(recv)[0], "TASK") && seq2(m, "join_t") && vals.len == 1 {
+            if seq2(cx_of(recv)[1], "P") {
+                var jrr = List[Str]()
+                jrr.push("T")
+                jrr.push("Err")
+                jrr.push(v_box(vS("task panic")))
+                return e4("k", ob.env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(jrr) }, ob.out)
+            }
+            var jrok = List[Str]()
+            jrok.push("T")
+            jrok.push("Ok")
+            jrok.push(cx_of(recv)[2])
+            return e4("k", ob.env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(jrok) }, ob.out)
         }
         if or2(seq2(cx_of(recv)[0], "MUX"), seq2(cx_of(recv)[0], "M")) && or2(seq2(m, "with_mut"), seq2(m, "with")) && vals.len == 1 {
             var fa2 = List[Str]()
@@ -1349,6 +1368,17 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
             }
             cur[1] = (idx + 1).to_string()
             return e4("k", ob.env, vT("Ok", v_unbox(q2[idx])), ob.out)
+        }
+        // G3-W3:recv_t interp=顺序化域空队即超时(阻塞无意义,文档化)
+        if seq2(cx_of(recv)[0], "CH") && seq2(m, "recv_t") && vals.len == 1 {
+            var cur2 = cx_of(recv)[2]
+            var q3 = cx_of(recv)[1]
+            var idx2 = dvi(cur2[1])
+            if idx2 >= q3.len {
+                return e4("k", ob.env, vT("Err", vS("RecvTimeout")), ob.out)
+            }
+            cur2[1] = (idx2 + 1).to_string()
+            return e4("k", ob.env, vT("Ok", v_unbox(q3[idx2])), ob.out)
         }
         if seq2(cx_of(recv)[0], "SIMD") && seq2(m, "splat") && vals.len == 1 {
             var vc = List[Str]()
