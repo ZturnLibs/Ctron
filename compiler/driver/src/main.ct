@@ -535,6 +535,522 @@ fn echo_line(s: Str) {
     }
 }
 
+// ---- build 面(W4 波2 批1)----
+// sh 镜像源(仓库根 ctron 脚本,live text 为准):ct_target_check :431-439 /
+// cmd_build :441-459 / cmd_build_proj :461-497 / cc_missing_guidance :326-331 /
+// have_cc :317-324 / --target 解析循环 :1155-1161。
+
+fn cc_bin() -> Str {
+    // sh CC_BIN=${CC:-cc}
+    var c = env_get("CC")
+    if c.len == 0 {
+        return "cc"
+    }
+    return c
+}
+
+// blob 化 rc 型 spawn(= delegate 的 cwd 参化;非零 rc 语义由各臂按 sh || exit N 收口)
+fn blob_rc_cwd(argv: List[Str], cwd: Str) -> I32 {
+    var blob: U8[4096] = [0, 0, 0, 0, 0, 0, 0, 0]
+    let nb = argv_to_blob(argv, blob)
+    if nb < 0 {
+        return 127
+    }
+    return run_argv_rc(cwd, blob, nb.as[I64](), "")
+}
+
+fn fail2(msg: Str) -> I32 {
+    // sh die2(:26)= `echo "ctron: $*" >&2; exit 2`
+    eprint("ctron: " + msg + "\n")
+    return 2
+}
+
+fn stem_of(abs: Str) -> Str {
+    // sh STEM=$(basename "${IN%.ct}"):先剥 .ct 尾(仅当在尾)再取末段
+    var s = abs
+    var l = s.len
+    if l >= 3 {
+        if byte_at(s, l - 3) == 46 && byte_at(s, l - 2) == 99 && byte_at(s, l - 1) == 116 {
+            s = byte_slice(s, 0, l - 3)
+        }
+    }
+    var cut: I32 = -1
+    var i: I32 = 0
+    while i < s.len {
+        if byte_at(s, i) == 47 {
+            cut = i
+        }
+        i += 1
+    }
+    return byte_slice(s, cut + 1, s.len)
+}
+
+fn basename_sh(p: Str) -> Str {
+    // POSIX basename:剥尾部 '/'(根 "/" 保留)后取末段
+    var end = p.len
+    while end > 1 {
+        if byte_at(p, end - 1) == 47 {
+            end -= 1
+        } else {
+            break
+        }
+    }
+    var cut: I32 = -1
+    var i: I32 = 0
+    while i < end {
+        if byte_at(p, i) == 47 {
+            cut = i
+        }
+        i += 1
+    }
+    return byte_slice(p, cut + 1, end)
+}
+
+fn have_cc_probe() -> Bool {
+    // sh have_cc:冒烟 C 件 + $CC_BIN -O0 -w 编译。native = 固定名临时件
+    // (sh mktemp 唯一性 = 登记偏差;并发 build 病理面,冒烟件即用即删)
+    var srcp = "/tmp/ctron_ccp_drv.c"
+    var binp = "/tmp/ctron_ccp_drv"
+    fs_write(srcp, "int main(void)\{return 0;}")
+    var argv = List[Str]()
+    argv.push(cc_bin())
+    argv.push("-O0")
+    argv.push("-w")
+    argv.push("-o")
+    argv.push(binp)
+    argv.push(srcp)
+    let rc = blob_rc_cwd(argv, "")
+    fs_delete(srcp)
+    fs_delete(binp)
+    return rc == 0
+}
+
+fn cc_missing_guidance(cpath: Str) {
+    // sh cc_missing_guidance 四行逐字(stderr;$CC_BIN 插值;② 行手册式无 -pthread)
+    eprint("ctron: 未找到可用的 C 编译器('" + cc_bin() + "' 冒烟失败)—— ctron build 需要。\n")
+    eprint("  两条出路:\n")
+    eprint("  ① 安装编译器后重跑:macOS 'xcode-select --install' / linux 发行版 gcc / windows MSYS2 或 w64devkit\n")
+    eprint("  ② C 已发射到 " + cpath + " —— 可手动编译,或拿到任何有 cc 的机器上: cc -O2 -w " + cpath + " -o <名>\n")
+}
+
+fn build_file(farg: Str, target: Str) -> I32 {
+    // sh cmd_build 单文件臂。ct_target_check 先行(未注册 rc2 逐字);
+    // 非 native 委派 ctc.sh(rc 非零一律 exit 2 = sh `|| exit 2`,不透传);
+    // native = emit 捕获落 <stem>.c → have_cc 冒烟(败 = 双出路文案 rc2)→
+    // cc -O2 -w -pthread 于源目录(cwd=OUTDIR = sh 子壳 cd 同构)。
+    if !target_registered(target) {
+        return fail2("未注册后端 target: " + target + "(注册表: native, thumbv7em-none-eabi, riscv32imac-unknown-none, wasm32-unknown-unknown)")
+    }
+    var inp = absolutize(farg)
+    var stem = stem_of(inp)
+    var outdir = dir_of(inp)
+    if target != "native" {
+        // T40 bare/wasm 靶:委派 ctc.sh 同管线(sh :446-450;stdout/stderr 直通)
+        var root = dir_of(dir_of(bin_dir()))
+        var argv = List[Str]()
+        argv.push(root + "/compiler/ctc.sh")
+        argv.push("build")
+        argv.push(inp)
+        argv.push("--target")
+        argv.push(target)
+        argv.push("-o")
+        argv.push(outdir + "/" + stem)
+        if blob_rc_cwd(argv, "") != 0 {
+            return 2
+        }
+        println("ctron: 已构建 " + outdir + "/" + stem + "(target: " + target + ")")
+        return 0
+    }
+    var bin = bin_dir() + "/ctron-emit"
+    var buf: U8[1048576] = [0, 0, 0, 0, 0, 0, 0, 0]
+    capture_zero(buf)
+    let rc = run("", bin, inp, buf)
+    if rc != 0 {
+        return 1
+    }
+    if capture_len(buf) == buf.len {
+        // 容量截断守卫(sh `>` 无上限;>1MB 发射面登记在案,拒半截 C 落盘)
+        eprint("ctron: 发射输出超捕获容量 " + buf.len.to_string() + " 字节: " + inp + "\n")
+        return 1
+    }
+    // sh 失败残档偏差登记:emit 败时 `>` 已留空/半截 <stem>.c,native 捕获形不落盘
+    fs_write(outdir + "/" + stem + ".c", capture_str(buf))
+    if !have_cc_probe() {
+        cc_missing_guidance(outdir + "/" + stem + ".c")
+        return 2
+    }
+    var argv = List[Str]()
+    argv.push(cc_bin())
+    argv.push("-O2")
+    argv.push("-w")
+    argv.push("-pthread")
+    argv.push(stem + ".c")
+    argv.push("-o")
+    argv.push(stem)
+    if blob_rc_cwd(argv, outdir) != 0 {
+        return 2
+    }
+    println("ctron: 已构建 " + outdir + "/" + stem + "(target: " + target + ")")
+    return 0
+}
+
+fn read_text(p: Str) -> Str {
+    match read_file(p) {
+        Some(s) => {
+            return s
+        }
+        None => {}
+    }
+    return ""
+}
+
+fn name_line_value(line: Str) -> Option[Str] {
+    // sh sed 's/^ *name *= *"\(.*\)".*/\1/p' 单行判:前缀 ^空格*name空格*=空格*" ;
+    // 捕获贪心至行末最后一个 '"'(BRE \(.*\)" 左最右长同构;须有第二个引号)
+    var i: I32 = 0
+    while i < line.len && byte_at(line, i) == 32 {
+        i += 1
+    }
+    if i + 4 > line.len {
+        return None
+    }
+    if byte_at(line, i) != 110 || byte_at(line, i + 1) != 97 || byte_at(line, i + 2) != 109 || byte_at(line, i + 3) != 101 {
+        return None
+    }
+    i += 4
+    while i < line.len && byte_at(line, i) == 32 {
+        i += 1
+    }
+    if i >= line.len || byte_at(line, i) != 61 {
+        return None
+    }
+    i += 1
+    while i < line.len && byte_at(line, i) == 32 {
+        i += 1
+    }
+    if i >= line.len || byte_at(line, i) != 34 {
+        return None
+    }
+    var open = i
+    var last: I32 = -1
+    var q: I32 = open + 1
+    while q < line.len {
+        if byte_at(line, q) == 34 {
+            last = q
+        }
+        q += 1
+    }
+    if last < 0 {
+        return None
+    }
+    return Some(byte_slice(line, open + 1, last))
+}
+
+fn manifest_name(text: Str) -> Option[Str] {
+    // 首个匹配行(sed | head -1;值可空——空值由调用方回退目录名,sh -n 判空同构)
+    var i: I32 = 0
+    var start: I32 = 0
+    while i <= text.len {
+        var isEnd: Bool = i == text.len
+        if isEnd || byte_at(text, i) == 10 {
+            match name_line_value(byte_slice(text, start, i)) {
+                Some(v) => {
+                    return Some(v)
+                }
+                None => {}
+            }
+            start = i + 1
+        }
+        i += 1
+    }
+    return None
+}
+
+fn has_line_prefix(text: Str, pre: Str) -> Bool {
+    // 行首前缀判(grep -q '^pre' 同义;pre 自含字面字节)
+    var i: I32 = 0
+    var start: I32 = 0
+    while i <= text.len {
+        var isEnd: Bool = i == text.len
+        if isEnd || byte_at(text, i) == 10 {
+            var line = byte_slice(text, start, i)
+            if line.len >= pre.len {
+                if byte_slice(line, 0, pre.len) == pre {
+                    return true
+                }
+            }
+            start = i + 1
+        }
+        i += 1
+    }
+    return false
+}
+
+fn push_ws_tokens(out: List[Str], s: Str) {
+    // sh for 分词同构(IFS 空白裂;语料洁面 m/v 无内白,内白病理登记在案)
+    var i: I32 = 0
+    var start: I32 = -1
+    while i <= s.len {
+        var isWs: Bool = i == s.len
+        if !isWs {
+            var b = byte_at(s, i)
+            isWs = b == 32 || b == 9 || b == 10
+        }
+        if isWs {
+            if start >= 0 {
+                out.push(byte_slice(s, start, i))
+                start = -1
+            }
+        } else {
+            if start < 0 {
+                start = i
+            }
+        }
+        i += 1
+    }
+}
+
+fn ws_pairs(text: Str) -> List[Str] {
+    // sh awk 逐字镜像(:479):member 行(列 0)取名(截至尾内首个 '"');
+    // 其后首个 path 行(缩进可,= 前空格可)取值(贪心 = 最末 `=空格*"` 组之后,
+    // 截至其内首个 '"');pending 跨行保持,member 行覆写,配对即印即清。
+    // 返回扁平 token 表 = sh `for WSE in $WSPATHS` 分词(m 与 v 各自再裂)。
+    var out = List[Str]()
+    var pending = ""
+    var i: I32 = 0
+    var start: I32 = 0
+    while i <= text.len {
+        var isEnd: Bool = i == text.len
+        if isEnd || byte_at(text, i) == 10 {
+            var line = byte_slice(text, start, i)
+            var isMember: Bool = false
+            if line.len >= 8 {
+                if byte_slice(line, 0, 8) == "member \"" {
+                    isMember = true
+                }
+            }
+            if isMember {
+                // sub(/^member "/,"",n) → 尾;sub(/".*$/,"",n) → 尾内首个 '"' 截断
+                var tail = byte_slice(line, 8, line.len)
+                var cut: I32 = -1
+                var q: I32 = 0
+                while q < tail.len {
+                    if byte_at(tail, q) == 34 {
+                        cut = q
+                        break
+                    }
+                    q += 1
+                }
+                if cut >= 0 {
+                    pending = byte_slice(tail, 0, cut)
+                } else {
+                    pending = tail
+                }
+            } else {
+                // ^[[:space:]]*path[[:space:]]*=[[:space:]]*"
+                var pi: I32 = 0
+                while pi < line.len && (byte_at(line, pi) == 32 || byte_at(line, pi) == 9) {
+                    pi += 1
+                }
+                var isPath: Bool = false
+                if pi + 5 <= line.len {
+                    if byte_at(line, pi) == 112 && byte_at(line, pi + 1) == 97 && byte_at(line, pi + 2) == 116 && byte_at(line, pi + 3) == 104 {
+                        var pj = pi + 4
+                        while pj < line.len && (byte_at(line, pj) == 32 || byte_at(line, pj) == 9) {
+                            pj += 1
+                        }
+                        if pj < line.len && byte_at(line, pj) == 61 {
+                            pj += 1
+                            while pj < line.len && (byte_at(line, pj) == 32 || byte_at(line, pj) == 9) {
+                                pj += 1
+                            }
+                            if pj < line.len && byte_at(line, pj) == 34 {
+                                isPath = true
+                            }
+                        }
+                    }
+                }
+                if isPath {
+                    if pending.len > 0 {
+                        // sub(/.*= *"/,"",v) 贪心:最末 `=空格*"` 组(自尾向首扫)
+                        var li: I32 = -1
+                        var qi: I32 = -1
+                        var s2: I32 = line.len - 1
+                        while s2 >= 0 {
+                            if byte_at(line, s2) == 61 {
+                                var j2 = s2 + 1
+                                while j2 < line.len && byte_at(line, j2) == 32 {
+                                    j2 += 1
+                                }
+                                if j2 < line.len && byte_at(line, j2) == 34 {
+                                    li = s2
+                                    qi = j2
+                                    break
+                                }
+                            }
+                            s2 -= 1
+                        }
+                        var v = ""
+                        if li >= 0 {
+                            v = byte_slice(line, qi + 1, line.len)
+                            var c2: I32 = -1
+                            var q2: I32 = 0
+                            while q2 < v.len {
+                                if byte_at(v, q2) == 34 {
+                                    c2 = q2
+                                    break
+                                }
+                                q2 += 1
+                            }
+                            if c2 >= 0 {
+                                v = byte_slice(v, 0, c2)
+                            }
+                        }
+                        push_ws_tokens(out, pending)
+                        push_ws_tokens(out, v)
+                        pending = ""
+                    }
+                }
+            }
+            start = i + 1
+        }
+        i += 1
+    }
+    return out
+}
+
+fn build_proj() -> I32 {
+    // sh cmd_build_proj 项目模式臂(cwd = 用户现场;清单 name 提取 / dep→ctron-dep /
+    // workspace 逐成员自 spawn 递归 / 入口 src/main.ct / 产物 build/<name>+
+    // c_src/*.c 收集链接)。
+    if !fs_exists("Ctron.ctcl") {
+        if fs_exists("Ctron.toml") {
+            return fail2("清单格式已硬切 CTCL(T48):检测到 Ctron.toml——请迁移为 Ctron.ctcl:pkg \{ manifest_version = 1, name = \"…\", version = \"…\" }(设计:docs/superpowers/specs/2026-09-16-config-language-v1.md)")
+        }
+        return fail2("项目模式需 Ctron.ctcl")
+    }
+    var mtext = read_text("Ctron.ctcl")
+    var name = ""
+    match manifest_name(mtext) {
+        Some(v) => {
+            name = v
+        }
+        None => {}
+    }
+    if name.len == 0 {
+        name = basename_sh(env_get("PWD"))
+    }
+    if !fs_exists("src/main.ct") {
+        return fail2("缺入口 src/main.ct")
+    }
+    // T49:清单含 dep → 先过依赖解析(lock 生成/校验),再发射
+    if has_line_prefix(mtext, "dep \"") {
+        var depp = bin_dir() + "/ctron-dep"
+        if fs_exists(depp) {
+            // sh [ -x ] 同判偏差登记:native 无执行位内建,存在即判可执行
+            var argv = List[Str]()
+            argv.push(depp)
+            argv.push("run")
+            argv.push(env_get("PWD") + "/Ctron.ctcl")
+            if blob_rc_cwd(argv, "") != 0 {
+                return 1
+            }
+        } else {
+            eprint("ctron: 清单含 dep 但缺 ctron-dep,跳过 lock 校验(重装工具链解锁)\n")
+        }
+    }
+    // T49:workspace 根清单 → 逐成员子构建(sh `$0 build` 同构 = 自 spawn 于成员目录)。
+    // PWD 面:sh 子壳 `cd -- "$MDIR"` 会把 PWD 导给子进程(其 $PWD/src/main.ct 取
+    // 成员目录);native chdir 不动 env → spawn 前 env_set PWD = norm_join(原PWD,
+    // 成员)(= sh cd 逻辑归一同构),spawn 后还原(子壳隔离同构)。
+    if has_line_prefix(mtext, "workspace") {
+        var toks = ws_pairs(mtext)
+        var selfp = ctron_exe_path()
+        var pwd0 = env_get("PWD")
+        var k: I32 = 0
+        while k < toks.len {
+            var mdir = toks[k]
+            // 成员行 = /bin/echo 直写(fmt 面 echo_line 先例:println 块缓冲会在
+            // 子进程产出之后才落,sh echo 内建逐行即时序破)
+            echo_line("ctron: workspace 成员 " + mdir)
+            var npwd = pwd0
+            if mdir.len > 0 {
+                if byte_at(mdir, 0) == 47 {
+                    npwd = norm_join("", mdir)
+                } else {
+                    npwd = norm_join(pwd0, mdir)
+                }
+            }
+            env_set("PWD", npwd)
+            var argv = List[Str]()
+            argv.push(selfp)
+            argv.push("build")
+            let src = blob_rc_cwd(argv, mdir)
+            env_set("PWD", pwd0)
+            if src != 0 {
+                return 1
+            }
+            k += 1
+        }
+        return 0
+    }
+    fs_mkdir("build")
+    var bin = bin_dir() + "/ctron-emit"
+    var buf: U8[1048576] = [0, 0, 0, 0, 0, 0, 0, 0]
+    capture_zero(buf)
+    let rc = run("", bin, env_get("PWD") + "/src/main.ct", buf)
+    if rc != 0 {
+        return 1
+    }
+    if capture_len(buf) == buf.len {
+        eprint("ctron: 发射输出超捕获容量 " + buf.len.to_string() + " 字节: src/main.ct\n")
+        return 1
+    }
+    fs_write("build/" + name + ".c", capture_str(buf))
+    if !have_cc_probe() {
+        cc_missing_guidance("build/" + name + ".c")
+        return 2
+    }
+    var argv = List[Str]()
+    argv.push(cc_bin())
+    argv.push("-O2")
+    argv.push("-w")
+    argv.push("-pthread")
+    argv.push("build/" + name + ".c")
+    // c_src/*.c 收集(sh glob 同义;list 字节序 = C 序,locale 病理登记在案;
+    // .c 名目录/点首文件 = sh [ -f ]/glob 不含,登记在案)
+    if is_dir_target("c_src") {
+        var names = list("c_src")
+        var q: I32 = 0
+        while q < names.len {
+            var nm = names[q]
+            var nl = nm.len
+            if nl >= 2 {
+                if byte_at(nm, nl - 1) == 99 && byte_at(nm, nl - 2) == 46 {
+                    argv.push("c_src/" + nm)
+                }
+            }
+            q += 1
+        }
+    }
+    argv.push("-o")
+    argv.push("build/" + name)
+    if blob_rc_cwd(argv, "") != 0 {
+        return 2
+    }
+    println("ctron: 已构建 build/" + name)
+    return 0
+}
+
+fn target_registered(t: Str) -> Bool {
+    // sh ct_target_check 注册表(:431-439)
+    if t == "native" { return true }
+    if t == "thumbv7em-none-eabi" { return true }
+    if t == "riscv32imac-unknown-none" { return true }
+    if t == "wasm32-unknown-unknown" { return true }
+    return false
+}
+
 fn main() -> I32 {
     var n: I64 = ctron_prog_args_n()
     // 无参 = 整版 usage + rc 2(sh:[ $# -lt 1 ])
@@ -868,6 +1384,37 @@ fn main() -> I32 {
             return 1
         }
         return 0
+    }
+    if cmd == "build" {
+        // W4 波2 批1:镜像 sh build 臂(:1155-1161)。--target 解析循环(last wins;
+        // env CTRON_TARGET 为底,空值落 native);$1 在场 = 单文件臂(首参恒文件,
+        // 旗标位亦然 = sh 逐字),否则项目模式臂。
+        var target = env_get("CTRON_TARGET")
+        var prevt: Bool = false
+        var ai: I64 = 1
+        while ai < n {
+            var a = ctron_prog_args_at(ai)
+            if prevt {
+                target = a
+                prevt = false
+            } else {
+                if a.len >= 9 && byte_slice(a, 0, 9) == "--target=" {
+                    target = byte_slice(a, 9, a.len)
+                } else {
+                    if a == "--target" {
+                        prevt = true
+                    }
+                }
+            }
+            ai += 1
+        }
+        if target.len == 0 {
+            target = "native"
+        }
+        if n >= 2 {
+            return build_file(ctron_prog_args_at(1), target)
+        }
+        return build_proj()
     }
     // 其余一切名字 = sh 同款未知子命令(stderr + rc 2)
     eprint(unknown_line(cmd))

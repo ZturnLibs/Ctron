@@ -11,6 +11,10 @@
 # 夹具现造现清:-w 双版各写,sh/native 各侧跑前各重建,同路径基防打印路径分叉;
 # -w 例加产物树 diff -r 全树逐字节)。未实现已知名不进语料——sh 有真行为而
 # 原生为占位 rc2(诚实账),波2/3 补臂时同步补语料行。
+# W4 波2 批1:build 双臂(单文件+项目模式)。正例加产物树比对——链接产物
+# Mach-O UUID 字节非确定,树 diff -x 排二进制、二进制改双跑 stdout 行为比对
+# (run_bin2);项目/单文件夹具现造现清,workspace 逐成员自 spawn 递归含成员
+# 产物(m/build/<名>)。缺 cc/缺 ctron-dep 出路面无法 CI 模拟,登记不语料化。
 set -u
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(dirname "$(dirname "$DIR")")
@@ -161,6 +165,115 @@ fx_case "lint 目录无 .ct(rc2)"              lint "$FX/pkg3"
 fx_case "lint 目标不存在(rc2)"              lint "$FX/nope.ct"
 fx_case "lint 缺参(rc2)"                    lint
 fx_case "lint 未知旗标(rc2)"                 lint "$FX/clean.ct" --bogus
+
+# ---- build 臂(W4 波2 批1)----
+# 单文件:夹具 $FX/b 现造现清;正例加产物树比对——链接产物 Mach-O UUID 字节非
+# 确定,树 diff -x 排除二进制、二进制改双跑 stdout 行为比对;<stem>.c 逐字节。
+# wasm 靶委派 ctc.sh(两侧同件;ctc.sh build 内 emit 静音,工具链诊断即全量
+# 输出,逐字同;emit 缓存同哈希,首侧实发次侧命中皆静音,无分叉面)。
+BK="$FX/b"
+mk_bk() {
+    rm -rf "$BK"
+    mkdir -p "$BK"
+    printf 'fn main() {\n    println("bk-ok")\n}\n' > "$BK/hello.ct"
+}
+run_bin2() { # 链接产物双跑(stdout+rc 行为比对;UUID 非确定面的诚实替位)
+    o1=$("$1" 2>&1); b1=$?
+    o2=$("$2" 2>&1); b2=$?
+    if [ "$b1" = "$b2" ] && [ "$o1" = "$o2" ]; then
+        echo "    bin  : $3 双跑一致(rc=$b1)"
+    else
+        echo "    bin  : $3 双跑分歧(sh=[$o1] native=[$o2])"
+        fail=$((fail+1))
+    fi
+}
+bk_case() { # 非产物例(stdout+stderr+rc);BK_CWD 可覆执行 cwd(缺省仓库根)
+    label=$1; shift
+    mk_bk
+    (cd "${BK_CWD:-$ROOT}" && sh "$SHREF" "$@") > "$T/sh.out" 2>&1; r1=$?
+    mk_bk
+    (cd "${BK_CWD:-$ROOT}" && "$NAT" "$@") > "$T/nat.out" 2>&1; r2=$?
+    report "$label" "$r1" "$r2"
+}
+bk_tree_case() { # $1=label $2=二进制名(排除+双跑;BIN_SUB=二进制子目录,缺省树根),其余 = 语料
+    label=$1; binnm=$2; shift 2
+    mk_bk
+    (cd "${BK_CWD:-$ROOT}" && sh "$SHREF" "$@") > "$T/sh.out" 2>&1; r1=$?
+    rm -rf "$T/sh.tree"; cp -R "$BK" "$T/sh.tree"
+    mk_bk
+    (cd "${BK_CWD:-$ROOT}" && "$NAT" "$@") > "$T/nat.out" 2>&1; r2=$?
+    if [ "$r1" = "$r2" ] && cmp -s "$T/sh.out" "$T/nat.out" && diff -r -x "$binnm" "$T/sh.tree" "$BK" > "$T/tree.diff" 2>&1; then
+        pass=$((pass+1)); echo "  ok  : $label(rc=$r2;逐字节+rc+产物树 一致)"
+        run_bin2 "$T/sh.tree${BIN_SUB:+/$BIN_SUB}/$binnm" "$BK${BIN_SUB:+/$BIN_SUB}/$binnm" "$binnm"
+    else
+        fail=$((fail+1))
+        echo "  FAIL: $label(sh_rc=$r1 native_rc=$r2)"
+        diff "$T/sh.out" "$T/nat.out" 2>&1 | sed 's/^/    /' | sed -n '1,10p'
+        sed 's/^/    tree: /' "$T/tree.diff" 2>/dev/null | sed -n '1,10p'
+    fi
+}
+
+# 项目模式:夹具 $FX/pj(cwd 钉夹具目录 = sh 项目模式现场;清单 name 提取 /
+# dep→ctron-dep(lock 落盘入树 diff)/ workspace 逐成员递归全谱)。
+PJ="$FX/pj"
+mk_pj() {
+    rm -rf "$PJ"
+    mkdir -p "$PJ/src" "$PJ/c_src"
+    printf 'pkg {\n    manifest_version = 1\n    name = "myapp"\n    version = "0.1.0"\n}\n' > "$PJ/Ctron.ctcl"
+    printf 'extern "c" fn pj_add2(x: I32) -> I32\n\nfn main() {\n    println("pj-" + pj_add2(2).to_string())\n}\n' > "$PJ/src/main.ct"
+    printf 'int pj_add2(int x) { return x + 20; }\n' > "$PJ/c_src/extra.c"
+}
+prep_pj_noname() { # name 行缺席 → 目录名回退
+    printf 'pkg {\n    manifest_version = 1\n    version = "0.1.0"\n}\n' > "$PJ/Ctron.ctcl"
+}
+prep_pj_dep() { # dep 行 → ctron-dep run(Ctron.lock 落盘入树)
+    printf 'dep "localdep"\n' >> "$PJ/Ctron.ctcl"
+}
+prep_pj_ws() { # workspace 根 → 逐成员子构建(根入口仍必需 = sh 顺序语义)
+    mkdir -p "$PJ/m/src"
+    printf 'workspace\nmember "m"\npath = "m"\n' >> "$PJ/Ctron.ctcl"
+    printf 'pkg {\n    name = "mem"\n}\n' > "$PJ/m/Ctron.ctcl"
+    printf 'fn main() {\n    println("mem-ok")\n}\n' > "$PJ/m/src/main.ct"
+}
+prep_pj_nocl() { rm -f "$PJ/Ctron.ctcl"; }
+prep_noentry()  { rm -rf "$PJ/src"; }
+prep_pj_toml()  { rm -f "$PJ/Ctron.ctcl"; printf 'name = "legacy"\n' > "$PJ/Ctron.toml"; }
+pj_case() { # $1=label $2=形态(out|tree) $3=prep(空串跳过) $4=二进制名,其余 = 语料
+    label=$1; mode=$2; prep=$3; binnm=$4; shift 4
+    mk_pj
+    [ -n "$prep" ] && "$prep"
+    (cd "$PJ" && sh "$SHREF" "$@") > "$T/sh.out" 2>&1; r1=$?
+    [ "$mode" = tree ] && { rm -rf "$T/sh.tree"; cp -R "$PJ" "$T/sh.tree"; }
+    mk_pj
+    [ -n "$prep" ] && "$prep"
+    (cd "$PJ" && "$NAT" "$@") > "$T/nat.out" 2>&1; r2=$?
+    if [ "$r1" = "$r2" ] && cmp -s "$T/sh.out" "$T/nat.out" && { [ "$mode" != tree ] || diff -r -x "${binnm##*/}" "$T/sh.tree" "$PJ" > "$T/tree.diff" 2>&1; }; then
+        pass=$((pass+1)); echo "  ok  : $label(rc=$r2;逐字节+rc$( [ "$mode" = tree ] && echo '+产物树') 一致)"
+        [ "$mode" = tree ] && run_bin2 "$T/sh.tree/$binnm" "$PJ/$binnm" "${binnm##*/}"
+    else
+        fail=$((fail+1))
+        echo "  FAIL: $label(sh_rc=$r1 native_rc=$r2)"
+        diff "$T/sh.out" "$T/nat.out" 2>&1 | sed 's/^/    /' | sed -n '1,10p'
+        sed 's/^/    tree: /' "$T/tree.diff" 2>/dev/null | sed -n '1,10p'
+    fi
+}
+
+echo "== build 臂(W4 波2 批1:单文件+项目模式)=="
+# ---- 单文件 ----
+bk_tree_case "build 单文件正例(产物树+二进制双跑)"  hello build "$BK/hello.ct"
+BK_CWD="$T" bk_tree_case "build 相对路径(cwd 钉 $T)"  hello build fx/b/hello.ct; BK_CWD=""
+bk_case "build --target 未注册(rc2 逐字)"            build "$BK/hello.ct" --target nosuch-tgt
+bk_case "build --target wasm32(委派 ctc.sh,= 形)"   build "$BK/hello.ct" --target=wasm32-unknown-unknown
+bk_case "build --target wasm32(委派 ctc.sh,空格形)"  build "$BK/hello.ct" --target wasm32-unknown-unknown
+bk_case "build 缺席文件(空模块 emit,两侧同形)"       build "$BK/nope.ct"
+# ---- 项目模式 ----
+pj_case "build 项目正例(name 提取+c_src 链接)"       tree ""     build/myapp build
+pj_case "build name 缺席(目录名回退)"                tree prep_pj_noname build/pj build
+pj_case "build dep 行(ctron-dep run+lock 入树)"      tree prep_pj_dep    build/myapp build
+pj_case "build workspace(逐成员自 spawn 递归)"       tree prep_pj_ws     m/build/mem build
+pj_case "build Ctron.toml fail-closed(T48 逐字)"     out prep_pj_toml ""  build
+pj_case "build 缺入口 src/main.ct(rc2)"              out prep_noentry ""  build
+pj_case "build 缺清单(rc2)"                          out prep_pj_nocl "" build
 
 echo "== drv_parity: $pass ok / $fail fail =="
 [ "$fail" -eq 0 ] || exit 1
