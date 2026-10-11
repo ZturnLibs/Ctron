@@ -354,7 +354,8 @@ fn delegate(argv: List[Str]) -> I32 {
 }
 
 // ---- fmt/lint 捕获面(W4 波1 批3;sh `> 临时件` 重定向同构)----
-// 捕获缓冲容量 262144(256KB;sh 临时件无上限——超限截断=异,登记在案)
+// 捕获缓冲容量 262144(256KB;sh 临时件无上限——-w 恰满容量拒写回守卫,
+// --check 超容误报面,登记在案)
 
 // 捕获缓冲清零(decl 位 8×0 literal 复制分支已整容清零,迭代间重清防前文件残尾
 // 串进 NUL 终界扫描——sh `>` 截断重建的逐文件同构)
@@ -481,11 +482,26 @@ fn expand_dir_files(dir: Str) -> List[Str] {
     while i < names.len {
         var nm = names[i]
         if has_ct_suffix(nm) {
-            out.push(dir + "/" + nm)
+            out.push(join_entry(dir, nm))
         }
         i += 1
     }
     return out
+}
+
+// 路径拼合(sh find 同构,批3 评审 Fix 2):只折叠根前缀自身尾 '/'——find 对
+// 根路径尾分隔符不叠加(`find dir/` → `dir/m.ct`,裸根 `/` → `/m.ct`);根前缀
+// 内部 `//` 逐字保留(`find dir//src` → `dir//src/a.ct`,sh FMT_DIR = "$t/src"
+// 串接原样,内部形两侧同为 `//`)。裸 "/" 剥尽 → "/" + 名。
+fn join_entry(dir: Str, nm: Str) -> Str {
+    var d = dir
+    while d.len > 0 && byte_at(d, d.len - 1) == 47 {
+        d = byte_slice(d, 0, d.len - 1)
+    }
+    if d.len == 0 {
+        return "/" + nm
+    }
+    return d + "/" + nm
 }
 
 // fmt/lint 共用:目录 → src 优先否则直下(sh `[ -d "$t/src" ] && DIR=$t/src`)
@@ -697,12 +713,22 @@ fn main() -> I32 {
                     unf += 1
                 }
             } else if w {
-                // sh:异则 cp 写回(产物 = 捕获字节,fs_write 经 Str 逐字节保真),
-                // echo 文件名无条件(未变亦打)
-                if capture_differs(buf, f) {
-                    fs_write(f, capture_str(buf))
+                // 容量截断守卫(批3 评审 Fix 1,数据破坏面):捕获恰满容量 = 真实
+                // 输出可能 ≥ 容量(proc.run 读至 out.n 即止、rc 照回,截断不可辨)
+                // ——写回恐落截断字节,拒写;名行照常(sh -w 无条件 echo 同构),
+                // stderr 登记行 = 账面分歧(sh 全量写回;正解 = 捕获面扩容/流式,
+                // 波2 挂账)。rc 语义不变。
+                if capture_len(buf) == buf.len {
+                    echo_line(f)
+                    eprint("ctron: fmt -w 跳过写回: 输出超捕获容量 " + buf.len.to_string() + " 字节(" + f + ")\n")
+                } else {
+                    // sh:异则 cp 写回(产物 = 捕获字节,fs_write 经 Str 逐字节保真),
+                    // echo 文件名无条件(未变亦打)
+                    if capture_differs(buf, f) {
+                        fs_write(f, capture_str(buf))
+                    }
+                    echo_line(f)
                 }
-                echo_line(f)
             } else {
                 // sh:cat 临时件(裸 print,不加行——捕获物自带换行)
                 print(capture_str(buf))

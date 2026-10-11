@@ -141,6 +141,8 @@ tree_case "fmt -w 脏(写回+点名+产物树)"      fmt -w "$FX/dirty.ct"
 tree_case "fmt -w 干净(未变亦点名,零写)"     fmt -w "$FX/clean.ct"
 fx_case "fmt 默认打印脏(格式化文直出)"       fmt "$FX/dirty.ct"
 fx_case "fmt 目录形 --check(src 优先+字节序)" fmt "$FX/pkg1" --check
+fx_case "fmt 尾斜杠目录 --check(根前缀尾/折叠)" fmt "$FX/pkg2/" --check
+fx_case "fmt 尾斜杠 src 形 --check(内部 // 逐字)" fmt "$FX/pkg1/" --check
 fx_case "fmt 平层目录 --check(无 src 直下)"  fmt "$FX/pkg2" --check
 fx_case "fmt 空 .ct 目录 --check(静默 rc0)"  fmt "$FX/pkg3" --check
 fx_case "fmt 目录形默认(拼接直出 rc0)"       fmt "$FX/pkg1"
