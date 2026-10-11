@@ -115,7 +115,7 @@ task "smoke" {
   1. 用户态**写 OS 环境变量**(`env_set`;现 env 只有读——子进程注入必需);
   2. **递归目录遍历**(`fs` 内建有 `read_dir` 无 walk;测试发现/缓存清理必需);
   3. `lib/proc` **门面补齐**(`ctron_proc_run_argv_p` 无门面转发;argv + rc + 输出捕获直取必需)。
-- **CTCL 通用读取面**:std/config.ct 升 L1 最小 API(现硬编码清单注册表):`config_parse(src) -> Result[ValueTree, List[Str]]` + `blocks(名)` + `get_str/get_list`,注册表作参数传入——驱动器据此消费 `ctron.ctcl`,自举线 `ctcl_chk.ct` 镜像同步纪律不变。
+- **CTCL 通用读取面**(2026-10-10 W4 立项修订):驱动器消费 `ctron.ctcl` 改走**驱动器本地 CTCL 读取模块**(消息与 W1 awk 读者逐字对拍——§3.4 预留的「消息一致性归 W4」落点);std/config.ct 升 L1 通用 API 移出驱动器关键路径,降级为配置语言泳道开放项(通用化须背 config.ct + 自举线 ctcl_chk.ct 双镜像同步纪律,爆炸半径大于驱动器本体;反投机律支持目的形消费者先行)。
 - **分批与对拍**:按子命令族分批重写(run/check/doc → build/test/fmt/lint → add/publish/lock/pkg → task/gate/clean);每批验收 = 与 sh 实现**黄金对拍**(同命令同语料,stdout 与 rc 逐字节一致)+ 现有门全绿。
 - **垫片翻转**:全部子命令对拍齐后,根 `ctron` 脚本头部改一行——原生件在场即 `exec`,缺件回落 sh 实现;install 布局由 Makefile 源码线增 `bin/ctron`(prebuilt 家族加一员)。
 - **自举梯**:`selfhosted/bootstrap.sh` 阶梯增加驱动器一级(与编译器同梯);`ctron gate` 收编后,编译器仓库自身成为 dogfood 首例。
