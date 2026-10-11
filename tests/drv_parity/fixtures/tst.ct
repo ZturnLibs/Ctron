@@ -1,0 +1,6 @@
+// drv_parity 夹具:test 块面(W4 波1 批2)——无 main,test 块走执行;
+// 委派 test 臂 = ctron-cc run(sh :789-792),本夹具钉 stdout(tst-ok)+ rc 0。
+test "parity smoke" {
+    println("tst-ok")
+    assert_eq(1 + 1, 2)
+}

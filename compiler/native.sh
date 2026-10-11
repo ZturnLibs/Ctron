@@ -112,6 +112,7 @@ if [ -f "$DIR/driver/src/main.ct" ]; then
     DRV_SED_B='if (argc >= 3 && strcmp(argv\[1\], "run") == 0) { ctron_cli_input = argv\[2\]; ctron_argv_off = 3; }'
     sed -e "s|$DRV_SED_A||" -e "s|$DRV_SED_B||" "$DRV_C" > "$DRV_C.s"
     mv "$DRV_C.s" "$DRV_C"
-    cc -O2 -w -o "$BIN/ctron" "$DRV_C"
+    # W4 波1 批2:委派族 use proc → 垫片同链(纯 emit 单文件缺 ctron_proc_run_argv_rc 符号)
+    cc -O2 -w -o "$BIN/ctron" "$DRV_C" "$ROOT/lib/proc/c_src/ctron_proc.c"
     echo "native: bin/ctron(用户驱动器,W4 波1)← $(wc -l < "$DIR/driver/src/main.ct") 行 Ctron"
 fi

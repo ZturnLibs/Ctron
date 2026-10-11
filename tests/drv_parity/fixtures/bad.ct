@@ -1,0 +1,6 @@
+// drv_parity 夹具:编译错例(W4 波1 批2)——run/check 双用;
+// 断言两实现(spawn 同一 ctron-cc/chk)诊断逐字节全等 + rc 全等(透传即逐字)。
+fn main() -> I32 {
+    let x: I32 = "oops"
+    return 0
+}

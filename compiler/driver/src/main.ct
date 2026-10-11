@@ -1,15 +1,22 @@
-// main.ct —— ctron 原生用户驱动器(W4 波1 批1:骨架)
+// main.ct —— ctron 原生用户驱动器(W4 波1:骨架批1 + 委派族批2)
 // sh 参考 = 仓库根 ctron 脚本:usage :231-275 / help_cmd :281-313 / dispatch :1120-1548。
 // 帮助文本逐字复刻(逐行 println,ctgrep 范式;生成自 sh 原文,非手抄)——
 // 字节级对拍门 = tests/drv_parity/run.sh(stdout+stderr 合流 diff + rc 对比)。
 // 波1 行为面:--version|-V / --help|-h / help [cmd] / <cmd> --help 拦截(16 名)+
-// 未知子命令 rc2;run/check/doc/test/fmt/lint 已登记占位(真逻辑波2/3,补臂同步补语料)。
+// 未知子命令 rc2;批2 委派族 run/check/doc/test(镜像 sh :1133-1150/:1162-1165):
+// 组 argv → W3 proc.run_argv_rc 直 exec 兄弟件 → rc 直通。cwd 空串 = 继承
+// (ctron_proc.c chdir 分支 `cwd[0] != 0 &&` 显式跳过——读码钉定,= sh exec 语义);
+// stdout/stderr/stdin/env 全继承 → 编译器诊断透传即逐字。fmt/lint 仍占位(批3)。
 // 定位:ctron_exe_path() → bin = 其父,仓库根 = bin 父的父(compiler/bin → compiler → 根);
 // VERSION 在场 → "ctron <内容>"(镜像 sh $(cat) 尾换行剥离),缺席 → "ctron dev"。
 // 注:native.sh 壳层剥除发射模板的 C main --version 劫持臂(模板版串≠sh 语义),
 //     本文件的 --version 臂才可达——详见 native.sh 驱动器段注释。
 // 参数面:env.args() 无发射翻译(解释口径专属)——裸执行取参走 ctron_prog_args_n/at
 //     extern 底座(argv_off=1:args[0]=首用户参;eval_call.ct:33-36 前例,模板 T26 同源)。
+// 委派族进程面:use proc(W3)——run_argv_rc(rc 型,stdout/stderr 直通父进程)+ argv_to_blob
+//     (argv 列表 → NUL 块);垫片 ctron_proc.c 由 native.sh 驱动链行同链(纯 emit 单文件缺符号)。
+
+use proc.{run_argv_rc, argv_to_blob}
 
 fn usage() {
     println("ctron —— Ctron 工具链驱动")
@@ -215,11 +222,8 @@ fn is_known16(c: Str) -> Bool {
 }
 
 fn is_w1_delegate(c: Str) -> Bool {
-    // 波1 已登记占位族(真逻辑波2/3 落地;补臂同步补语料,诚实账)
-    if c == "run" { return true }
-    if c == "check" { return true }
-    if c == "doc" { return true }
-    if c == "test" { return true }
+    // 波1 已登记占位族(真逻辑批3 落地;补臂同步补语料,诚实账)
+    // ——批2 已落委派族 run/check/doc/test(见 main 分派臂),余 fmt/lint 待批3
     if c == "fmt" { return true }
     if c == "lint" { return true }
     return false
@@ -227,6 +231,76 @@ fn is_w1_delegate(c: Str) -> Bool {
 
 extern "c" fn ctron_prog_args_n() -> I64
 extern "c" fn ctron_prog_args_at(i: I64) -> Str
+
+fn bin_dir() -> Str {
+    // 兄弟件目录 = exe 父(version_line 同源;安装/开发两布局原生件恒与 ctron-cc 同目录,
+    // sh 版的 dev 回落逻辑在此不需要)
+    return dir_of(ctron_exe_path())
+}
+
+fn has_slash(p: Str) -> Bool {
+    var i: I32 = 0
+    while i < p.len {
+        if byte_at(p, i) == 47 {
+            return true
+        }
+        i += 1
+    }
+    return false
+}
+
+fn absolutize(p: Str) -> Str {
+    // 逐字镜像 sh 绝对化:IN=$(CDPATH= cd -- "$(dirname -- "$1")" && pwd)/$(basename -- "$1")
+    // (ctron:766-768/:773-775)。sh pwd = 逻辑路径($PWD 同源);此处取导出 PWD 同名同值,
+    // 与 sh cd 的逻辑串接规则一致——含符号链接的 cwd 亦逐字对齐。无 PWD(execve 空环境
+    // 等罕见态)回落原串:sh 该态走 pwd 内建物理路径,仅登记为已知极端偏差。
+    var cut: I32 = -1
+    var i: I32 = 0
+    while i < p.len {
+        if byte_at(p, i) == 47 {
+            cut = i
+        }
+        i += 1
+    }
+    if cut < 0 {
+        // 无 '/':dirname="." → cd . && pwd = PWD → PWD/裸名
+        var pwd0 = env_get("PWD")
+        if pwd0.len == 0 {
+            return p
+        }
+        return pwd0 + "/" + p
+    }
+    var dir = byte_slice(p, 0, cut)
+    var base = byte_slice(p, cut + 1, p.len)
+    if byte_at(p, 0) == 47 {
+        // dirname 绝对:cd+pwd 原样回(常规路径恒等;cut=0 时 dir="/" 拼出 "//base"
+        // = sh 字面串接行为,逐字对齐)
+        return dir + "/" + base
+    }
+    var pwd = env_get("PWD")
+    if pwd.len == 0 {
+        return p
+    }
+    return pwd + "/" + dir + "/" + base
+}
+
+fn miss_line(cmd: Str) -> Str {
+    // sh die2(:26)= `echo "ctron: $*" >&2; exit 2` —— 四臂缺参逐字(rc2 由调用方回)
+    return "ctron: " + cmd + " 需要输入文件\n"
+}
+
+fn delegate(argv: List[Str]) -> I32 {
+    // 委派核:argv → NUL 块 → W3 run_argv_rc(cwd 空串 = 继承——ctron_proc.c chdir
+    // 分支 `cwd[0] != 0 &&` 显式跳过;stdin_path 空串 = 继承;stdout/stderr 不捕 =
+    // 直通父进程)。整体 = sh exec 语义:子进程产出即驱动器产出,rc 直通 exit。
+    var blob: U8[4096] = [0, 0, 0, 0, 0, 0, 0, 0]
+    let n = argv_to_blob(argv, blob)
+    if n < 0 {
+        // argv 超 4KB(路径极端;sh 无此上限)——按 exec 失败口径回 127,不产出半截 argv
+        return 127
+    }
+    return run_argv_rc("", blob, n.as[I64](), "")
+}
 
 fn main() -> I32 {
     var n: I64 = ctron_prog_args_n()
@@ -278,6 +352,73 @@ fn main() -> I32 {
     if cmd == "-V" {
         println(version_line())
         return 0
+    }
+    // 委派族(波1 批2,镜像 sh :1133-1150/:1162-1165):缺参 rc2 逐字 → 组 argv →
+    // 直 exec 兄弟件 → rc 直通。stdout/stderr/stdin/env/cwd 全继承 = sh exec 语义,
+    // 编译器诊断透传即逐字(对拍语料含编译错例钉死)。
+    if cmd == "run" {
+        if n < 2 {
+            eprint(miss_line(cmd))
+            return 2
+        }
+        var argv = List[Str]()
+        argv.push(bin_dir() + "/ctron-cc")
+        argv.push("run")
+        argv.push(ctron_prog_args_at(1))
+        // sh run 臂 $1 之外不透传(exec "$BIN/ctron-cc" run "$1"——多余参静默丢弃)
+        return delegate(argv)
+    }
+    if cmd == "check" {
+        if n < 2 {
+            eprint(miss_line(cmd))
+            return 2
+        }
+        var argv = List[Str]()
+        argv.push(bin_dir() + "/ctron-chk")
+        argv.push("run")
+        argv.push(absolutize(ctron_prog_args_at(1)))
+        // $1 绝对化后其余参原样透传(sh :766-768;旗标次序/取值均不解析)
+        var i: I64 = 2
+        while i < n {
+            argv.push(ctron_prog_args_at(i))
+            i += 1
+        }
+        return delegate(argv)
+    }
+    if cmd == "doc" {
+        if n < 2 {
+            eprint(miss_line(cmd))
+            return 2
+        }
+        var a1 = ctron_prog_args_at(1)
+        // sh :770-778 case */*:含 '/'(路径形)→ 绝对化;裸名(std.<模块>、cwd 相对
+        // 文件名)→ 原样透传,由 ctron-doc 四级 std 根/cwd 解析
+        var target = a1
+        if has_slash(a1) {
+            target = absolutize(a1)
+        }
+        var argv = List[Str]()
+        argv.push(bin_dir() + "/ctron-doc")
+        argv.push("run")
+        argv.push(target)
+        var j: I64 = 2
+        while j < n {
+            argv.push(ctron_prog_args_at(j))
+            j += 1
+        }
+        return delegate(argv)
+    }
+    if cmd == "test" {
+        if n < 2 {
+            eprint(miss_line(cmd))
+            return 2
+        }
+        var argv = List[Str]()
+        argv.push(bin_dir() + "/ctron-cc")
+        argv.push("run")
+        argv.push(ctron_prog_args_at(1))
+        // ≡ run(sh :789-792 同为 exec ctron-cc run "$1";仅缺参报文异)
+        return delegate(argv)
     }
     // 波1 占位族:与未知名同款 rc2(sh 对已知名有真行为,对拍语料不含未实现臂)
     if is_w1_delegate(cmd) {
