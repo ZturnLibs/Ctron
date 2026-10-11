@@ -783,6 +783,43 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 ty = ct_typeof(st[4], env, file)
             }
             if ty.len >= 3 && byte_slice(ty, 0, 1) == "a" {
+                // G1-T8(W3):Repeat let 初值位——零字面量块特判 memset(F25 正解,
+                // 巨型全零字面量的 AST 膨胀自此断根);否则首块展开 + 取模复制循环
+                if st[4][0] == "Repeat" {
+                    var rp = st[4]
+                    var alr = rp[1]
+                    var n0r: I64 = (alr.len - 1).as[I64]()
+                    var ntr = a_count(ty)
+                    var ecc = a_elem(ty)
+                    var allzero = true
+                    var zi: I32 = 1
+                    while zi < alr.len {
+                        if or2(alr[zi][0] != "Int", alr[zi][1] != "0") {
+                            allzero = false
+                        }
+                        zi += 1
+                    }
+                    if allzero && n0r == 1 {
+                        eln(ct_ctype(ecc) + " t_" + pat[1] + "[" + ntr + "];", env)
+                        eln("memset(t_" + pat[1] + ", 0, sizeof(t_" + pat[1] + "));", env)
+                    } else {
+                        var accr = ""
+                        var jr: I32 = 1
+                        while jr < alr.len {
+                            if jr > 1 { accr = accr + ", " }
+                            if alr[jr][0] == "ArrLit" {
+                                accr = accr + ct_arr_lit_braces(alr[jr], env, file)
+                            } else {
+                                accr = accr + ct_expr(alr[jr], env, file)
+                            }
+                            jr += 1
+                        }
+                        eln(ct_ctype(ecc) + " t_" + pat[1] + "[" + ntr + "] = \{" + accr + "};", env)
+                        eln("\{ long long _ri = " + n0r.to_string() + "; while (_ri < (long long)(" + ntr + ")) \{ t_" + pat[1] + "[_ri] = t_" + pat[1] + "[_ri % " + n0r.to_string() + "]; _ri += 1; } }", env)
+                    }
+                    eln("if (ct_frn.pn < 32) \{ ct_frn.pool[ct_frn.pn].addr = (void**)&t_" + pat[1] + "; ct_frn.pool[ct_frn.pn].kind = 1; ct_frn.pool[ct_frn.pn].sz = sizeof(" + ct_ctype(ecc) + "[" + ntr + "]); ct_frn.pn += 1; } else \{ ct_frn.ovf = 1; }", env)
+                    return env_bind(env, pat[1], ty)
+                }
                 // FB-8 返回面:T[N] let 收 a 码表达式(调用返 elem*)→ 声明+memcpy
                 //(值收自存储;旧误走 ArrLit 访问把 Args 当元素 → Args@0)
                 if st[4][0] != "ArrLit" {

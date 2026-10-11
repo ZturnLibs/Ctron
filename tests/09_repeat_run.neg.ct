@@ -1,0 +1,6 @@
+//@ fail: E2010
+fn main() {
+    var n: I32 = 4
+    var t: I32[8] = [0] ** n
+    let _ = t
+}

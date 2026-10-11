@@ -289,6 +289,55 @@ fn lit_fit_gate(expk: Str, e: List[Str], ln: Str, diags: List[Str]) {
     diag2(diags, "E2040", ln, expk, lit[1])
 }
 
+// G1-T8(W2/W3):定长数组注解 × init 形状门——ArrLit 长度一致(短字面量裂缝
+// 1009 三连的 ① 号钉,裁决 4=E2010 系)+ Repeat 计数编译期/长度相乘一致。
+// v1 计数限整数字面量(const 名随 W4);负计数/运行时计数/长度不符各钉。
+fn arr_fit_dec(t: Str) -> I64 {
+    var v: I64 = 0
+    var k: I32 = 0
+    while k < t.len {
+        v = v * 10 + (byte_at(t, k) - 48).as[I64]()
+        k += 1
+    }
+    return v
+}
+
+fn arr_fit_gate(ann: List[Str], e: List[Str], ln: Str, diags: List[Str]) {
+    if ann.len < 3 || !seq2(ann[0], "ArrayT") {
+        return
+    }
+    if ann[2].len < 2 || !seq2(ann[2][0], "Int") {
+        return
+    }
+    var total: I64 = arr_fit_dec(ann[2][1])
+    if seq2(e[0], "ArrLit") {
+        var n0: I64 = (e.len - 1).as[I64]()
+        if n0 != total {
+            diag2(diags, "E2010.arrfit", ln, total.to_string(), n0.to_string())
+        }
+        return
+    }
+    if seq2(e[0], "Repeat") {
+        if e[2].len < 2 || !seq2(e[2][0], "Int") {
+            diag0(diags, "E2010.runcount", ln)
+            return
+        }
+        var rc: I64 = arr_fit_dec(e[2][1])
+        var n0: I64 = 0
+        if e[1].len > 1 && seq2(e[1][0], "ArrLit") {
+            n0 = (e[1].len - 1).as[I64]()
+        }
+        if rc < 0 {
+            diag0(diags, "E2010.repneg", ln)
+            return
+        }
+        if n0 * rc != total {
+            diag2(diags, "E2010.arrfit", ln, total.to_string(), (n0 * rc).to_string())
+        }
+        return
+    }
+}
+
 fn compat(exp: Str, act: Str, e: List[Str], file: List[Str], tc: List[Str]) -> Bool {
     if exp.len == 0 {
         return true
@@ -870,6 +919,12 @@ fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[
         }
         return
     }
+    if t == "Repeat" {
+        // G1-T8(W2):repeat 下钻 elem+count
+        tce(file, e[1], tc, loc, envT, retK, diags)
+        tce(file, e[2], tc, loc, envT, retK, diags)
+        return
+    }
     if t == "BlockExpr" {
         tcb(file, e[1], tc, loc, envT, retK, diags)
         return
@@ -986,6 +1041,7 @@ fn tcb(file: List[Str], b: List[Str], tc: List[Str], loc: List[Str], envT: List[
                     diag2(diags, "E2010.let", nline(s), ty_kind(ann), act)
                 }
                 lit_fit_gate(ty_kind(ann), s[4], nline(s), diags)
+                arr_fit_gate(ann, s[4], nline(s), diags)
                 // struct 泛型注解实例化点 bound 核对(§3.9.2;调用点
                 // check_tpar_bounds 同构,复用 bound_sat 结构化谓词)
                 var abk = ann[0]

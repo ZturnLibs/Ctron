@@ -414,6 +414,7 @@ static int lex_punct(lexer* lx, size_t start, uint32_t line, uint32_t col, ctron
     else if (TWO('-', '%')) { k = TOK_WRAP_MINUS; ntake = 2; }
     else if (TWO('+', '=')) { k = TOK_PLUS_EQ; ntake = 2; }
     else if (TWO('-', '=')) { k = TOK_MINUS_EQ; ntake = 2; }
+    else if (TWO('*', '*')) { k = TOK_POW; ntake = 2; } /* G1-T8 */
     else if (TWO('*', '=')) { k = TOK_STAR_EQ; ntake = 2; }
     else if (TWO('/', '=')) { k = TOK_SLASH_EQ; ntake = 2; }
     else if (TWO('%', '=')) { k = TOK_PERCENT_EQ; ntake = 2; }

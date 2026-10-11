@@ -1,0 +1,26 @@
+// 09_repeat.ct —— repeat 字面量 `[v] ** N`(G1-T8 W1–W3;1009 裁决拼写)
+// 语义承诺:elem 块一次物化 N 份;计数编译期整数;零块特判 memset(发射面)
+test "repeat scalar" {
+    var t: I32[8] = [3] ** 8
+    assert_eq(t[0], 3)
+    assert_eq(t[7], 3)
+}
+
+test "repeat block" {
+    var b: I32[6] = [1, 2] ** 3
+    assert_eq(b[0], 1)
+    assert_eq(b[1], 2)
+    assert_eq(b[4], 1)
+    assert_eq(b[5], 2)
+}
+
+test "repeat zero 4096" {
+    var z: U8[4096] = [0] ** 4096
+    assert_eq(z[0], 0)
+    assert_eq(z[4095], 0)
+}
+
+test "repeat count one" {
+    var o: I32[1] = [7] ** 1
+    assert_eq(o[0], 7)
+}

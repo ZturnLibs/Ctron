@@ -333,6 +333,7 @@ static int expr_may_alloc(const cfile* f, const cdecl* fn, cexpr* e, estack* st)
     }
     case EX_UNARY: return expr_may_alloc(f, fn, e->ux, st);
     case EX_BINARY: return expr_may_alloc(f, fn, e->lhs, st) || expr_may_alloc(f, fn, e->rhs, st);
+    case EX_REPEAT: return expr_may_alloc(f, fn, e->lhs, st); /* G1-T8 */
     case EX_RANGE: return expr_may_alloc(f, fn, e->from, st) || expr_may_alloc(f, fn, e->to, st);
     case EX_CALL:
         if (call_target_is_alloc(f, e->callee, st)) return 1;
@@ -531,6 +532,7 @@ static cty* derive_type(ctx* c, cexpr* e) {
             return derive_type(c, e->lhs); // 算术沿左操作数
         }
     }
+    case EX_REPEAT: /* G1-T8:型别由注解期望驱动(镜像自举:注解位统管) */ return NULL;
     case EX_TRY: return mk_named(c->k->arena, "Option", NULL, 0);
     default: return NULL;
     }
@@ -702,6 +704,7 @@ static void cap_walk(capset* cs, cexpr* e) {
         return;
     case EX_UNARY: cap_walk(cs, e->ux); return;
     case EX_BINARY: cap_walk(cs, e->lhs); cap_walk(cs, e->rhs); return;
+    case EX_REPEAT: cap_walk(cs, e->lhs); cap_walk(cs, e->rhs); return; /* G1-T8 */
     case EX_RANGE: cap_walk(cs, e->from); cap_walk(cs, e->to); return;
     case EX_CALL:
         cap_walk(cs, e->callee);
@@ -1073,6 +1076,34 @@ static void check_block(ctx* c, cblock* b) {
                                 hn2 = head_name(derive_type(c, st->e));
                             if (hn2 && strcmp(hn2, "Str") == 0)
                                 diag(c->k, "E2010", "类型不匹配:期望 String,实得 %s", hn2);
+                        }
+                    }
+                    /* G1-T8(W2/W3 镜像):定长数组注解 × init 形状——ArrLit 长度一致/
+                     * Repeat 计数编译期+相乘一致(bootstrap arr_fit_gate 同构) */
+                    if (st->ty && st->ty->kind == TY_ARRAY && st->ty->size && st->e) {
+                        long long total = -1;
+                        if (st->ty->size->kind == EX_INT && st->ty->size->text)
+                            total = atoll(st->ty->size->text);
+                        if (total >= 0) {
+                            if (st->e->kind == EX_ARRAY) {
+                                if ((long long)st->e->nelems != total)
+                                    diag(c->k, "E2010", "数组字面量长度不符:期望 %lld,实得 %zu",
+                                         total, st->e->nelems);
+                            } else if (st->e->kind == EX_REPEAT) {
+                                cexpr* cnt = st->e->rhs;
+                                if (!cnt || cnt->kind != EX_INT || !cnt->text) {
+                                    diag(c->k, "E2010", "repeat 计数须编译期整数字面量(v1)");
+                                } else {
+                                    long long rc = atoll(cnt->text);
+                                    long long n0 = (st->e->lhs && st->e->lhs->kind == EX_ARRAY)
+                                        ? (long long)st->e->lhs->nelems : 1;
+                                    if (rc < 0)
+                                        diag(c->k, "E2010", "repeat 计数须非负");
+                                    else if (n0 * rc != total)
+                                        diag(c->k, "E2010", "数组字面量长度不符:期望 %lld,实得 %lld",
+                                             total, n0 * rc);
+                                }
+                            }
                         }
                     }
                 }

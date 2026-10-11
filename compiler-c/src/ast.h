@@ -62,6 +62,7 @@ typedef enum {
     EX_UNARY, EX_BINARY, EX_RANGE,
     EX_CALL, EX_INDEX, EX_MEMBER,
     EX_TYPEARGS,        // expr[Type, ...]
+    EX_REPEAT,          // G1-T8:[elem] ** count(元素/计数两槽)
     EX_TRY,
     EX_CLOSURE,
     EX_SCOPE,           // scope { |s| ... }

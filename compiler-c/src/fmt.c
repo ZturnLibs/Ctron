@@ -87,6 +87,7 @@ static const char* tok_text(ctron_tok_kind k) {
     case TOK_PLUS: return "+";
     case TOK_MINUS: return "-";
     case TOK_STAR: return "*";
+    case TOK_POW: return "**"; /* G1-T8 */
     case TOK_SLASH: return "/";
     case TOK_PERCENT: return "%";
     case TOK_WRAP_PLUS: return "+%";

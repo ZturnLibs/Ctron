@@ -394,6 +394,36 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> Flow {
         }
         return e4("k", env5, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(tp) }, out5)
     }
+    if t == "Repeat" {
+        // G1-T8(W2):[elem] ** N —— elem 一次求值 + 块物化展开(零逐元素 eval:
+        // comptime 步数预算 E6010 的硬前置;count 限 Int 字面量 v1,sem 已门)
+        var erp = eval_expr(file, env, out, e[1])
+        if erp.kind != "k" {
+            return erp
+        }
+        var env2r = erp.env
+        var out2r = erp.out
+        var crp = eval_expr(file, env2r, out2r, e[2])
+        if crp.kind != "k" {
+            return crp
+        }
+        var nr9 = crp.v.iv
+        if nr9 < 0 {
+            panic("repeat 负计数")
+        }
+        var arr9 = List[Str]()
+        arr9.push("A")
+        var k9: I64 = 0
+        while k9 < nr9 {
+            var j9: I32 = 1
+            while j9 < cx_of(erp.v).len {
+                arr9.push(cx_of(erp.v)[j9])
+                j9 += 1
+            }
+            k9 += 1
+        }
+        return e4("k", env2r, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(arr9) }, out2r)
+    }
     if t == "ArrLit" {
         var arr = List[Str]()
         arr.push("A")

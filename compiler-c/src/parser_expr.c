@@ -281,6 +281,15 @@ cexpr* parse_additive(cparser* p, int allow_struct) {
 }
 cexpr* parse_multiplicative(cparser* p, int allow_struct) {
     cexpr* lhs = parse_unary(p, allow_struct);
+    /* G1-T8(W1):** repeat 后缀(非结合;专节点镜像自举 Repeat [elem,count]) */
+    if (peek_k(p) == TOK_POW) {
+        bump_tok(p);
+        cexpr* rhs = parse_unary(p, allow_struct);
+        cexpr* r = mk_expr(p, EX_REPEAT);
+        r->lhs = lhs;
+        r->rhs = rhs;
+        lhs = r;
+    }
     for (;;) {
         cbinop op;
         switch (peek_k(p)) {

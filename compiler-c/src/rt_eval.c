@@ -606,6 +606,21 @@ val eval_expr(rt* R, cexpr* e) {
         for (size_t i = 0; i < e->nelems; i++) arr[i] = eval_expr(R, e->elems[i]);
         return v_arr(arr, e->nelems);
     }
+    case EX_REPEAT: {
+        /* G1-T8(W2):[elem] ** count —— elem 一次求值 + 块物化(零逐元素 eval;
+         * count 限编译期字面量,bootstrap sem 已门)。负计数响亮。 */
+        val elemv = eval_expr(R, e->lhs);
+        val cntv = eval_expr(R, e->rhs);
+        if (cntv.k != V_INT || cntv.i < 0) rt_abort(R, RT_ERROR, "repeat 计数须非负编译期整数");
+        if (elemv.k != V_ARR) rt_abort(R, RT_ERROR, "repeat 元素须数组字面量");
+        size_t n = (size_t)cntv.i * elemv.nitems;
+        val* arr = (val*)ctron_arena_alloc(R->a, (n ? n : 1) * sizeof(val));
+        size_t w = 0;
+        for (size_t k = 0; k < (size_t)cntv.i; k++)
+            for (size_t j = 0; j < elemv.nitems; j++)
+                arr[w++] = elemv.items[j];
+        return v_arr(arr, w);
+    }
     case EX_STRUCT: {
         if (e->npath == 0) rt_abort(R, RT_ERROR, "构造缺少类型名");
         const char* tn = e->path[0];
