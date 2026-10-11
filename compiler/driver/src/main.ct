@@ -249,11 +249,60 @@ fn has_slash(p: Str) -> Bool {
     return false
 }
 
+fn norm_join(pwd: Str, dir: Str) -> Str {
+    // 逻辑归一化 = sh `cd && pwd` 同构(评审 Important 修复):pwd/dir 串接后按 '/'
+    // 拆件——"." 剔除、".." 对已攒件弹栈(根守卫:根上 ".." 停留,POSIX root/..=root)、
+    // 空件("//")折叠;重建恒以单 '/' 起头,空栈(根)回 "/"。basename 由调用方在其后
+    // 追加,不经归一(sh 亦在 pwd 输出之后拼 basename,逐字同构)。
+    // 注:弹栈以"重建去尾"实现——List.pop 在发射口径缺 t_pop 运行时符号(实测
+    // native.sh 链响);List 下标读 + push 为已证可发射面(tests/proc 前例)。
+    var whole = pwd + "/" + dir
+    var comps: List[Str] = List[Str]()
+    var start: I32 = 0
+    var i: I32 = 0
+    while i <= whole.len {
+        if i == whole.len || byte_at(whole, i) == 47 {
+            if i > start {
+                var c = byte_slice(whole, start, i)
+                if c == ".." {
+                    if comps.len > 0 {
+                        // 重建去尾(无 pop 的弹栈;根上 ".." 停留 = 根守卫)
+                        var kept: List[Str] = List[Str]()
+                        var q: I32 = 0
+                        while q < comps.len - 1 {
+                            kept.push(comps[q])
+                            q += 1
+                        }
+                        comps = kept
+                    }
+                } else {
+                    if c != "." {
+                        comps.push(c)
+                    }
+                }
+            }
+            start = i + 1
+        }
+        i += 1
+    }
+    if comps.len == 0 {
+        return "/"
+    }
+    var out = ""
+    var k: I32 = 0
+    while k < comps.len {
+        out = out + "/" + comps[k]
+        k += 1
+    }
+    return out
+}
+
 fn absolutize(p: Str) -> Str {
     // 逐字镜像 sh 绝对化:IN=$(CDPATH= cd -- "$(dirname -- "$1")" && pwd)/$(basename -- "$1")
-    // (ctron:766-768/:773-775)。sh pwd = 逻辑路径($PWD 同源);此处取导出 PWD 同名同值,
-    // 与 sh cd 的逻辑串接规则一致——含符号链接的 cwd 亦逐字对齐。无 PWD(execve 空环境
-    // 等罕见态)回落原串:sh 该态走 pwd 内建物理路径,仅登记为已知极端偏差。
+    // (ctron:766-768/:773-775)。sh pwd = 逻辑路径($PWD 同源),cd 对目标串做逻辑归一
+    // (norm_join 同构,含 ".." 弹栈/"." 剔除/"//" 折叠);basename 后拼不经归一。
+    // 已知在案偏差:dirname 不存在时 sh 泄 cd 诊断行且 IN 落 "/base"(见任务报告
+    // 已知分歧账),native 不模拟。
     var cut: I32 = -1
     var i: I32 = 0
     while i < p.len {
@@ -263,7 +312,7 @@ fn absolutize(p: Str) -> Str {
         i += 1
     }
     if cut < 0 {
-        // 无 '/':dirname="." → cd . && pwd = PWD → PWD/裸名
+        // 无 '/':dirname="." → cd . && pwd = PWD(已规范态)→ PWD/裸名
         var pwd0 = env_get("PWD")
         if pwd0.len == 0 {
             return p
@@ -273,15 +322,15 @@ fn absolutize(p: Str) -> Str {
     var dir = byte_slice(p, 0, cut)
     var base = byte_slice(p, cut + 1, p.len)
     if byte_at(p, 0) == 47 {
-        // dirname 绝对:cd+pwd 原样回(常规路径恒等;cut=0 时 dir="/" 拼出 "//base"
-        // = sh 字面串接行为,逐字对齐)
-        return dir + "/" + base
+        // dirname 绝对:无需 PWD(cd 归一只作用于 dir 串自身,根起天然含根守卫);
+        // cut=0(dir="/")归一仍得 "/" → 拼 "//base" = sh 字面串接行为(逐字对齐)
+        return norm_join("", dir) + "/" + base
     }
     var pwd = env_get("PWD")
     if pwd.len == 0 {
         return p
     }
-    return pwd + "/" + dir + "/" + base
+    return norm_join(pwd, dir) + "/" + base
 }
 
 fn miss_line(cmd: Str) -> Str {

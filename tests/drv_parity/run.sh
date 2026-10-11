@@ -76,14 +76,15 @@ run_case "check hello.ct(绝对化)"        check "$FIX/hello.ct"
 run_case "check bad.ct(绝对化+诊断透传)"  check "$FIX/bad.ct"
 run_case "check 裸名(cwd 绝对化)"         check hello.ct
 run_case "check --format=json 透传"       check "$FIX/hello.ct" --format=json
+run_case "check ..路径 json(归一判别)"     check tests/../tests/drv_parity/fixtures/bad.ct --format=json
 run_case "doc 路径形(绝对化分支)"          doc "$FIX/hello.ct"
 run_case "doc std.json(裸名 std 透传)"   doc std.json
 run_case "test tst.ct(test 块面)"        test "$FIX/tst.ct"
 run_case "check(缺参 rc2)"              check
 run_case "doc(缺参 rc2)"                doc
 run_case "test(缺参 rc2)"               test
-# 注:裸 `run`(缺参)语料行按批1 已知偏差账纪律暂缓登记(账面见 task-w4-1-report
-# 语料账;实现面已同款落地,翻转待对拍全谱后一并补行)。
+run_case "run(缺参 rc2)"                run
+# 注:裸 run 缺参行初批按批1 已知偏差账纪律暂缓,批2 评审 sanction 入册(账销)。
 # ---- 无参(usage rc 2)----
 sh "$SHREF" > "$T/sh.out" 2>&1; r1=$?
 "$NAT" > "$T/nat.out" 2>&1; r2=$?
