@@ -1872,3 +1872,13 @@ expect() recv 接收者 elem 码擦除不可恢复=G3 一并治。
 **F25 全域关闭**(局部 memset 特判+const 位静态聚合;字面量膨胀根因=巨型零字面量 AST,双面断根)。
 挂账仅链式 const 引用(const 呼名后续件)与 count const 名=后续小波。**F25 实证:U8[65536]=[0]**65536 前端 peak RSS 75MB(F25 病理形态 3.4-5.8GB,三数量级降;产物 memset,运行 0)**。门:suite neg 39/39·119/120+120/120
 (07a 预存)+ctecho 3/3;pos 夹具 4+neg 3 双宿。
+
+**G3 线程定型批(2026-10-11,计划 2026-10-11-steno-g3-thread-plan.md;W1/W2/W3/W5 落库
+e083d902/23f7089a/a74b8956/b32d79e1)**:W1 scope 退出 join-all(spec §07 兑现,ct_scope 任务链
++走查,已 join 跳过,panic 重抛复用)/W2 sleep_ms·sleep_ns 脱网内建(nanosleep;interp 忙等口径
+文档化)/W3 join_t·recv_t·scope.cancel(pthread timedwait 正典,coro 回落文档化;Mutex with 不响
+应取消=v0 清单;取消风暴双形态)+顺带修 R 码 let 成员调用 init 注解→#elem 直驱线(match Ok
+载荷槽 int32 截断指针根)/W5 parallel.map·reduce 接线真 fork-join(T33 件转正)+半端面实证修通
+(Channel 字段/形参、Sender 注解全通=硬禁裁决翻修通)。门:tests/thread 8/0 双形态+suite
+119/120·120/120+gc 族全绿。**W4 TaskPool 挂账**(池化工作者+入队发射面,独立小批);半端截断
+在册坑销账;新坑入册:`/* */` 非 Ctron 注释(.ct 源=词法垃圾级联炸 main 探测)。
