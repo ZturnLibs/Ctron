@@ -143,6 +143,11 @@ git commit -m "feat(driver): fmt/lint 原生化(W4 波1 批3)——fs.list 薄�
 - **波3**:add/publish/lock(sha256_hex 已在库)/pkg 族(verify/trace/attest/log/seal——trace 的 MemFs 码gen 是最大单件)/bench/new;**垫片翻转**(根 ctron 头部 exec bin/ctron 缺件回落)+install 布局(Makefile prebuilt 家族)+自举梯接线
 - 每波验收不变:drv_parity 语料全谱 + ctron_smoke + 现有全门;翻转后 dev+install 双布局冒烟。
 
-## 执行记录
+## 执行记录(2026-10-10,W4 波1 三批全落库过审)
 
-(执行时逐任务回写。)
+- **批1 `62e626b7`**:驱动器骨架(compiler/driver/src/main.ct 290 行;--version 三态/help 全集逐字/未知 rc2)+native.sh 接线+drv_parity 对拍门(14 语料)入 gate 21→22。**架构发现**:发射模板 C main 劫持 `argv[1]=="--version"`(工具链 git-describe)与 `argv[1]=="run"` 挂载偏移,且 env.args() 无发射翻译——缓解=native.sh 发射后剥双臂(grep -qF 哨兵 fail-loud)+直用 ctron_prog_args_n/at 底座;**正解挂编译器泳道**:发射模板加 raw argv 逃生口(对端冻结期不动 compiler/src)。评审 Approved(剥臂双绊网获证:模板哨兵+语料效应覆盖)。
+- **批2 `8fe7711e` + 复修 `791900ba`**:委派族 run/check/doc/test(run_argv_rc 直 exec;cwd 空串=显式跳 chdir 即继承,码钉 ctron_proc.c:146;check $1 绝对化)。评审活体复现 **absolutize `..` 路径逐字节分歧**(sh cd&&pwd 归一 vs 原生字面拼接)且语料盲 → 复修 norm_join 逻辑归一化(`.`剔/`..`弹栈根守卫/`//`折叠;List.pop 缺 t_pop 发射符号=重建去尾绕,新坑)+判别语料(`..`×json×diagnostics 修前必红)+裸 run 语列入册;native.sh 驱动链行补链 proc 垫片(波3 install 预埋)。复审 Approved(评审自跑多级 `..` 探针全等)。
+- **批3 `1bdf9e0b` + 复修 `5d2f9963`**:fmt/lint 原生化(fs.list 薄壳 pub+镜像;fmt 全语义 proc.run 捕获;lint 六态 E/W 字节扫;staging 集全删=分派面 8 臂齐)。三硬核发现:proc.run 定形 arg=裸文件名;**stdout 块缓冲 vs stderr 无缓冲合流交错**→名字行经 /bin/echo 子进程直写(评审判为机理等价非 parity 戏法);bytes→Str=UTF-8 解码+utf8_enc 复原。复修两 Important:**-w 容量截断守卫**(=buf 容量拒写回+stderr 登记,拒破坏而非模拟破坏;--check 不设守卫非破坏面;波2 捕获面正解挂账)+尾斜杠目录归一(双判别语料)。复审 Approved。对拍终态 **54 语料**。
+- **挂账**:①发射模板 raw argv 逃生口(编译器泳道,翻转前必解或剥臂长期化);②-w 容量截断面(波2 捕获面正解);③ps1 Dv-EnvSetup(W2 遗留);④ex-* rc0 复验;⑤对端 G1 五红在飞。
+- **终审口径**:波1 不另派全分支终审——三任务评审+drv_parity 连续 oracle 代之;真终审 = 波3 垫片翻转时(驱动器成为入口的那次合并审查)。
+- **Minor 留档**:native.sh emit 行缺显式报错/剥臂后缺席反向 grep/parity 合流捕获不辨流路由/extern 缺 #[trusted]/delegate 4096 argv 上限/echo_line 溢出静默/lint fs_exists vs -f。
