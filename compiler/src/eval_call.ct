@@ -374,6 +374,19 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
         panic("fs_delete args")
         return e4("a", env, vV2(), out)
     }
+    // G3-W2:sleep 脱网内建(interp 口径=now_ms 忙等;emit=nanosleep;语义同=时间流逝)
+    if seq2(nm, "sleep_ms") && vals.len == 1 {
+        var tgt = now_ms() + v_unbox(vals[0]).iv
+        while now_ms() < tgt {
+        }
+        return e4("k", env, vV2(), out)
+    }
+    if seq2(nm, "sleep_ns") && vals.len == 1 {
+        var t2 = mono_ns() + v_unbox(vals[0]).iv
+        while mono_ns() < t2 {
+        }
+        return e4("k", env, vV2(), out)
+    }
     if seq2(nm, "now_ms") {
         if vals.len != 0 {
             panic("now_ms arity")

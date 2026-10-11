@@ -103,6 +103,8 @@ fn sem_calls_all(file: List[Str], diags: List[Str], prof: Str) {
     prel.push("now_ms")
     prel.push("now_ms_text")
     prel.push("mono_ns")
+    prel.push("sleep_ms")
+    prel.push("sleep_ns")
     prel.push("mono_ns_text")
     prel.push("wall_ns")
     prel.push("wall_ns_text")

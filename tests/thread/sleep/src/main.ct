@@ -1,0 +1,13 @@
+fn main() {
+    let t0 = mono_ns()
+    sleep_ms(30)
+    let d1 = mono_ns() - t0
+    let t1 = mono_ns()
+    sleep_ns(5000000)
+    let d2 = mono_ns() - t1
+    if d1 >= 30000000 && d2 >= 5000000 {
+        println("sleep-probe ok d1={d1} d2={d2}")
+    } else {
+        println("sleep-probe bad d1={d1} d2={d2}")
+    }
+}

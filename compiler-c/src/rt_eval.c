@@ -1171,6 +1171,25 @@ val eval_expr(rt* R, cexpr* e) {
                 v.bits = 64;
                 return v;
             }
+            /* G3-W2:sleep 脱网内建(nanosleep 直调;interp 镜像忙等口径同语义) */
+            if (!strcmp(nm, "sleep_ms") && e->nelems == 1) {
+                val m = eval_expr(R, e->elems[0]);
+                struct timespec ts;
+                ts.tv_sec = (time_t)((long long)m.i / 1000);
+                ts.tv_nsec = (long)((long long)m.i % 1000) * 1000000L;
+                nanosleep(&ts, 0);
+                val v = {0};
+                return v;
+            }
+            if (!strcmp(nm, "sleep_ns") && e->nelems == 1) {
+                val nsv = eval_expr(R, e->elems[0]);
+                struct timespec ts;
+                ts.tv_sec = (time_t)((long long)nsv.i / 1000000000LL);
+                ts.tv_nsec = (long)((long long)nsv.i % 1000000000LL);
+                nanosleep(&ts, 0);
+                val v = {0};
+                return v;
+            }
             // 时钟 ns 面(loom 内化批2;mono = 单调,wall = ns 精度墙钟;now_ms 同径双形态)
             if (!strcmp(nm, "mono_ns_text")) {
                 struct timespec ts;

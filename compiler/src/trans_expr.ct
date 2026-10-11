@@ -1442,6 +1442,9 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         // 时钟 ns 面(loom 内化批2/F 先例 now_ms 同径):mono = 单调(CLOCK_MONOTONIC,时长测量);
         // wall = 墙钟 ns 精度(CLOCK_REALTIME;now_ms 只有 ms)。_text 变体供解释器宽域标记(v6 入口)。
         if callee == "mono_ns" { return "ctron_mono_ns()" }
+        // G3-W2:sleep 脱网内建(nanosleep 直调,零 net 依赖;interp 忙等口径镜像)
+        if callee == "sleep_ms" { return "ctron_sleep_ms(" + ct_call_args(ag, 1, env, file, "") + ")" }
+        if callee == "sleep_ns" { return "ctron_sleep_ns(" + ct_call_args(ag, 1, env, file, "") + ")" }
         if callee == "mono_ns_text" { return "ctron_mono_ns_text()" }
         if callee == "wall_ns" { return "ctron_wall_ns()" }
         if callee == "wall_ns_text" { return "ctron_wall_ns_text()" }
