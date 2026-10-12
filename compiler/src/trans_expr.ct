@@ -655,6 +655,12 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 panic("emit:Box 载荷限值类型")
                 return ""
             }
+            // G3-W4:TaskPool(n)——池句柄 ctor(工作者数上限 16)
+            if base[0] == "Ident" && base[1] == "TaskPool" {
+                var pn2 = "4"
+                if ag.len > 1 { pn2 = ct_expr(ag[1], env, file) }
+                return "((ct_tpool*)ct_pool_new((int)(" + pn2 + ")))"
+            }
             if base[0] == "Ident" && base[1] == "Channel" {
                 var cap = "64"
                 if ag.len > 1 { cap = ct_expr(ag[1], env, file) }
@@ -969,8 +975,9 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 return ""
             }
             if m == "spawn" {
-                if objt != "g" {
-                    panic("emit:spawn 需 scope 接收者")
+                // G3-W4:池接收者(k)与 scope(g)同门
+                if objt != "g" && objt != "x" {
+                    panic("emit:spawn 需 scope/pool 接收者")
                     return ""
                 }
                 if ag.len < 2 {
@@ -981,7 +988,11 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     panic("emit:spawn 需闭包字面量")
                     return ""
                 }
-                return ct_emit_spawn(cal, obj, ag[1], env, file)
+                var spc = ct_typeof(cal[1], env, file)
+                if spc == "x" {
+                    return ct_emit_spawn(cal, obj, ag[1], env, file, "1")
+                }
+                return ct_emit_spawn(cal, obj, ag[1], env, file, "0")
             }
             if m == "join" { return "(int32_t)ct_join((ct_task*)(" + obj + "))" }
             if m == "join_or" { return "ct_join_or((ct_task*)(" + obj + "))" }
@@ -1377,6 +1388,12 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             return "t_" + m + "(" + ct_arg_cast(objt, p0, obj) + ")"
         }
         var callee = cal[1]
+        // G3-W4:TaskPool(n)——池句柄 ctor(无 TypeArgs,普通调用链;镜像 SB)
+        if callee == "TaskPool" {
+            var pn3 = "4"
+            if ag.len > 1 { pn3 = ct_expr(ag[1], env, file) }
+            return "((ct_tpool*)ct_pool_new((int)(" + pn3 + ")))"
+        }
         if callee == "StringBuilder" {
             // StringBuilder ctor(§3.8.2;T50 发射臂):句柄形 ctron_sb_new
             if ag.len > 1 { panic("emit:StringBuilder arity") }

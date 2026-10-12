@@ -33,6 +33,7 @@ fn s_special(n: Str) -> Bool {
     if n == "Never" { return true }
     if n == "Option" { return true }
     if n == "Result" { return true }
+    if n == "TaskPool" { return true }
     return false
 }
 fn decl_node(file: List[Str], tag: Str, name: Str) -> List[Str] {

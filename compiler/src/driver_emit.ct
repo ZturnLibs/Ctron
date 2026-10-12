@@ -320,9 +320,18 @@ println("static ctron_list* ctron_list_new(void) \{ ctron_list* l = (ctron_list*
             println("static void ct_task_seg_free(ct_task* t) \{ if (t && t->arn) \{ ct_arn* a = (ct_arn*)t->arn; ct_ablk* b = a->cur; while (b) \{ ct_ablk* nx = b->nx; free(b); b = nx; } free(a); t->arn = 0; } }")
             println("static ct_i ct_join(ct_task* t) \{ void* r; if (ct_rt_active()) \{ ctron_rt_join_key((void*)t); } else \{ pthread_join(t->th, &r); } t->joined = 1; if (t->state == 2) \{ ct_task_seg_free(t); ctron_panic(t->pmsg); } ct_i v = t->result; ct_task_seg_free(t); return v; }")
             println("static ct_res ct_join_or(ct_task* t) \{ void* r; if (ct_rt_active()) \{ ctron_rt_join_key((void*)t); } else \{ pthread_join(t->th, &r); } t->joined = 1; ct_task_seg_free(t); ct_res res; if (t->state == 2) \{ res.variant = 1; res.v = (ct_i)(long)\"task panic\"; } else \{ res.variant = 0; res.v = t->result; } return res; }")
+            // G3-W4:TaskPool——N 工作者+无界任务队列;排空后停工;任务段纪律=
+            // 每入队件经 ct_shim_tramp 上下文跑(段=件粒度);工作者线程置退避
+            println("typedef struct ct_pitem \{ void* (*shim)(void*); void* env; struct ct_pitem* nx; } ct_pitem;")
+            println("typedef struct ct_tpool \{ pthread_mutex_t mu; pthread_cond_t cv; ct_pitem* head; ct_pitem* tail; int n; int stop; pthread_t th[16]; } ct_tpool;")
+            println("static void* ct_pool_worker(void* p) \{ ct_tpool* tp = (ct_tpool*)p; ct_gc_conc = 1; for (;;) \{ pthread_mutex_lock(&tp->mu); while (tp->head == 0 && !tp->stop) \{ pthread_cond_wait(&tp->cv, &tp->mu); } if (tp->head == 0 && tp->stop) \{ pthread_mutex_unlock(&tp->mu); break; } ct_pitem* it = tp->head; tp->head = it->nx; if (!tp->head) \{ tp->tail = 0; } pthread_mutex_unlock(&tp->mu); ct_task* t = (ct_task*)calloc(1, sizeof(ct_task)); pthread_mutex_init(&t->done_mu, 0); pthread_cond_init(&t->done_cv, 0); t->shim = it->shim; t->env = it->env; ct_shim_tramp((void*)t); ct_task_seg_free(t); free(t); free(it); } return 0; }")
+            println("static ct_tpool* ct_pool_new(int n) \{ if (n < 1) \{ n = 1; } if (n > 16) \{ n = 16; } ct_tpool* tp = (ct_tpool*)calloc(1, sizeof(ct_tpool)); pthread_mutex_init(&tp->mu, 0); pthread_cond_init(&tp->cv, 0); tp->n = n; int i; for (i = 0; i < n; i++) \{ pthread_create(&tp->th[i], 0, ct_pool_worker, tp); } return tp; }")
+            println("static void ct_pool_spawn(ct_tpool* tp, void* (*shim)(void*), void* env) \{ ct_pitem* it = (ct_pitem*)malloc(sizeof(ct_pitem)); it->shim = shim; it->env = env; it->nx = 0; pthread_mutex_lock(&tp->mu); if (tp->tail) \{ tp->tail->nx = it; } else \{ tp->head = it; } tp->tail = it; pthread_cond_broadcast(&tp->cv); pthread_mutex_unlock(&tp->mu); }")
             // G3-W1:scope 退出 join-all——spec §07「作用域退出必然 join 全部子任务」
             // 兑现;链表=属主线程单写(全 spawn 于属主程序序),走查免锁;已显式
             // join 跳过(joined 置位),panic 重抛/段回收/joined 语义全复用 ct_join
+            println("static void* ct_shim_tramp(void* p);")
+            println("static void ct_task_seg_free(ct_task* t);")
             println("static void ct_scope_join_all(ct_scope* sc) \{ if (!sc) \{ return; } ct_task* t = sc->head; while (t) \{ ct_task* nx = t->snext; if (!t->joined) \{ ct_join(t); } t = nx; } }")
             // G3-W3:join_t 超时形——pthread timedwait 正典;coro 档回落无限等
             //(rt deadline 停车暴露挂后续);超时不 joined 不收段=join-all 兜底

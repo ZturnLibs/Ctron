@@ -109,6 +109,12 @@ fn call_cv(file: List[Str], env: List[Str], out: Str, v: Val, vals: List[Str]) -
     return e4("a", env, vV2(), out)
 }
 fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) -> Flow {
+    // G3-W4:TaskPool interp=顺序化域标记值(spawn 内联执行,文档化)
+    if seq2(nm, "TaskPool") {
+        var pv = List[Str]()
+        pv.push("TPOOL")
+        return e4("k", env, cx_val(pv), out)
+    }
     if seq2(nm, "StringBuilder") {
         // StringBuilder()(§3.8.2;T03):值 = SB 复合(段表挂 cx),push_str 原地变
         if vals.len == 0 {
@@ -1171,6 +1177,10 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
         // G3-W3:scope.cancel interp=顺序化域 no-op(无并发可取消,文档化)
         if seq2(cx_of(recv)[0], "SCOPE") && seq2(m, "cancel") && vals.len == 0 {
             return e4("k", ob.env, vV2(), ob.out)
+        }
+        // G3-W4:pool.spawn interp=闭包内联即刻执行(顺序化口径)
+        if seq2(cx_of(recv)[0], "TPOOL") && seq2(m, "spawn") && vals.len == 1 {
+            return call_cv(file, ob.env, ob.out, v_unbox(vals[0]), List[Str]())
         }
         if seq2(cx_of(recv)[0], "SCOPE") && seq2(m, "spawn") && vals.len == 1 {
             var noargs = List[Str]()

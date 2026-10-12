@@ -1,0 +1,20 @@
+// G3-W4:TaskPool——4 工作者消化 200 入队件,Atomic 计数+通道收口
+fn main() {
+    let p = TaskPool(4)
+    let (tx, rx) = Channel[I64](8)
+    let cnt = Atomic[I32](0)
+    var i: I32 = 0
+    while i < 200 {
+        p.spawn(|| {
+            cnt.fetch_add(1)
+            tx.send(1).expect("send")
+        })
+        i += 1
+    }
+    var c: I32 = 0
+    while c < 200 {
+        rx.recv().expect("recv")
+        c += 1
+    }
+    println("pool-probe done={cnt.load()} recv={c}")
+}

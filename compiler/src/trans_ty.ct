@@ -326,7 +326,7 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
         return "L"
     }
     if or2(nt[1] == "Sender", or2(nt[1] == "Receiver", nt[1] == "Channel")) { return "h" }
-    if nt[1] == "TaskPool" { return "k" } // G3-W4:池句柄(ct_tpool*)
+    if nt[1] == "TaskPool" { return "x" } // G3-W4:池句柄(ct_tpool*)
     if nt[1] == "Atomic" { return "A" }
     // P0-A:Mutex[X] 注解 → m<X 码>(镜像 ct_typeof Call-TypeArgs 臂)。struct 字段
     // 注解位(App.todos: Mutex[List[Todo]])此前无臂落 "i"——槽型/布局/with 接收者
@@ -444,7 +444,7 @@ fn ct_ctype(code: Str) -> Str {
     if code == "g" { return "ct_scope*" }
     if code == "k" { return "ct_task*" }
     if code == "h" { return "ct_chan*" }
-    if code == "k" { return "ct_tpool*" } // G3-W4
+    if code == "x" { return "ct_tpool*" } // G3-W4
     if code == "R" { return "ct_res" }
     if code.len > 1 && byte_at(code, 0) == 109 {
         var ir = byte_slice(code, 1, code.len)
@@ -1470,6 +1470,7 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             }
             if base[0] == "Ident" && base[1] == "Atomic" { return "A" }
             if base[0] == "Ident" && base[1] == "Channel" { return "h" }
+            if base[0] == "Ident" && base[1] == "TaskPool" { return "x" } // G3-W4
             if base[0] == "Ident" && base[1] == "Global" { return "A" }
             if base[0] == "Ident" && base[1] == "Mutex" {
                 var mit = "i"
@@ -1684,6 +1685,7 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             // 魔数分派先例)——.len/.to_string 走 N 既有通道,发射臂
             // ctron_len/ctron_sb_str 扩 SB 魔数即通;句柄=堆指针,值 I32 恒小不撞
             if cal[1] == "StringBuilder" { return "N" }
+            if cal[1] == "TaskPool" { return "x" } // G3-W4
             // ptr_as_view(v0.9·五 裁决甲):&T 裸指针 → 只读视图;结果码 =
             // v<元素码>(p<ec> 剥壳);非 p 码实参回落 "i"(发射臂另响亮失败)
             if cal[1] == "ptr_as_view" {

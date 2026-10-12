@@ -300,7 +300,7 @@ fn ct_prescan_tail(tl: List[Str], penv: List[Str], file: List[Str]) {
     ct_expr(tl, penv, file)
 }
 
-fn ct_emit_spawn(site: List[Str], obj: Str, clo: List[Str], env: List[Str], file: List[Str]) -> Str {
+fn ct_emit_spawn(site: List[Str], obj: Str, clo: List[Str], env: List[Str], file: List[Str], isp: Str) -> Str {
     var body = clo[3]
     var cps = clo[1]
     if cps.len != 1 {
@@ -411,6 +411,11 @@ fn ct_emit_spawn(site: List[Str], obj: Str, clo: List[Str], env: List[Str], file
     while ci3 < caps.len {
         acc = acc + " _e" + ix + "[" + ci3.to_string() + "] = " + ct_wrap_i(codes[ci3], "t_" + caps[ci3]) + ";"
         ci3 += 1
+    }
+    if isp == "1" {
+        // G3-W4:池入队(无 scope;任务段=件粒度经 ct_shim_tramp)
+        acc = acc + " (void)ct_pool_spawn((ct_tpool*)(" + obj + "), " + shim + ", _e" + ix + "); })"
+        return acc
     }
     acc = acc + " (ct_task*)ct_spawn(" + shim + ", _e" + ix + ", " + obj + "); })"
     return acc

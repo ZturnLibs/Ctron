@@ -130,6 +130,7 @@ fn sem_calls_all(file: List[Str], diags: List[Str], prof: Str) {
     prel.push("StringBuilder")
     prel.push("String")
     prel.push("Channel")
+    prel.push("TaskPool")
     prel.push("Mutex")
     prel.push("Atomic")
     prel.push("Global")
