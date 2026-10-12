@@ -946,11 +946,21 @@ println("static ct_i ct_parallel_reduceL(ctron_list* a, ct_i init, ct_fn2 f) \{ 
                         q4 += 1
                     }
                     if eqp2 > 0 {
-                        var lib = ct_trim(byte_slice(larg, eqp2 + 1, larg.len))
-                        if lib.len > 1 && byte_at(lib, 0) == 34 {
-                            lib = byte_slice(lib, 1, lib.len - 1)
+                        var lkey = ct_trim(byte_slice(larg, 0, eqp2))
+                        var lval = ct_trim(byte_slice(larg, eqp2 + 1, larg.len))
+                        if lval.len > 1 && byte_at(lval, 0) == 34 {
+                            lval = byte_slice(lval, 1, lval.len - 1)
                         }
-                        println("// ctron:link -l" + lib)
+                        // G2-W3:link 三形态——name → -l / search → -L / framework(darwin)
+                        if lkey == "name" {
+                            println("// ctron:link -l" + lval)
+                        } else if lkey == "search" {
+                            println("// ctron:ldflag -L" + lval)
+                        } else if lkey == "framework" {
+                            println("// ctron:ldflag -framework " + lval)
+                        } else {
+                            println("// ctron:link -l" + lval)
+                        }
                     }
                 }
                 lq2 += 1

@@ -207,8 +207,17 @@ shift
 
 # 链接标志摘要(#[link] 收集 → pkg-config 解析;v0.9):缓存命中与全量发射
 # 两路同印——构建系统以本输出为契约,T20 缓存命中跳过发射但摘要仍须在。
+# G2-W3:链接旗标真消费——收集结果落全局 LDFLAGS_COLLECTED(链接行拼接;
+# 旧=只打印不进 cc,#[link] 断链)。
+LDFLAGS_COLLECTED=""
 emit_link_summary() {
     LF=$(grep -o "ctron:link -l[^ ]*" "$1" 2>/dev/null | awk '{print $2}' | tr '\n' ' ')
+    LD2=$(grep -o "ctron:ldflag [^\r\n]*" "$1" 2>/dev/null | sed 's/^ctron:ldflag //' | tr '\n' ' ')
+    LDFLAGS_COLLECTED="$LF $LD2 ${CTRON_LDFLAGS:-}"
+    LDFLAGS_COLLECTED=$(echo "$LDFLAGS_COLLECTED" | xargs)
+    if [ -n "$LD2" ]; then
+        echo "ctc.sh: 链接旗标(ldflag 收集): $LD2"
+    fi
     if [ -n "$LF" ]; then
         echo "ctc.sh: 链接标志(#[link] 收集): $LF"
         # pkg-config 解析:对每个 -l<名>,若 pkg-config 在册且认识该名
@@ -466,6 +475,12 @@ case $mode in
             TMPC=$(mktemp /tmp/ctron_build.XXXXXX) && mv "$TMPC" "$TMPC.c" && TMPC="$TMPC.c"
         fi
         "$0" emit "$IN" "$TMPC" > /dev/null 2>&1 || { echo "ctc.sh: build 发射失败" >&2; exit 1; }
+        # G2-W3:旗标收集在父壳(build 的 emit=子壳,其 emit_link_summary 变量
+        # 随子壳消亡;产物在手,自收集+env 逃逸口)
+        LF_B=$(grep -o "ctron:link -l[^ ]*" "$TMPC" 2>/dev/null | awk '{print $2}' | tr '\n' ' ')
+        LD_B=$(grep -o "ctron:ldflag [^\r\n]*" "$TMPC" 2>/dev/null | sed 's/^ctron:ldflag //' | tr '\n' ' ')
+        LDFLAGS_COLLECTED="$LF_B $LD_B ${CTRON_LDFLAGS:-}"
+        LDFLAGS_COLLECTED=$(echo "$LDFLAGS_COLLECTED" | xargs)
         if [ "$WASM" = "1" ] && grep -q "ctron:link" "$TMPC"; then
             # T37:wasm 无 dlopen——FFI 面(#[link])在 wasm target 禁用,诊断非静默
             echo "ctc.sh: wasm32 target 检测到 #[link] FFI 面——wasm 无 dlopen,FFI 在 wasm target 禁用(T37;诊断非静默)" >&2
@@ -496,7 +511,7 @@ case $mode in
             echo "ctc.sh: 已构建 $OUTBIN(target: $TARGET;运行: node 胶水,见 lib/rt/wasm32/README.md)"
         else
             # shellcheck disable=SC2086
-            $TGT_CC -w "$TMPC" -o "$OUTBIN" $GUILDFLAGS || { echo "ctc.sh: build 链接失败($TGT_CC)" >&2; exit 1; }
+            $TGT_CC -w "$TMPC" -o "$OUTBIN" $GUILDFLAGS $LDFLAGS_COLLECTED || { echo "ctc.sh: build 链接失败($TGT_CC)" >&2; exit 1; }
             echo "ctc.sh: 已构建 $OUTBIN(target: ${TARGET:-native};运行: ./$OUTBIN run $IN)"
         fi
         rc=0
