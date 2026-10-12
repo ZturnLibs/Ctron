@@ -1886,3 +1886,13 @@ e083d902/23f7089a/a74b8956/b32d79e1)**:W1 scope 退出 join-all(spec §07 兑现
 **G3 批终=五波全落,tests/thread 10/0**。半端截断在册坑销账;新坑入册:`/* */` 非 Ctron 注释
 (.ct 源=词法垃圾级联炸 main 探测)+trans_ty.ct 非 UTF8 损坏字节(管线级 sed 事故,邻位语义修复
 ,文件已纯净)+正则插行黏行(自举静默崩)。
+
+**G2 dlopen 补完批(2026-10-11,计划 2026-10-11-steno-g2-dlopen-plan.md;W1/W2/W3 落库
+523ff123/9278769d/随批)**:W1 dlopen_global(RTLD_NOW|GLOBAL 独立内建)+dlerror_str 诊断面
+(libz 全域链端到端 zlib=1.2.12);W2 #[dlsym(from_handle)] 句柄 thunk(逐调解析不缓存,原型/
+实参剥句柄参;ct_ext_sym dlsym 先于 link_name 顺序修正+from_handle 检测抗叠[attr_arg 首括号
+语义]);W3 旗标真消费(#[link(name/search/framework)] 三形态+CTRON_LDFLAGS env 逃逸口,build
+父壳自收集)+dyn_so 专道(cc -shared 真插件双形态+负例 2/2)。**sherpa-onnx 形态接入成立**:
+dlopen_global(库)→#[dlsym(from_handle)](h, ...) 逐调调用。挂账:根 ctron 驱动链接行同面
+(随原生驱动器 lane);链式 const 引用;坑入册:无三元血律再踩(静默崩)/#[dlsym] 按声明名解析
+(真符号走 link_name 无引号家法)/未注解 let 句柄 i32 截断三踩/attr_arg 首括号语义(叠 attr 相斥)。
