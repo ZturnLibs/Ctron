@@ -95,9 +95,9 @@ else
 fi
 
 # 9) 容器全形(List[struct]/Option[struct];v2.2 解陷阱;双臂同判)
-#    emit 臂 CTRON_GC=0 过渡:编译器自跑 GC=1 时 qval 帧线 scrape-while-live
-#    垃圾(G1-T1 惰性释放;违反「GC=1 发射与 off 逐字一致」不变量,CTRON_GC=0
-#    同输入干净,五连腐实证)——G1 收集器账,销后撤旗
+#    emit 步 CTRON_GC=0 过渡旗在册(G1-T1 scrape-while-live 未愈:新 HEAD bin
+#    GC=1 十连全腐[旧 bin 曾单发净=概率触发恶化中],3b5abe70 移交账延续;
+#    G1 销账后撤旗回归默认口径)
 "$CC" run "$ROOT/tests/plugins/json_demo/src/containers.ct" > "$T/ctn.out" 2>&1
 if [ $? -eq 0 ] && grep -q 'rt3-ok' "$T/ctn.out"; then
     ok "json_demo_containers interp(List/Option struct 全形)"
