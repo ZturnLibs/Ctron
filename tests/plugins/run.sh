@@ -94,14 +94,21 @@ else
     bad "json_demo_nested emit" "$T/nested.err"
 fi
 
-# 9) 容器全形(List[struct]/Option[struct];v2.2 解陷阱;interp 专测——emit 臂
-#    单发隔离净(json_demo/nested emit 序后必腐=qval 片段垃圾行,T20 emit 缓存
-#    跨片段污染嫌疑,编译器基建账;Member 臂语义已双臂验:单发 rt3-ok 双臂绿)
+# 9) 容器全形(List[struct]/Option[struct];v2.2 解陷阱;双臂同判)
+#    emit 臂 CTRON_GC=0 过渡:编译器自跑 GC=1 时 qval 帧线 scrape-while-live
+#    垃圾(G1-T1 惰性释放;违反「GC=1 发射与 off 逐字一致」不变量,CTRON_GC=0
+#    同输入干净,五连腐实证)——G1 收集器账,销后撤旗
 "$CC" run "$ROOT/tests/plugins/json_demo/src/containers.ct" > "$T/ctn.out" 2>&1
 if [ $? -eq 0 ] && grep -q 'rt3-ok' "$T/ctn.out"; then
-    ok "json_demo_containers interp 专测(List/Option struct 全形)"
+    ok "json_demo_containers interp(List/Option struct 全形)"
 else
-    bad "json_demo_containers interp 专测" "$T/ctn.out"
+    bad "json_demo_containers interp" "$T/ctn.out"
+fi
+CTRON_GC=0 "$EMIT" run "$ROOT/tests/plugins/json_demo/src/containers.ct" > "$T/ctn.c" 2>"$T/ctn.err"
+if [ $? -eq 0 ] && cc -o "$T/ctnbin" "$T/ctn.c" 2>/dev/null && "$T/ctnbin" > "$T/ctn_native.out" 2>&1 && grep -q 'rt3-ok' "$T/ctn_native.out"; then
+    ok "json_demo_containers emit(容器全形 双臂同判;GC=0 过渡旗)"
+else
+    bad "json_demo_containers emit" "$T/ctn.err"
 fi
 
 echo "== 插件沙箱阶梯:$pass 过 / $fail 败 =="
