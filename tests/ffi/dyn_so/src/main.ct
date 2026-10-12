@@ -1,10 +1,17 @@
 // G2-W1:dlopen_global 全域链端到端——dlopen(libz, GLOBAL)→#[dlsym] RTLD_DEFAULT 命中 zlibVersion
 // 负例腿:坏路径句柄 0 + dlerror_str 非空
 #[dlsym]
+// G2-W2:from_handle 句柄 thunk(首参=句柄,逐调 dlsym;sherpa-onnx 接入形态)
+// 注:fn 名=库真符号名(camel 原样);叠 #[link_name] 与 attr_arg 首括号语义相斥
+#[link_name(zlibVersion)]
+#[dlsym(from_handle)]
+extern "c" fn zlibVersionH(h: I64) -> Str
+
+#[dlsym]
 extern "c" fn zlibVersion() -> Str
 
 fn main() {
-    var h = dlopen_global("/usr/lib/libz.dylib")
+    var h: I64 = dlopen_global("/usr/lib/libz.dylib")
     if h == 0 {
         h = dlopen_global("libz.so.1")
     }
@@ -14,4 +21,6 @@ fn main() {
     }
     let v = zlibVersion()
     println("dynso-probe zlib=" + v)
+    let v2 = zlibVersionH(h)
+    println("dynso-probe handle-zlib=" + v2)
 }

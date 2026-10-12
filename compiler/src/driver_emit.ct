@@ -975,7 +975,37 @@ println("static ct_i ct_parallel_reduceL(ctron_list* a, ct_i init, ct_fn2 f) \{ 
                         var tcall = "((" + tret + "(*)(" + ct_params_str_bare(pd, file) + "))ct_dls)(" + targs + ");"
                         var tbody = "return " + tcall
                         if seq2(tret, "void") { tbody = tcall }
+                        // G2-W2:from_handle 变体——首参=句柄,逐调 dlsym((void*)h)
+                        //(不缓存:句柄可失效/多库同名;失效响亮);调用实参剥首参
+                        // G2-W2:from_handle 变体——首参=句柄,逐调 dlsym(不缓存,失效响亮)
+                        var darg = attr_arg(pd[6])
+                        if darg != "from_handle" {
+                            // 叠 attr 首括号语义抗性:dlsym(from_handle) 子串直扫
+                            var a6 = pd[6]
+                            var si: I32 = 0
+                            var found: I32 = 0
+                            while si < a6.len {
+                                if si + 18 <= a6.len && byte_slice(a6, si, si + 18) == "dlsym(from_handle)" {
+                                    found = 1
+                                    si = a6.len
+                                }
+                                si += 1
+                            }
+                            if found == 1 { darg = "from_handle" }
+                        }
+                        if darg == "from_handle" {
+                            var hname = "t_" + pd[3][1][2]
+                            var sym2 = lsym
+                            if sym2 == "" { sym2 = pd[1] }
+                            var targs2 = ct_export_args_from(pd, 2)
+                            var tproto2 = ct_params_str_bare_from(pd, file, 2)
+                            var tcall2 = "((" + tret + "(*)(" + tproto2 + "))ct_dls)(" + targs2 + ");"
+                            var tbody2 = "return " + tcall2
+                            if seq2(tret, "void") { tbody2 = tcall2 }
+                            println("static " + tret + " ct_dyn_" + pd[1] + "(" + tps + ") \{ void* ct_dls = dlsym((void*)(long)(" + hname + "), \"" + sym2 + "\"); if (ct_dls == 0) \{ ctron_panic(\"dlsym 句柄未解析符号: " + sym2 + "\"); } " + tbody2 + " }")
+                        } else {
                         println("static " + tret + " ct_dyn_" + pd[1] + "(" + tps + ") \{ static void* ct_dls = 0; if (ct_dls == 0) \{ ct_dls = dlsym(RTLD_DEFAULT, \"" + pd[1] + "\"); if (ct_dls == 0) \{ ctron_panic(\"dlsym 未解析符号: " + pd[1] + "\"); } } " + tbody + " }")
+                        }
                     } else {
                         // extern 声明(§9.6):外部链接原型(裸符号,定义在 C 侧/c_src);
                         // static 会把符号钉在本 TU 内——跨 TU 链接是未定义行为,旧实现靠
