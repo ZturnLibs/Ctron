@@ -1,0 +1,6 @@
+ctron {
+}
+
+task "a" {
+    steps = ["x"]
+}

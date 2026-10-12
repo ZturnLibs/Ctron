@@ -15,6 +15,10 @@
 # Mach-O UUID 字节非确定,树 diff -x 排二进制、二进制改双跑 stdout 行为比对
 # (run_bin2);项目/单文件夹具现造现清,workspace 逐成员自 spawn 递归含成员
 # 产物(m/build/<名>)。缺 cc/缺 ctron-dep 出路面无法 CI 模拟,登记不语料化。
+# W4 波2 批2:task/gate/clean 臂全态(本地 CTCL 读取消息逐字/runner 元字符拒/
+# 引号双层/task.cwd/clean 三域与 --all/gate 解析序三段)。沙盒每例双版唯一目录
+# 现造现清,各侧各指各自 CTRON_DRV_ROOT(clean/task 写面互不越界);prep 不拷
+# ctron.ctcl 的夹具(clean/gate 回落)防 darwin 大小写不敏感盘同文件互毁。
 set -u
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(dirname "$(dirname "$DIR")")
@@ -274,6 +278,92 @@ pj_case "build workspace(逐成员自 spawn 递归)"       tree prep_pj_ws     m
 pj_case "build Ctron.toml fail-closed(T48 逐字)"     out prep_pj_toml ""  build
 pj_case "build 缺入口 src/main.ct(rc2)"              out prep_noentry ""  build
 pj_case "build 缺清单(rc2)"                          out prep_pj_nocl "" build
+
+# ---- task/gate/clean 臂(W4 波2 批2)----
+# 夹具 = fixtures/tasks 静态件(工作清单/坏清单族/data 脚本,只读拷入)。沙盒每例
+# 双版唯一目录现造现清(-w 纪律同 fmt 臂;clean/task 写面互不越界),每侧各指各
+# 自 CTRON_DRV_ROOT。清单提供走 prep(缺省 = 工作清单;clean/gate 回落夹具不拷
+# ctron.ctcl——darwin 大小写不敏感盘上 ctron.ctcl ≡ Ctron.ctcl 同文件,共存即
+# 互毁,嗅探面亦随 FS 语义分叉)。
+TKFIX=tests/drv_parity/fixtures/tasks
+TK="$T/tk"
+tk_mf() { cp "$ROOT/$TKFIX/ctron.ctcl" "$1/ctron.ctcl"; }
+tk_side() { # $1=side 目录 $2=prep 名(空 = 工作清单)
+    mkdir -p "$1"
+    cp -r "$ROOT/$TKFIX/data" "$1/data"
+    if [ -n "$2" ]; then "$2" "$1"; else tk_mf "$1"; fi
+}
+tk_case() { # $1=label $2=prep(空 = 工作清单),其余 = 语料
+    label=$1; prep=$2; shift 2
+    rm -rf "$TK"
+    tk_side "$TK/sh" "$prep"
+    (cd "$TK/sh" && CTRON_DRV_ROOT="$TK/sh" sh "$SHREF" "$@") > "$T/sh.out" 2>&1; r1=$?
+    rm -rf "$TK"
+    tk_side "$TK/nat" "$prep"
+    (cd "$TK/nat" && CTRON_DRV_ROOT="$TK/nat" "$NAT" "$@") > "$T/nat.out" 2>&1; r2=$?
+    report "$label" "$r1" "$r2"
+}
+t16_case() { # clean --all 非项目目录 T16 状态钉:输出逐字节 + build 留/缓存净 双面
+    label=$1
+    rm -rf "$TK"
+    tk_side "$TK/sh" tk_prep_nonproj
+    (cd "$TK/sh" && CTRON_DRV_ROOT="$TK/sh" sh "$SHREF" clean --all) > "$T/sh.out" 2>&1; r1=$?
+    s1c=$([ ! -d "$TK/sh/.cache/emit" ] && echo y || echo n)
+    s1b=$([ -d "$TK/sh/build" ] && echo y || echo n)
+    rm -rf "$TK"
+    tk_side "$TK/nat" tk_prep_nonproj
+    (cd "$TK/nat" && CTRON_DRV_ROOT="$TK/nat" "$NAT" clean --all) > "$T/nat.out" 2>&1; r2=$?
+    s2c=$([ ! -d "$TK/nat/.cache/emit" ] && echo y || echo n)
+    s2b=$([ -d "$TK/nat/build" ] && echo y || echo n)
+    if [ "$r1" = "$r2" ] && cmp -s "$T/sh.out" "$T/nat.out" \
+       && [ "$s1c$s1b$s2c$s2b" = "yyyy" ]; then
+        pass=$((pass+1)); echo "  ok  : $label(rc=$r2;逐字节+rc+T16 状态钉 一致)"
+    else
+        fail=$((fail+1))
+        echo "  FAIL: $label(sh_rc=$r1 native_rc=$r2 状态=$s1c$s1b$s2c$s2b)"
+        diff "$T/sh.out" "$T/nat.out" 2>&1 | sed 's/^/    /' | sed -n '1,10p'
+    fi
+}
+tk_prep_cwd() { # task.cwd 正例件:sub/ 目录 + 用 $PWD 点名的脚本
+    mkdir -p "$1/sub"
+    printf '#!/bin/sh\nprintf "cwd-ok pwd=%%s\\n" "$(basename "$PWD")"\n' > "$1/sub/go.sh"
+    tk_mf "$1"
+}
+tk_prep_caches() { # clean --all 项目面:三域中两域在场 + 项目 build/pkgs(Ctron.ctcl 在场)
+    mkdir -p "$1/.cache/emit/x" "$1/.cache/wasm" "$1/build" "$1/pkgs"
+    printf 'pkg {\n    manifest_version = 1\n    name = "tkp"\n    version = "0.1.0"\n}\n' > "$1/Ctron.ctcl"
+}
+tk_prep_nonproj() { # T16 件:非项目目录(build 留)+ 一缓存域
+    mkdir -p "$1/.cache/emit" "$1/build"
+}
+tk_prep_pkg() { # gate 内建回落件:项目模式(Ctron.ctcl + fmt 规范形 src/main.ct;无 ctron.ctcl)
+    mkdir -p "$1/src"
+    printf 'pkg {\n    manifest_version = 1\n    name = "tkp"\n    version = "0.1.0"\n}\n' > "$1/Ctron.ctcl"
+    printf 'fn main() {\n    println("hi")\n}\n' > "$1/src/main.ct"
+}
+
+echo "== task/gate/clean 臂(W4 波2 批2:本地 CTCL 读取+runner)=="
+tk_case "task 列表(名\\tdesc 全表)"                      "" task
+tk_case "task 正例多步(进度行+完成)"                     "" task hello
+tk_case "task 未知任务(rc2 判词)"                        "" task nosuch
+tk_case "task -f E5044 未知块(行号逐字)"                 "" task -f bad/e5044.ctcl a
+tk_case "task -f E5054 空 steps"                         "" task -f bad/e5054.ctcl a
+tk_case "task -f E5047 缺 ctron 块(END 路径)"            "" task -f bad/e5047.ctcl a
+tk_case "task -f E5050 缺 config_version(END 路径)"      "" task -f bad/e5050.ctcl a
+tk_case "task -f 块未闭合(END 路径)"                     "" task -f bad/unclosed.ctcl a
+tk_case "task -f E5045 重复键"                           "" task -f bad/dupkey.ctcl a
+tk_case "task 元字符拒(两条出路行)"                       "" task -f bad/meta.ctcl a
+tk_case "task 引号转义双层(CTCL+切分)"                    "" task quotes
+tk_case "task fail-stop(rc 透传+跳后续)"                 "" task failstop
+tk_case "task.cwd 正例(spawn cwd+PWD 导出)"              tk_prep_cwd task cwdr
+tk_case "task.cwd 缺目录(rc2 fail-closed)"               "" task badcwd
+tk_case "clean 默认(在场域逐行;缺席静默)"                 tk_prep_caches clean
+tk_case "clean --all(项目域 build/pkgs 加清)"             tk_prep_caches clean --all
+tk_case "clean 未知旗标(rc2)"                            "" clean --nope
+tk_case "gate 表路径(默认名走表,无横幅)"                  "" gate
+tk_case "gate 内建回落横幅(项目模式 build+fmt)"           tk_prep_pkg gate
+tk_case "gate nosuch(表内无 → rc2 未知任务)"              "" gate nosuch
+t16_case "clean --all 非项目守卫(build 留+缓存净)"
 
 echo "== drv_parity: $pass ok / $fail fail =="
 [ "$fail" -eq 0 ] || exit 1

@@ -21,9 +21,16 @@
 //     (argv 列表 → NUL 块);垫片 ctron_proc.c 由 native.sh 驱动链行同链(纯 emit 单文件缺符号)。
 // fmt/lint 目录面:use std.fs.{list}(walk_entries pub 化薄壳,W4 批3 同批)——
 //     非递归顶层名表字节序 = sh `find -maxdepth 1 | LC_ALL=C sort` 同序。
+// task/gate/clean 面(W4 波2 批2):use std.fs.{walk}(缓存域递归净除底座)——
+//     本地 CTCL 读取模块(根脚本 DRV_READER_AWK 状态机/消息/E 码族逐字:strip
+//     字符串感知/unquote UQ_OK 空串合法/四键白名单/重复键/END 三查)+ runner
+//     (DRV_SPLIT_AWK 切分/元字符 11 字符拒逐字/裸名 ctron 自解析/进度行与判词
+//     echo_line 直写/task.cwd=spawn cwd 参非 chdir/env_set 注入 CTRON_STDPATH/
+//     败即停 rc 透传)+ gate 解析序三段(首块嗅探防大小写误中)+ clean 三域与
+//     --all 项目守卫(探针①:fs_delete 空目录可删非空拒 → walk 逆序净除)。
 
 use proc.{run, run_argv, run_argv_rc, argv_to_blob}
-use std.fs.{list}
+use std.fs.{list, walk}
 
 fn usage() {
     println("ctron —— Ctron 工具链驱动")
@@ -1051,6 +1058,917 @@ fn target_registered(t: Str) -> Bool {
     return false
 }
 
+// ---- task/gate/clean 面(W4 波2 批2)----
+// sh 镜像源(仓库根 ctron 脚本,live text 为准):DRV_READER_AWK :35-182 /
+// DRV_SPLIT_AWK :184-227 / drv_env_setup :956-962 / run_step :968-983 /
+// drv_load :988-995 / cmd_task :997-1048 / drv_is_driver_manifest :1054-1057 /
+// cmd_gate :1063-1088 / cmd_clean :1093-1119。
+// 架构差:任务表 = 内存记录流(List[Str];T/W/S 前缀 + TAB 分隔 = sh TASKS_CFG
+// 的 List 形)——sh fd3/stdin 劫持洞在结构上不存在;task.cwd 不 chdir 本进程,
+// 解析绝对传 run_argv_rc cwd 参(非空 = 子进程 chdir,ctron_proc.c 读码钉定);
+// env 注入 = W3 env_set 本进程 setenv(子 execve 继承);stdout 用户行走 echo_line
+// 直写(fmt 面先例:println 块缓冲与子步骤产出交错会反序)。
+
+fn ctcl_fail(nr: I32, msg: Str) -> I32 {
+    // awk fail():printf "ctron: ctron.ctcl:%d: %s\n", NR, msg > "/dev/stderr";exit 1
+    // (文件名恒字面 ctron.ctcl,与实参 -f 无关,= sh 逐字;返回 2 供调用方回)
+    eprint("ctron: ctron.ctcl:" + nr.to_string() + ": " + msg + "\n")
+    return 2
+}
+
+fn ctcl_rtrim(s: Str) -> Str {
+    // awk rtrim:sub(/[ \t\r]+$/, "", s)
+    var end = s.len
+    while end > 0 {
+        var c = byte_at(s, end - 1)
+        if c == 32 || c == 9 || c == 13 {
+            end -= 1
+        } else {
+            break
+        }
+    }
+    return byte_slice(s, 0, end)
+}
+
+fn ctcl_ltrim(s: Str) -> Str {
+    // awk ltrim:sub(/^[ \t]+/, "", s)(不含 \r——与 rtrim 的字符类差 = sh 逐字)
+    var b: I32 = 0
+    while b < s.len {
+        var c = byte_at(s, b)
+        if c == 32 || c == 9 {
+            b += 1
+        } else {
+            break
+        }
+    }
+    return byte_slice(s, b, s.len)
+}
+
+fn ctcl_strip_comment(s: Str) -> Str {
+    // awk strip_comment 逐字:字符串感知(引号内 \\ 消费、/" 收尾);引号外 // 即截
+    var out = ""
+    var inq: Bool = false
+    var bs: Bool = false
+    var i: I32 = 0
+    while i < s.len {
+        var c = byte_at(s, i)
+        if inq {
+            out = out + byte_slice(s, i, i + 1)
+            if bs {
+                bs = false
+            } else if c == 92 {
+                bs = true
+            } else if c == 34 {
+                inq = false
+            }
+        } else {
+            if c == 34 {
+                inq = true
+                out = out + byte_slice(s, i, i + 1)
+            } else if c == 47 && i + 1 < s.len && byte_at(s, i + 1) == 47 {
+                return out
+            } else {
+                out = out + byte_slice(s, i, i + 1)
+            }
+        }
+        i += 1
+    }
+    return out
+}
+
+fn ctcl_uq_ok(s: Str) -> Bool {
+    // awk unquote 的 UQ_OK 判定面:length<2 / 首尾非引号 / 孤立尾反斜杠 /
+    // 转义白名单外(\" \\ 之外)= 假;空串合法("")= 真(UQ_OK 哨兵语义)
+    if s.len < 2 {
+        return false
+    }
+    if byte_at(s, 0) != 34 {
+        return false
+    }
+    if byte_at(s, s.len - 1) != 34 {
+        return false
+    }
+    var bl = s.len - 2
+    var i: I32 = 0
+    while i < bl {
+        if byte_at(s, 1 + i) == 92 {
+            if i == bl - 1 {
+                return false
+            }
+            var c2 = byte_at(s, 1 + i + 1)
+            if c2 != 34 && c2 != 92 {
+                return false
+            }
+            i += 2
+        } else {
+            i += 1
+        }
+    }
+    return true
+}
+
+fn ctcl_unquote(s: Str) -> Str {
+    // awk unquote 解码头(仅 UQ_OK 在场时调用):剥首尾引号;\\x 取 x 原样
+    // (白名单外已由 ctcl_uq_ok 拒),余字原样
+    var out = ""
+    var body = byte_slice(s, 1, s.len - 1)
+    var i: I32 = 0
+    while i < body.len {
+        var c = byte_at(body, i)
+        if c == 92 {
+            if i + 1 < body.len {
+                out = out + byte_slice(body, i + 1, i + 2)
+                i += 2
+            } else {
+                i += 1
+            }
+        } else {
+            out = out + byte_slice(body, i, i + 1)
+            i += 1
+        }
+    }
+    return out
+}
+
+fn ctcl_task_name_ok(s: Str) -> Bool {
+    // awk /^[a-z][a-z0-9_-]*$/
+    if s.len < 1 {
+        return false
+    }
+    if byte_at(s, 0) < 97 || byte_at(s, 0) > 122 {
+        return false
+    }
+    var i: I32 = 1
+    while i < s.len {
+        var c = byte_at(s, i)
+        var okc: Bool = false
+        if c >= 97 && c <= 122 { okc = true }
+        if c >= 48 && c <= 57 { okc = true }
+        if c == 95 { okc = true }
+        if c == 45 { okc = true }
+        if !okc {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+fn ctcl_key_ok(s: Str) -> Bool {
+    // awk /^[a-z_][a-z0-9_]*$/
+    if s.len < 1 {
+        return false
+    }
+    var c0 = byte_at(s, 0)
+    if !((c0 >= 97 && c0 <= 122) || c0 == 95) {
+        return false
+    }
+    var i: I32 = 1
+    while i < s.len {
+        var c = byte_at(s, i)
+        if !((c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c == 95) {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+fn ctcl_int_ok(s: Str) -> Bool {
+    // awk /^-?(0|[1-9][0-9]*)$/
+    var i: I32 = 0
+    if s.len > 0 {
+        if byte_at(s, 0) == 45 {
+            i = 1
+        }
+    }
+    var rl = s.len - i
+    if rl == 0 {
+        return false
+    }
+    var c0 = byte_at(s, i)
+    if rl == 1 {
+        // 单字符 = 0-9 任一(awk 交替 0|[1-9][0-9]* 的两侧单字符全集)
+        return c0 >= 48 && c0 <= 57
+    }
+    if c0 < 49 || c0 > 57 {
+        return false
+    }
+    var k: I32 = i + 1
+    while k < s.len {
+        var c = byte_at(s, k)
+        if c < 48 || c > 57 {
+            return false
+        }
+        k += 1
+    }
+    return true
+}
+
+// 单行 CTCL 处理共用:取行(\n 界,尾行无换行亦计——awk NR 同义)
+fn ctcl_next_line(text: Str, start: I32) -> I32 {
+    var sc: I32 = start
+    while sc < text.len {
+        if byte_at(text, sc) == 10 {
+            return sc
+        }
+        sc += 1
+    }
+    return text.len
+}
+
+fn ctcl_parse(text: Str, var recs: List[Str], var tnames: List[Str]) -> I32 {
+    // 根脚本 DRV_READER_AWK 状态机逐字(:74-180)。记录流:T\t名\tdesc(关块时落,
+    // = awk printf "TASK...")/ W\t名\tcwd(有 cwd 键才落)/ S\t名\t步(steps 解析
+    // 即落)。END 路径三查:块未闭合 → 缺 ctron 块(E5047)→ 缺 config_version
+    // (E5050),消息无行号前缀逐字;一错即停(fail 即 return,后续不再处理)。
+    var blk = ""
+    var cur = ""
+    var desc = ""
+    var tcwd = ""
+    var nsteps: I32 = 0
+    var hasSteps: Bool = false
+    var hasDesc: Bool = false
+    var hasCwd: Bool = false
+    var sawCtron: Bool = false
+    var seenCfg: Bool = false
+    var cfgOk: Bool = false
+    var nr: I32 = 0
+    var start: I32 = 0
+    while start < text.len {
+        var nl = ctcl_next_line(text, start)
+        nr += 1
+        var line = ctcl_rtrim(ctcl_ltrim(ctcl_strip_comment(byte_slice(text, start, nl))))
+        if nl >= text.len {
+            start = text.len
+        } else {
+            start = nl + 1
+        }
+        if line.len == 0 {
+            continue
+        }
+        if blk.len == 0 {
+            // 块头行(IDENT + 可选带引号实参 + 行尾 {)
+            if byte_at(line, 0) == 91 {
+                return ctcl_fail(nr, "本语言不用 [section] 段头;请用块:ctron \{ ... } / task \"名\" \{ ... }")
+            }
+            if byte_at(line, line.len - 1) != 123 {
+                return ctcl_fail(nr, "块头 \{ 必须行尾:ctron \{ ... } / task \"名\" \{ ... }")
+            }
+            var head = ctcl_rtrim(byte_slice(line, 0, line.len - 1))
+            var id = head
+            var arg = ""
+            var wcut: I32 = -1
+            var hi: I32 = 0
+            while hi < head.len {
+                var hc = byte_at(head, hi)
+                if hc == 32 || hc == 9 {
+                    wcut = hi
+                    break
+                }
+                hi += 1
+            }
+            if wcut >= 0 {
+                id = byte_slice(head, 0, wcut)
+                arg = ctcl_rtrim(byte_slice(head, wcut + 1, head.len))
+            }
+            if id != "ctron" && id != "task" {
+                return ctcl_fail(nr, "E5044 未知块 " + id + ";合法块:ctron, task")
+            }
+            if id == "ctron" {
+                if arg.len != 0 {
+                    return ctcl_fail(nr, "E5041 ctron 是记录块,不带名字实参")
+                }
+                if sawCtron {
+                    return ctcl_fail(nr, "E5045 ctron 块最多一个")
+                }
+                sawCtron = true
+            } else {
+                if arg.len == 0 {
+                    return ctcl_fail(nr, "E5041 task 是键控块:task \"名\" \{ ... }")
+                }
+                if !ctcl_uq_ok(arg) {
+                    return ctcl_fail(nr, "E5040 task 名实参非法")
+                }
+                var tname = ctcl_unquote(arg)
+                if !ctcl_task_name_ok(tname) {
+                    return ctcl_fail(nr, "E5046 task 名非法(形:[a-z][a-z0-9_-]*):" + tname)
+                }
+                var dup: Bool = false
+                var ti: I32 = 0
+                while ti < tnames.len {
+                    if tnames[ti] == tname {
+                        dup = true
+                        break
+                    }
+                    ti += 1
+                }
+                if dup {
+                    return ctcl_fail(nr, "E5045 重复的 task \"" + tname + "\"")
+                }
+                tnames.push(tname)
+                cur = tname
+                nsteps = 0
+                hasSteps = false
+                hasDesc = false
+                hasCwd = false
+                desc = ""
+                tcwd = ""
+            }
+            blk = id
+        } else if line == "}" {
+            if blk == "task" {
+                if !hasSteps {
+                    return ctcl_fail(nr, "E5051 task \"" + cur + "\" 缺必填键 steps")
+                }
+                if nsteps == 0 {
+                    return ctcl_fail(nr, "E5054 steps 不允许空列表(空 steps 的任务不合法)")
+                }
+                recs.push("T\t" + cur + "\t" + desc)
+                if tcwd.len != 0 {
+                    recs.push("W\t" + cur + "\t" + tcwd)
+                }
+            }
+            blk = ""
+            cur = ""
+        } else {
+            // 键值行({ } 内嵌/单行块先拒,再 = 切分,四键白名单)
+            var hasBrace: Bool = false
+            var bi: I32 = 0
+            while bi < line.len {
+                var bc = byte_at(line, bi)
+                if bc == 123 || bc == 125 {
+                    hasBrace = true
+                    break
+                }
+                bi += 1
+            }
+            if hasBrace {
+                return ctcl_fail(nr, "E5040 块内禁止嵌套块/单行块(深度恒 1)")
+            }
+            var eq: I32 = -1
+            var ei: I32 = 0
+            while ei < line.len {
+                if byte_at(line, ei) == 61 {
+                    eq = ei
+                    break
+                }
+                ei += 1
+            }
+            if eq < 0 {
+                return ctcl_fail(nr, "E5040 块内每行必须是 键 = 值")
+            }
+            var key = ctcl_rtrim(byte_slice(line, 0, eq))
+            var val = ctcl_ltrim(byte_slice(line, eq + 1, line.len))
+            if !ctcl_key_ok(key) {
+                return ctcl_fail(nr, "E5040 块内每行必须是 键 = 值")
+            }
+            if blk == "ctron" {
+                if key != "config_version" {
+                    return ctcl_fail(nr, "E5043 块 ctron 中未知键 " + key + ";合法键:config_version")
+                }
+                if seenCfg {
+                    return ctcl_fail(nr, "E5045 重复键 " + key)
+                }
+                seenCfg = true
+                if !ctcl_int_ok(val) {
+                    return ctcl_fail(nr, "E5046 config_version 的类型应为 int")
+                }
+                if val != "1" {
+                    return ctcl_fail(nr, "E5050 config_version 必须为 1")
+                }
+                cfgOk = true
+            } else {
+                if key != "steps" && key != "desc" && key != "cwd" {
+                    return ctcl_fail(nr, "E5043 块 task 中未知键 " + key + ";合法键:steps, desc, cwd")
+                }
+                // 重复键 per-task 查(awk (cur SUBSEP key) in seen_key 同义;
+                // 块不嵌套,cur 单活跃,三键 has 旗标即全义)
+                if key == "steps" {
+                    if hasSteps {
+                        return ctcl_fail(nr, "E5045 重复键 " + key)
+                    }
+                    hasSteps = true
+                } else if key == "desc" {
+                    if hasDesc {
+                        return ctcl_fail(nr, "E5045 重复键 " + key)
+                    }
+                    hasDesc = true
+                } else {
+                    if hasCwd {
+                        return ctcl_fail(nr, "E5045 重复键 " + key)
+                    }
+                    hasCwd = true
+                }
+                if key == "desc" {
+                    if byte_at(val, 0) != 34 {
+                        return ctcl_fail(nr, "E5046 desc 的类型应为 str")
+                    }
+                    if !ctcl_uq_ok(val) {
+                        return ctcl_fail(nr, "E5048 desc 字符串非法(转义仅 \\\" 与 \\\\)")
+                    }
+                    desc = ctcl_unquote(val)
+                } else if key == "cwd" {
+                    if byte_at(val, 0) != 34 {
+                        return ctcl_fail(nr, "E5046 cwd 的类型应为 str")
+                    }
+                    if !ctcl_uq_ok(val) {
+                        return ctcl_fail(nr, "E5048 cwd 字符串非法(转义仅 \\\" 与 \\\\)")
+                    }
+                    tcwd = ctcl_unquote(val)
+                } else {
+                    // steps:list 单行、非空、无尾逗号,元素逐个双引号解码头
+                    if byte_at(val, 0) != 91 {
+                        return ctcl_fail(nr, "E5046 steps 的类型应为 list")
+                    }
+                    if byte_at(val, val.len - 1) != 93 {
+                        return ctcl_fail(nr, "E5040 列表必须单行且以 ] 结尾")
+                    }
+                    var inner = ctcl_ltrim(ctcl_rtrim(byte_slice(val, 1, val.len - 1)))
+                    if inner.len == 0 {
+                        return ctcl_fail(nr, "E5054 steps 不允许空列表(空 steps 的任务不合法)")
+                    }
+                    if byte_at(inner, inner.len - 1) == 44 {
+                        return ctcl_fail(nr, "E5048 列表不允许尾逗号(最后元素后直接 ])")
+                    }
+                    var rest = inner
+                    while true {
+                        // awk 元素切分:字符串感知逐字(引号内 \\ 消费;引号外逗号即断)
+                        var inq: Bool = false
+                        var bsq: Bool = false
+                        var elem = ""
+                        var m = rest.len
+                        var j: I32 = 1
+                        var brokeAt: I32 = -1
+                        while j <= m {
+                            var c = byte_at(rest, j - 1)
+                            if inq {
+                                elem = elem + byte_slice(rest, j - 1, j)
+                                if bsq {
+                                    bsq = false
+                                } else if c == 92 {
+                                    bsq = true
+                                } else if c == 34 {
+                                    inq = false
+                                }
+                            } else {
+                                if c == 34 {
+                                    inq = true
+                                    elem = elem + byte_slice(rest, j - 1, j)
+                                } else if c == 44 {
+                                    brokeAt = j
+                                    break
+                                } else {
+                                    elem = elem + byte_slice(rest, j - 1, j)
+                                }
+                            }
+                            j += 1
+                        }
+                        var e2 = ctcl_rtrim(ctcl_ltrim(elem))
+                        var uqOk: Bool = false
+                        var sv = ""
+                        if e2.len != 0 {
+                            if ctcl_uq_ok(e2) {
+                                uqOk = true
+                                sv = ctcl_unquote(e2)
+                            }
+                        }
+                        if !uqOk {
+                            return ctcl_fail(nr, "E5048 列表元素必须是双引号字符串(转义仅 \\\" 与 \\\\)")
+                        }
+                        nsteps += 1
+                        recs.push("S\t" + cur + "\t" + sv)
+                        if brokeAt < 0 {
+                            break
+                        }
+                        rest = byte_slice(rest, brokeAt, rest.len)
+                    }
+                }
+            }
+        }
+    }
+    // END 路径三查(:175-180;消息无行号前缀,逐字)
+    if blk.len != 0 {
+        eprint("ctron: ctron.ctcl: 块未闭合(缺 })\n")
+        return 2
+    }
+    if !sawCtron {
+        eprint("ctron: ctron.ctcl: E5047 缺 ctron 块\n")
+        return 2
+    }
+    if !cfgOk {
+        eprint("ctron: ctron.ctcl: E5050 ctron 缺语言版本键 config_version(必须存在且 = 1)\n")
+        return 2
+    }
+    return 0
+}
+
+// ---- runner(DRV_SPLIT_AWK + run_step 同构)----
+
+fn split_step(s: Str, var argv: List[Str]) -> Bool {
+    // 根脚本 DRV_SPLIT_AWK(:184-227)逐字:元字符 11 字符全串拒(| & ; $ ` < > ( ) * ?;
+    // 消息含「两条出路」行);切分 = 空白分组/双引号串接(引号内 \" 与 \\ 取下一字符
+    // 原样;孤立尾反斜杠/引号未闭合诊断逐字)。假 = 已落 stderr,调用方回 2。
+    var mch: Bool = false
+    var i: I32 = 0
+    while i < s.len {
+        var c = byte_at(s, i)
+        if c == 124 || c == 38 || c == 59 || c == 36 || c == 96 || c == 60 || c == 62 || c == 40 || c == 41 || c == 42 || c == 63 {
+            mch = true
+            break
+        }
+        i += 1
+    }
+    if mch {
+        eprint("ctron: E5040 步骤含 shell 元字符(| & ; $ ` < > ( ) * ?):" + s + ";两条出路:改写为多步骤 / 写脚本文件后以 sh 调用\n")
+        return false
+    }
+    var p: I32 = 0
+    var n = s.len
+    while p < n {
+        var c = byte_at(s, p)
+        if c == 32 || c == 9 {
+            p += 1
+            continue
+        }
+        var arg = ""
+        if c == 34 {
+            p += 1
+            var closed: Bool = false
+            while p < n {
+                c = byte_at(s, p)
+                if c == 92 {
+                    if p == n - 1 {
+                        eprint("ctron: 步骤串孤立的尾部反斜杠:" + s + "\n")
+                        return false
+                    }
+                    arg = arg + byte_slice(s, p + 1, p + 2)
+                    p += 2
+                } else if c == 34 {
+                    closed = true
+                    p += 1
+                    break
+                } else {
+                    arg = arg + byte_slice(s, p, p + 1)
+                    p += 1
+                }
+            }
+            if !closed {
+                eprint("ctron: 步骤串引号未闭合:" + s + "\n")
+                return false
+            }
+        } else {
+            while p < n {
+                c = byte_at(s, p)
+                if c == 32 || c == 9 || c == 34 {
+                    break
+                }
+                arg = arg + byte_slice(s, p, p + 1)
+                p += 1
+            }
+        }
+        argv.push(arg)
+    }
+    return true
+}
+
+fn run_step(step: Str, cwd: Str) -> I32 {
+    // 根脚本 run_step(:968-983)同构:切分 argv → 仅 argv[0] 的裸名 ctron 替换
+    // 自身 exe 全路径(sh CTRON_SELF;他位的字面 ctron 是用户数据不改写)→
+    // run_argv_rc 直 exec(cwd 非空 = 子进程 chdir;stdin 继承 = sh fd3 教训的
+    // 结构性消解;rc 由 waitpid 直取,无 shell 中间层)。
+    var argv = List[Str]()
+    if !split_step(step, argv) {
+        return 2
+    }
+    if argv.len == 0 {
+        // sh "$@" 空参 = rc 0(病理面:空串步骤;语料不含,诚实账登记)
+        return 0
+    }
+    if argv[0] == "ctron" {
+        argv[0] = ctron_exe_path()
+    }
+    var blob: U8[4096] = [0, 0, 0, 0, 0, 0, 0, 0]
+    let nb = argv_to_blob(argv, blob)
+    if nb < 0 {
+        // 步骤串超 blob 容量(sh 无上限;= exec 失败口径 127,delegate 家族先例)
+        return 127
+    }
+    return run_argv_rc(cwd, blob, nb.as[I64](), "")
+}
+
+// ---- env 注入 / 缓存根 / 门嗅探 ----
+
+fn drv_root() -> Str {
+    // sh DRV_ROOT=${CTRON_DRV_ROOT:-$DEVROOT}:sh DEVROOT = 根脚本目录(仓库根);
+    // native = exe 父的父(compiler/bin → compiler → 仓库根,两布局同值)
+    var e = env_get("CTRON_DRV_ROOT")
+    if e.len != 0 {
+        return e
+    }
+    return dir_of(dir_of(bin_dir()))
+}
+
+fn drv_env_setup() {
+    // sh drv_env_setup(:956-962)同构:lib/std 在场才注入 CTRON_STDPATH
+    // (W3 env_set = 本进程 setenv;子步骤 execve 继承;task/gate 分派臂先行,
+    // clean 不注入 = sh 逐字)
+    var root = drv_root()
+    if is_dir_target(root + "/lib/std") {
+        env_set("CTRON_STDPATH", root + "/lib/std")
+    }
+}
+
+fn drv_is_driver_manifest(p: Str) -> Bool {
+    // sh drv_is_driver_manifest(:1054-1057)逐字:逐行(首空白剥;^// 行滤)
+    // 前缀 ^(ctron|task)[[:space:]{] 任一行命中即真(整文扫 = sh grep 同义;
+    // 大小写不敏感文件系统上 ctron.ctcl ≡ Ctron.ctcl,项目清单 pkg 块首不命中
+    // = darwin 坑防误中;嗅探只把关卡分派,诊断仍归读取器)
+    if !fs_exists(p) {
+        return false
+    }
+    var text = read_text(p)
+    var start: I32 = 0
+    while start < text.len {
+        var nl = ctcl_next_line(text, start)
+        var line = byte_slice(text, start, nl)
+        var b: I32 = 0
+        while b < line.len {
+            var bc = byte_at(line, b)
+            if bc == 32 || bc == 9 || bc == 11 || bc == 12 || bc == 13 {
+                b += 1
+            } else {
+                break
+            }
+        }
+        var isComment: Bool = false
+        if line.len - b >= 2 {
+            if byte_at(line, b) == 47 && byte_at(line, b + 1) == 47 {
+                isComment = true
+            }
+        }
+        if !isComment {
+            var rest = byte_slice(line, b, line.len)
+            var hit: Bool = false
+            if rest.len >= 6 {
+                if byte_slice(rest, 0, 5) == "ctron" {
+                    var nc = byte_at(rest, 5)
+                    if nc == 32 || nc == 9 || nc == 11 || nc == 12 || nc == 13 || nc == 123 {
+                        hit = true
+                    }
+                }
+            }
+            if !hit {
+                if rest.len >= 5 {
+                    if byte_slice(rest, 0, 4) == "task" {
+                        var nc2 = byte_at(rest, 4)
+                        if nc2 == 32 || nc2 == 9 || nc2 == 11 || nc2 == 12 || nc2 == 13 || nc2 == 123 {
+                            hit = true
+                        }
+                    }
+                }
+            }
+            if hit {
+                return true
+            }
+        }
+        if nl >= text.len {
+            break
+        }
+        start = nl + 1
+    }
+    return false
+}
+
+// ---- cmd_task / cmd_gate / cmd_clean ----
+
+fn cmd_task(tfile: Str, tname: Str) -> I32 {
+    // 根脚本 cmd_task(:997-1048)同构。清单缺席 = die2 逐字(实参原形内嵌);
+    // 绝对化 = sh cd&&pwd/basename 同构;读表入内存记录流;无名列出(TASK 记录
+    // 名\tDesc,echo 直写)/ 有名执行两臂;task.cwd 解析绝对传 spawn cwd(不 chdir
+    // 本进程;PWD 同步导给子步骤 = sh cd 的导出语义);败即停 rc 透传 + 判词逐字。
+    if !fs_exists(tfile) {
+        return fail2("task: 缺清单 " + tfile + "(驱动器面;试: ctron task -f <文件> 或先 ctron new)")
+    }
+    var mdir = dir_of(absolutize(tfile))
+    var recs = List[Str]()
+    var tnames = List[Str]()
+    if ctcl_parse(read_text(absolutize(tfile)), recs, tnames) != 0 {
+        return 2
+    }
+    if tname.len == 0 {
+        var i: I32 = 0
+        while i < recs.len {
+            var r = recs[i]
+            if r.len >= 2 {
+                if byte_at(r, 0) == 84 && byte_at(r, 1) == 9 {
+                    var t2: I32 = -1
+                    var k: I32 = 2
+                    while k < r.len {
+                        if byte_at(r, k) == 9 {
+                            t2 = k
+                            break
+                        }
+                        k += 1
+                    }
+                    if t2 >= 0 {
+                        echo_line(byte_slice(r, 2, t2) + "\t" + byte_slice(r, t2 + 1, r.len))
+                    }
+                }
+            }
+            i += 1
+        }
+        return 0
+    }
+    var found: Bool = false
+    var i2: I32 = 0
+    while i2 < recs.len {
+        var r2 = recs[i2]
+        if r2.len >= 2 {
+            if byte_at(r2, 0) == 84 && byte_at(r2, 1) == 9 {
+                var t3: I32 = -1
+                var k3: I32 = 2
+                while k3 < r2.len {
+                    if byte_at(r2, k3) == 9 {
+                        t3 = k3
+                        break
+                    }
+                    k3 += 1
+                }
+                if t3 >= 0 {
+                    if byte_slice(r2, 2, t3) == tname {
+                        found = true
+                        break
+                    }
+                }
+            }
+        }
+        i2 += 1
+    }
+    if !found {
+        return fail2("task: 未知任务 " + tname + "(试: ctron task 列表)")
+    }
+    var tcwd = ""
+    var i3: I32 = 0
+    while i3 < recs.len {
+        var r3 = recs[i3]
+        if r3.len >= 2 {
+            if byte_at(r3, 0) == 87 && byte_at(r3, 1) == 9 {
+                var t4: I32 = -1
+                var k4: I32 = 2
+                while k4 < r3.len {
+                    if byte_at(r3, k4) == 9 {
+                        t4 = k4
+                        break
+                    }
+                    k4 += 1
+                }
+                if t4 >= 0 {
+                    if byte_slice(r3, 2, t4) == tname {
+                        tcwd = byte_slice(r3, t4 + 1, r3.len)
+                    }
+                }
+            }
+        }
+        i3 += 1
+    }
+    var stepCwd = mdir
+    if tcwd.len != 0 {
+        // sh TASK_CWD_ABS="$PWD/$TASK_CWD"(cd 清单目录后的 PWD = 清单目录同形)
+        stepCwd = mdir + "/" + tcwd
+        if !is_dir_target(stepCwd) {
+            return fail2("task " + tname + ": cwd 目录不存在: " + tcwd + "(相对清单目录)")
+        }
+    }
+    var steps = List[Str]()
+    var i4: I32 = 0
+    while i4 < recs.len {
+        var r4 = recs[i4]
+        if r4.len >= 2 {
+            if byte_at(r4, 0) == 83 && byte_at(r4, 1) == 9 {
+                var t5: I32 = -1
+                var k5: I32 = 2
+                while k5 < r4.len {
+                    if byte_at(r4, k5) == 9 {
+                        t5 = k5
+                        break
+                    }
+                    k5 += 1
+                }
+                if t5 >= 0 {
+                    if byte_slice(r4, 2, t5) == tname {
+                        steps.push(byte_slice(r4, t5 + 1, r4.len))
+                    }
+                }
+            }
+        }
+        i4 += 1
+    }
+    var total = steps.len
+    var nn: I32 = 0
+    var pwd0 = env_get("PWD")
+    while nn < steps.len {
+        var st = steps[nn]
+        nn += 1
+        // 进度行:echo 子进程直写(println 块缓冲会在子步骤产出之后才落 = 合流交错)
+        echo_line("ctron: task " + tname + " 步骤 " + nn.to_string() + "/" + total.to_string() + ": " + st)
+        env_set("PWD", stepCwd)
+        var rc = run_step(st, stepCwd)
+        env_set("PWD", pwd0)
+        if rc != 0 {
+            eprint("ctron: task " + tname + " 在步骤 " + nn.to_string() + " 失败(rc=" + rc.to_string() + ")\n")
+            return rc
+        }
+    }
+    echo_line("ctron: task " + tname + " 完成(" + nn.to_string() + " 步)")
+    return 0
+}
+
+fn cmd_gate(gname: Str) -> I32 {
+    // 根脚本 cmd_gate(:1063-1088)同构:D4 解析序 fail-closed —— cwd ctron.ctcl
+    // (经首块嗅探确证驱动器清单)走 task 表;项目模式(Ctron.ctcl 在场)内建
+    // 默认门 ["ctron build", "ctron fmt --check ."] 横幅先行;rc 2 用法错。
+    // 旗标形实参不转发(sh fail-open 评审钉);步骤败 rc 原样透传。
+    var name = gname
+    if name.len != 0 {
+        if byte_at(name, 0) == 45 {
+            return fail2("gate: 未知旗标/名字不合法: " + name + "(用法: ctron gate [名])")
+        }
+    }
+    if name.len == 0 {
+        name = "gate"
+    }
+    if drv_is_driver_manifest("ctron.ctcl") {
+        return cmd_task("ctron.ctcl", name)
+    }
+    if name == "gate" {
+        if fs_exists("Ctron.ctcl") {
+            echo_line("ctron: 内建默认门(build + fmt --check;项目自定义门:写 ctron.ctcl 的 task \"gate\")")
+            var rc = run_step("ctron build", "")
+            if rc != 0 {
+                eprint("ctron: gate 在步骤 1 失败(rc=" + rc.to_string() + ")\n")
+                return rc
+            }
+            rc = run_step("ctron fmt --check .", "")
+            if rc != 0 {
+                eprint("ctron: gate 在步骤 2 失败(rc=" + rc.to_string() + ")\n")
+                return rc
+            }
+            echo_line("ctron: gate 完成(2 步)")
+            return 0
+        }
+    }
+    return fail2("gate: 缺 ctron.ctcl 且非项目模式(Ctron.ctcl 亦缺);试: ctron task / 先 ctron new")
+}
+
+fn delete_tree(p: Str) {
+    // sh rm -rf 同义(探针①:fs_delete 空目录可删、非空拒)→ walk 前序(父先
+    // 子后)逆序删(子先父后,父到时已空)= 全树净除,空目录壳不残留
+    var all = walk(p)
+    var i: I32 = all.len - 1
+    while i >= 0 {
+        fs_delete(all[i])
+        i -= 1
+    }
+}
+
+fn cmd_clean(allFlag: Bool) -> I32 {
+    // 根脚本 cmd_clean(:1093-1119)同构:工具链缓存三域(.cache/emit|bare|wasm;
+    // 根 = CTRON_DRV_ROOT 覆盖,缺省 exe/../..)逐域 [ -d ] 守卫(缺席域零输出,
+    // 探针②钉定)——已清理行 echo 直写;--all 加项目 build/ 与 pkgs/(清单在场
+    // 才动 = D5 项目模式限定词;非项目目录静默跳过,破坏性半径不越 cwd)。
+    var root = drv_root()
+    var doms = List[Str]()
+    doms.push("emit")
+    doms.push("bare")
+    doms.push("wasm")
+    var i: I32 = 0
+    while i < doms.len {
+        var d = root + "/.cache/" + doms[i]
+        if is_dir_target(d) {
+            delete_tree(d)
+            echo_line("ctron: 已清理 .cache/" + doms[i])
+        }
+        i += 1
+    }
+    if allFlag {
+        if fs_exists("Ctron.ctcl") {
+            var doms2 = List[Str]()
+            doms2.push("build")
+            doms2.push("pkgs")
+            var j: I32 = 0
+            while j < doms2.len {
+                if is_dir_target(doms2[j]) {
+                    delete_tree(doms2[j])
+                    echo_line("ctron: 已清理 " + doms2[j] + "/")
+                }
+                j += 1
+            }
+        }
+    }
+    return 0
+}
+
 fn main() -> I32 {
     var n: I64 = ctron_prog_args_n()
     // 无参 = 整版 usage + rc 2(sh:[ $# -lt 1 ])
@@ -1415,6 +2333,61 @@ fn main() -> I32 {
             return build_file(ctron_prog_args_at(1), target)
         }
         return build_proj()
+    }
+    if cmd == "task" {
+        // W4 波2 批2:env 注入(lib/std 在场 → env_set CTRON_STDPATH,sh 分派臂
+        // 先行同序)+ -f 清单/名实参解析(sh for 循环同序:后者覆盖;悬空 -f = 清单
+        // 缺省 ./ctron.ctcl;-f= 空串同构)
+        drv_env_setup()
+        var tf = "./ctron.ctcl"
+        var tn = ""
+        var prevf: Bool = false
+        var ai: I64 = 1
+        while ai < n {
+            var a = ctron_prog_args_at(ai)
+            if prevf {
+                tf = a
+                prevf = false
+            } else if a == "-f" {
+                prevf = true
+            } else if a.len >= 3 {
+                if byte_slice(a, 0, 3) == "-f=" {
+                    tf = byte_slice(a, 3, a.len)
+                } else {
+                    tn = a
+                }
+            } else {
+                tn = a
+            }
+            ai += 1
+        }
+        return cmd_task(tf, tn)
+    }
+    if cmd == "gate" {
+        // W4 波2 批2:env 注入 + 单名实参(sh $1 之外静默丢弃同构;旗标形在
+        // cmd_gate 内拒)
+        drv_env_setup()
+        var gn = ""
+        if n >= 2 {
+            gn = ctron_prog_args_at(1)
+        }
+        return cmd_gate(gn)
+    }
+    if cmd == "clean" {
+        // W4 波2 批2:--all 旗标解析;未知旗标 = rc2 用法错逐字(不支持 env 注入
+        // = sh clean 臂无 drv_env_setup 同构)
+        var allF: Bool = false
+        var ci: I64 = 1
+        while ci < n {
+            var a = ctron_prog_args_at(ci)
+            if a == "--all" {
+                allF = true
+            } else {
+                return fail2("clean 未知旗标: " + a + "(支持: --all)")
+            }
+            ci += 1
+        }
+        return cmd_clean(allF)
     }
     // 其余一切名字 = sh 同款未知子命令(stderr + rc 2)
     eprint(unknown_line(cmd))

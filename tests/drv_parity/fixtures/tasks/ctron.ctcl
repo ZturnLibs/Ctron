@@ -1,0 +1,35 @@
+ctron {
+    config_version = 1
+}
+
+task "hello" {
+    desc = "跑一个必然成功的脚本"
+    steps = ["sh data/ok.sh", "echo step-two"]
+}
+
+task "quotes" {
+    desc = "切分与转义"
+    steps = ["sh data/args.sh \"say \\\"hi\\\"\""]
+}
+
+task "cwdr" {
+    desc = "task.cwd 正例"
+    cwd = "sub"
+    steps = ["sh go.sh"]
+}
+
+task "badcwd" {
+    desc = "task.cwd 缺目录"
+    cwd = "nope"
+    steps = ["sh go.sh"]
+}
+
+task "failstop" {
+    desc = "败即停 rc 透传"
+    steps = ["sh data/ok.sh", "sh data/fail.sh", "echo never-run-marker"]
+}
+
+task "gate" {
+    desc = "生产门路径"
+    steps = ["sh data/ok.sh"]
+}
