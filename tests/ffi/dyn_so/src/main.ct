@@ -1,0 +1,17 @@
+// G2-W1:dlopen_global 全域链端到端——dlopen(libz, GLOBAL)→#[dlsym] RTLD_DEFAULT 命中 zlibVersion
+// 负例腿:坏路径句柄 0 + dlerror_str 非空
+#[dlsym]
+extern "c" fn zlibVersion() -> Str
+
+fn main() {
+    var h = dlopen_global("/usr/lib/libz.dylib")
+    if h == 0 {
+        h = dlopen_global("libz.so.1")
+    }
+    if h == 0 {
+        println("dynso-probe err=" + dlerror_str())
+        return
+    }
+    let v = zlibVersion()
+    println("dynso-probe zlib=" + v)
+}

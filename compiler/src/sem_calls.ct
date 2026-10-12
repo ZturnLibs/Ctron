@@ -117,6 +117,8 @@ fn sem_calls_all(file: List[Str], diags: List[Str], prof: Str) {
     prel.push("clo_cb2")
     prel.push("clo_cb3")
     prel.push("dlopen")
+    prel.push("dlopen_global")
+    prel.push("dlerror_str")
     prel.push("dlclose")
     prel.push("dlsym")
     prel.push("Some")

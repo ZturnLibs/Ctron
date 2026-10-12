@@ -982,6 +982,7 @@ val eval_expr(rt* R, cexpr* e) {
                 return o;
             }
             if (!strcmp(nm, "dlopen") || !strcmp(nm, "dlclose") || !strcmp(nm, "dlsym")
+                || !strcmp(nm, "dlopen_global") || !strcmp(nm, "dlerror_str")
                 || !strcmp(nm, "clo_handle") || !strcmp(nm, "clo_cb2") || !strcmp(nm, "clo_cb3")) {
                 rt_abort(R, RT_ERROR, "%s 仅原生口径可用(经 ctron-emit + cc 后运行)", nm);
             }
