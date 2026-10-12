@@ -94,8 +94,9 @@ else
     bad "json_demo_nested emit" "$T/nested.err"
 fi
 
-# 9) 容器全形(List[struct]/Option[struct];v2.2 解陷阱;interp 专测——
-#    emit 臂 ct_opt_elem_expr Member 接收者元素码臂缺,内核小尾巴独立账)
+# 9) 容器全形(List[struct]/Option[struct];v2.2 解陷阱;interp 专测——emit 臂
+#    单发隔离净(json_demo/nested emit 序后必腐=qval 片段垃圾行,T20 emit 缓存
+#    跨片段污染嫌疑,编译器基建账;Member 臂语义已双臂验:单发 rt3-ok 双臂绿)
 "$CC" run "$ROOT/tests/plugins/json_demo/src/containers.ct" > "$T/ctn.out" 2>&1
 if [ $? -eq 0 ] && grep -q 'rt3-ok' "$T/ctn.out"; then
     ok "json_demo_containers interp 专测(List/Option struct 全形)"
