@@ -86,6 +86,9 @@ git commit -m "feat(driver): task/gate/clean 原生化(W4 波2 批2)——本地
 
 pkg 族(verify/trace/attest/log/seal;sha256_hex 在库;trace MemFs 码gen 最大单件)/add/publish/lock/bench/new;垫片翻转(根 ctron 头部 exec bin/ctron 缺件回落;ctron_smoke :28 指针翻转整门复用)+install 布局(Makefile prebuilt 加 bin/ctron+ctron_proc.c 链)+自举梯接线;真终审=翻转合并审查。
 
-## 执行记录
+## 执行记录(2026-10-10,W4 波2 两批全落库过审)
 
-(执行时逐任务回写。)
+- **批1 `41ddf6f0`**:build 单文件+项目模式(emit 捕获落盘+cc 链+have_cc 双出路文案;项目 name 提取/dep→ctron-dep/workspace 逐成员自 spawn 递归;T48 fail-closed/缺入口/缺清单 rc2 逐字)。多文件探针**阳性**(ctron-emit 链多文件可用)→波3 驱动器项目化拆分解锁。首跑 5 差全修原生侧(member 前缀/子进程 PWD env_set 镜像 sh cd/成员行 echo 直写保序/语料路径)。评审 Approved:PWD 双通道各载其重端到端证、workspace 二级递归活体探针(输出+发射 C 双逐字)、sh 双 token 迭代怪癖有意复现并钉语料、对端 cc 段瞬态自愈后全链 native.sh rc0。**评审顺带观察**:对端 49982199/e6725f65 在 trans_ty.ct 引入两处重复不可达块(repeat 行话:同款 if 双落)——归对端泳道自查。
+- **批2 `57723cc0`**:task/gate/clean 原生化(执行口径=实现子代理 600s 超时遗留完整实现,控制器接管验证:修对拍夹具 t16_case 采样时序 bug[实现无误]、收缴三探针、跑语义双门)。读取器 30 消息位点与 awk 源逐行 diff 全等 + 评审独立探 22 个语料外形态全逐字;runner steps 内存化(fd3 类问题结构性消失)/元字符拒/裸名自解析/env_set 注入/task.cwd=spawn cwd;gate 解析序三段+嗅探;clean walk 逆序删+--all 守卫。对拍 67→**88** 全绿 + **语义双门:原生驱动器跑 tests/tasks 21/21 同夹具同绿**。评审 Approved。
+- **W4波2 Minor 留档**:悬空 member stderr 分歧(sh 泄 cd 行)未记账/ctron-dep exists-vs-executable=rc 分歧账轻描/stem 尾斜杠/容量整界假败/探针固定名竞态/desc 含 TAB 列表面截断分歧/步骤串 >4KB rc127 静默悬崖/delete_tree 深度 64 上限+fs_delete 败仍报已清理+符号链接目录递归删(rm -rf 是 unlink 链接)——均病理面,登记随波3 消化。
+- **波3 前置齐备**:多文件 emit 可用(项目化拆分解锁)/sha256_hex 在库/对拍 oracle 全谱就绪;翻转前置=发射模板 raw argv 逃生口(编译器泳道,在册)。
