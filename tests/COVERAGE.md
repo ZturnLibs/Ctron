@@ -1880,5 +1880,9 @@ e083d902/23f7089a/a74b8956/b32d79e1)**:W1 scope 退出 join-all(spec §07 兑现
 应取消=v0 清单;取消风暴双形态)+顺带修 R 码 let 成员调用 init 注解→#elem 直驱线(match Ok
 载荷槽 int32 截断指针根)/W5 parallel.map·reduce 接线真 fork-join(T33 件转正)+半端面实证修通
 (Channel 字段/形参、Sender 注解全通=硬禁裁决翻修通)。门:tests/thread 8/0 双形态+suite
-119/120·120/120+gc 族全绿。**W4 TaskPool 挂账**(池化工作者+入队发射面,独立小批);半端截断
-在册坑销账;新坑入册:`/* */` 非 Ctron 注释(.ct 源=词法垃圾级联炸 main 探测)。
+119/120·120/120+gc 族全绿。**W4 已落(b1add3c1):TaskPool 全链**——N 工作者+无界队列(排空后
+停工),任务段纪律=每入队件 ct_shim_tramp 上下文跑(段=件粒度),码面新字母 x=池句柄(初选 k
+撞 Task 在册码已迁),ctor 双链+pool.spawn 入队面+五处注册,夹具 200 件×4 工作者双形态。
+**G3 批终=五波全落,tests/thread 10/0**。半端截断在册坑销账;新坑入册:`/* */` 非 Ctron 注释
+(.ct 源=词法垃圾级联炸 main 探测)+trans_ty.ct 非 UTF8 损坏字节(管线级 sed 事故,邻位语义修复
+,文件已纯净)+正则插行黏行(自举静默崩)。
