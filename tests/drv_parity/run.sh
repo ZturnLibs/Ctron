@@ -533,5 +533,129 @@ done
 (cd "$NOD/nat/w" && ./ctron lock) > "$T/nat.out" 2>&1; r2=$?
 report "lock 缺 ctron-dep(异位 exe,die2 rc2)" "$r1" "$r2"
 
+# ---- bench/pkg seal/attest/log 臂(W4 波3 批2)----
+# bench:注册表清单+未注册 die2 入册;族 spawn = 真基准计时面(ns/op 逐行非确定)
+# 字节不可对拍,登记暂缓不入册(sh cmd_bench :386-411 实行为 oracle,在案)。
+# seal/attest/log:同路径基沙盒($ART/$LOGD 每侧现造现清,同 wave3 批1 pub_case
+# 纪律)——self_digest/commit 短哈希逐字面对拍;log 侧 git 日期钉死
+# (GIT_AUTHOR/COMMITTER_DATE,两侧同值 → 同树同哈希,commit 短哈希才可对拍),
+# 记录树 diff -r(attest.ctcl 内容寻址字节;.git 不入 diff)。
+run_case "bench 无参(注册表清单 rc0)"  bench
+run_case "bench 未注册族(rc2 逐字)"    bench nosuch
+
+SLFX="$T/slfx"
+ART="$T/art"
+LOGD="$T/plog"
+LOG_DATE="@1700000000 +0000"
+mk_slfx() { # seal 夹具:无 main 模块(provider 面;现造现清)
+    rm -rf "$SLFX"
+    mkdir -p "$SLFX"
+    printf 'fn seal_add(x: I32, y: I32) -> I32 {\n    return x + y\n}\n' > "$SLFX/thing.ct"
+}
+seal_art() { # $1=side:夹具现造 + seal 至 $ART(同路径基;stdout 丢弃,验证由语料例担)
+    mk_slfx
+    rm -rf "$ART"
+    if [ "$1" = sh ]; then
+        sh "$SHREF" pkg seal "$SLFX/thing.ct" --out "$ART" > /dev/null 2>&1
+    else
+        "$NAT" pkg seal "$SLFX/thing.ct" --out "$ART" > /dev/null 2>&1
+    fi
+}
+tree_ok() { # $1=label $2=sh_rc $3=nat_rc + 树比对面($T/sh.tree ←→ $ART):产物树例合流
+    if [ "$2" = "$3" ] && cmp -s "$T/sh.out" "$T/nat.out" && diff -r "$T/sh.tree" "$ART" > "$T/tree.diff" 2>&1; then
+        pass=$((pass+1)); echo "  ok  : $1(rc=$3;逐字节+rc+产物树 一致)"
+    else
+        fail=$((fail+1))
+        echo "  FAIL: $1(sh_rc=$2 native_rc=$3)"
+        diff "$T/sh.out" "$T/nat.out" 2>&1 | sed 's/^/    /' | sed -n '1,10p'
+        sed 's/^/    tree: /' "$T/tree.diff" 2>/dev/null | sed -n '1,10p'
+    fi
+}
+seal_case() { # $1=label,其余 = pkg seal 语料:stdout+rc+产物树(SHA256SUMS/meta 字节即入树)
+    label=$1; shift
+    mk_slfx; rm -rf "$ART"
+    sh "$SHREF" pkg seal "$@" > "$T/sh.out" 2>&1; r1=$?
+    rm -rf "$T/sh.tree"; [ -d "$ART" ] && cp -R "$ART" "$T/sh.tree"
+    mk_slfx; rm -rf "$ART"
+    "$NAT" pkg seal "$@" > "$T/nat.out" 2>&1; r2=$?
+    tree_ok "$label" "$r1" "$r2"
+}
+mut_missing() { rm "$ART/impl/thing.ast"; }
+mut_tamper()  { printf 'X' >> "$ART/impl/thing.ast"; }
+mut_escape()  { printf '%064d  ../evil\n' 0 >> "$ART/SHA256SUMS"; }
+verify_case() { # $1=label $2=mutator(空 = 好工件):seal 后改损,verify stdout+rc(只读例)
+    label=$1; mut=$2; shift 2
+    seal_art sh; [ -n "$mut" ] && "$mut"
+    sh "$SHREF" pkg verify "$@" > "$T/sh.out" 2>&1; r1=$?
+    seal_art nat; [ -n "$mut" ] && "$mut"
+    "$NAT" pkg verify "$@" > "$T/nat.out" 2>&1; r2=$?
+    report "$label" "$r1" "$r2"
+}
+attest_case() { # $1=label,其余 = pkg attest 语料:seal 后 attest(attest.ctcl 字节入树 diff)
+    label=$1; shift
+    seal_art sh
+    sh "$SHREF" pkg attest "$@" > "$T/sh.out" 2>&1; r1=$?
+    rm -rf "$T/sh.tree"; cp -R "$ART" "$T/sh.tree"
+    seal_art nat
+    "$NAT" pkg attest "$@" > "$T/nat.out" 2>&1; r2=$?
+    tree_ok "$label" "$r1" "$r2"
+}
+log_art() { # $1=side:log 前置链 seal+attest(输出丢弃)
+    seal_art "$1"
+    if [ "$1" = sh ]; then
+        sh "$SHREF" pkg attest "$ART" > /dev/null 2>&1
+    else
+        "$NAT" pkg attest "$ART" > /dev/null 2>&1
+    fi
+}
+log_case() { # $1=label $2=rep(语料重复,幂等例=2) $3=prep(1 = 先静默 append),其余 = 语料
+    label=$1; rep=$2; prep=$3; shift 3
+    rm -rf "$LOGD"
+    log_art sh
+    [ "$prep" = 1 ] && GIT_AUTHOR_DATE="$LOG_DATE" GIT_COMMITTER_DATE="$LOG_DATE" \
+        sh "$SHREF" pkg log append "$LOGD" "$ART" > /dev/null 2>&1
+    : > "$T/sh.out"
+    i=1; while [ "$i" -le "$rep" ]; do
+        GIT_AUTHOR_DATE="$LOG_DATE" GIT_COMMITTER_DATE="$LOG_DATE" \
+            sh "$SHREF" pkg log "$@" >> "$T/sh.out" 2>&1
+        i=$((i+1))
+    done; r1=$?
+    rm -rf "$T/sh.tree"; [ -d "$LOGD/records" ] && cp -R "$LOGD/records" "$T/sh.tree"
+    rm -rf "$LOGD"
+    log_art nat
+    [ "$prep" = 1 ] && GIT_AUTHOR_DATE="$LOG_DATE" GIT_COMMITTER_DATE="$LOG_DATE" \
+        "$NAT" pkg log append "$LOGD" "$ART" > /dev/null 2>&1
+    : > "$T/nat.out"
+    i=1; while [ "$i" -le "$rep" ]; do
+        GIT_AUTHOR_DATE="$LOG_DATE" GIT_COMMITTER_DATE="$LOG_DATE" \
+            "$NAT" pkg log "$@" >> "$T/nat.out" 2>&1
+        i=$((i+1))
+    done; r2=$?
+    # 记录树例:diff 面 = records 子树(内容寻址 attest.ctcl;.git 不入比)
+    if [ "$r1" = "$r2" ] && cmp -s "$T/sh.out" "$T/nat.out" && diff -r "$T/sh.tree" "$LOGD/records" > "$T/tree.diff" 2>&1; then
+        pass=$((pass+1)); echo "  ok  : $label(rc=$r2;逐字节+rc+记录树 一致)"
+    else
+        fail=$((fail+1))
+        echo "  FAIL: $label(sh_rc=$r1 native_rc=$r2)"
+        diff "$T/sh.out" "$T/nat.out" 2>&1 | sed 's/^/    /' | sed -n '1,10p'
+        sed 's/^/    tree: /' "$T/tree.diff" 2>/dev/null | sed -n '1,10p'
+    fi
+}
+
+echo "== bench/pkg seal/attest/log 臂(W4 波3 批2:同路径基沙盒,git 日期钉)=="
+seal_case "pkg seal 正例(产物树 diff -r:SHA256SUMS+meta self_digest 字节)" "$SLFX/thing.ct" --out "$ART"
+run_case  "pkg seal 源含 main(rc2)"                       pkg seal tests/drv_parity/fixtures/hello.ct
+run_case  "pkg seal 缺参(rc2)"                            pkg seal
+verify_case "pkg verify 好工件(1 成员+self_digest)"  ""          "$ART"
+verify_case "pkg verify 成员缺失(fail-closed)"       mut_missing "$ART"
+verify_case "pkg verify 成员摘要篡改"                 mut_tamper  "$ART"
+verify_case "pkg verify 路径越界行(self_digest 连坐)"  mut_escape  "$ART"
+attest_case "pkg attest 生成(attest.ctcl 落盘+树)"        "$ART"
+log_case "pkg log append(git 日期钉,commit 哈希+记录树)" 1 0 append "$LOGD" "$ART"
+log_case "pkg log append 幂等(已存在行)"                  2 0 append "$LOGD" "$ART"
+log_case "pkg log query 名腿(toolchain/trace_count)"     1 1 query "$LOGD" thing
+log_case "pkg log query 全表(名清单)"                     1 1 query "$LOGD"
+# pkg trace:分派臂 rc2 诚实暂缓(批C 复放腿同批;语料不入,同 --deep 复放腿账)
+
 echo "== drv_parity: $pass ok / $fail fail =="
 [ "$fail" -eq 0 ] || exit 1

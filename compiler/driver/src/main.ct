@@ -2970,6 +2970,38 @@ fn cmd_pkg_attest(rest: List[Str]) -> I32 {
     return 0
 }
 
+fn find_in_path(prog: Str) -> Str {
+    // execvp PATH 语义(裸名解析):PATH 按 ':' 分段逐段 dir + "/" + prog 常规
+    // 文件在即命中返(不查执行位,与 execvp 试 exec 全量同效于正常环境);空段
+    // = "."(POSIX);全落空返裸名原样(execv 照旧失败 = 上游 rc 127 同形)。
+    // 用途:proc.run_argv 捕获形 C 垫片 execv 无 PATH 查找(pkg log append 的
+    // git rev-parse --short HEAD 读面)——裸 "git" 直入 execv = 子进程 127,
+    // 捕获空 = "(commit )" 空哈希行(对拍抓活);init/add/commit 腿走
+    // run_argv_rc → proc_exec_core execvp 无此患,仅捕获腿需解析。
+    var path = env_get("PATH")
+    var start: I32 = 0
+    var i: I32 = 0
+    while i <= path.len {
+        var isEnd: Bool = i == path.len
+        if isEnd || byte_at(path, i) == 58 {
+            var seg = byte_slice(path, start, i)
+            if seg.len == 0 {
+                seg = "."
+            }
+            var cand = seg + "/" + prog
+            if is_file_p(cand) {
+                return cand
+            }
+            start = i + 1
+        }
+        if isEnd {
+            break
+        }
+        i += 1
+    }
+    return prog
+}
+
 fn cmd_pkg_log(rest: List[Str]) -> I32 {
     // sh cmd_pkg_log(:832-897):append-only git 仓(records/<名>/<digest>/attest
     // 内容寻址不可变)+ query 列名/名腿。git 委派 run_argv_rc(身份 -c 逐字;
@@ -3038,7 +3070,7 @@ fn cmd_pkg_log(rest: List[Str]) -> I32 {
             return fail2("pkg log append: git commit 失败")
         }
         var ha = List[Str]()
-        ha.push("git")
+        ha.push(find_in_path("git"))
         ha.push("rev-parse")
         ha.push("--short")
         ha.push("HEAD")
@@ -3121,6 +3153,10 @@ fn cmd_pkg_seal(rest: List[Str]) -> I32 {
     // env 通道(CTRON_AST_MODE/OUT/NAME spawn 前置、后还原 = sh 每命令前缀env
     // 语义)+ traces 拾取(cp -r)+ SHA256SUMS(两域 find 合流整串 sort + 逐
     // 成员摘要)+ self_digest 注入(awk 首个 "}" 行前插 → 字节扫重写)
+    // sh :900 无参守卫先行(用法行随 die2;解析前拦,与余参静默弃两分)
+    if rest.len < 1 {
+        return fail2("pkg seal 需要源文件(用法: pkg seal <src.ct> [--out <目录>] [--name <工件名>])")
+    }
     var src = ""
     var out = ""
     var name = ""
@@ -3231,7 +3267,12 @@ fn cmd_pkg_seal(rest: List[Str]) -> I32 {
                     done = true
                 }
             }
-            rebuilt = rebuilt + ln + "\n"
+            // awk print 语义:记录终结于 \n——文件以 \n 收尾不生残记录(空尾
+            // 段不印,否则 meta.ctcl 多一行尾空行,对拍树 diff 抓活);非 isEnd
+            // 的空行(内空行)与无尾 \n 的残记录照印(print 恒补 \n)
+            if !(isEnd && ln.len == 0) {
+                rebuilt = rebuilt + ln + "\n"
+            }
             start = pp + 1
         }
         if isEnd {
@@ -3686,6 +3727,18 @@ fn main() -> I32 {
     if cmd == "lock" {
         // W4 波3 批1:lock 臂(sh :1278-1282):spawn ctron-dep,rc 直通
         return cmd_lock()
+    }
+    if cmd == "bench" {
+        // W4 波3 批2:bench 分派臂(sh :1237-1239 直落 cmd_bench;$1 之外余参由
+        // cmd_bench 自弃——case 只读 $1)。无族 = 注册表清单 rc0;未注册/脚本
+        // 缺席 die2;命中 = `sh <族脚本>` spawn rc 直通。
+        var rest = List[Str]()
+        var bi: I64 = 1
+        while bi < n {
+            rest.push(ctron_prog_args_at(bi))
+            bi += 1
+        }
+        return cmd_bench(rest)
     }
     if cmd == "pkg" {
         // W4 波3 批2:pkg 分派臂(sh :1302-1310):verify/attest/log/seal 落地,
