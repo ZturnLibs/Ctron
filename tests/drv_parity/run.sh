@@ -365,5 +365,173 @@ tk_case "gate 内建回落横幅(项目模式 build+fmt)"           tk_prep_pkg 
 tk_case "gate nosuch(表内无 → rc2 未知任务)"              "" gate nosuch
 t16_case "clean --all 非项目守卫(build 留+缓存净)"
 
+# ---- new/add/publish/lock 臂(W4 波3 批1:T49 面)----
+# 同路径基纪律(防打印路径分叉,同 wave1 批3 tree_case):单沙盒 $PUB 两侧各
+# 重建现造现清 —— sh 侧 prep+语料跑后存档树,重建同态沙盒,nat 侧重跑,diff -r
+# 全树逐字节。CTRON_REGPATH=reg(语料 cwd 相对;子例 cwd 用 ../reg 同落沙盒根)
+# — ctron-dep "已写回" 行嵌 $PWD 绝对路径,同路径基即逐字。registry 三版造法:
+# publish 正例腿走真发布链(pub_fx_chain,side 各自执行),其余腿 fabrication
+# (manifest/module 同文,add 只读此两件;sha256 文件随件但 add 不读)。
+PUB="$T/pub"
+PUBT="$T/pub.tree"
+PUB_VER="" # pub_fx_probe 的版本参数(空 = 1.0.0)
+pub_w() { # $1=内容 $2=路径:printf 同文包装
+    printf '%s' "$1" > "$2"
+}
+pub_fx_probe() { # $1=side:probe 包夹具(version 取 PUB_VER,缺省 1.0.0)
+    local side=$1 v=${PUB_VER:-1.0.0}
+    mkdir -p "$PUB/probe/src"
+    pub_w 'pkg {
+    manifest_version = 1
+    name = "probe"
+    version = "'"$v"'"
+}
+' "$PUB/probe/Ctron.ctcl"
+    pub_w 'fn probe_hi() {
+    println("probe-'"$v"'")
+}
+' "$PUB/probe/src/main.ct"
+}
+pub_fx_reg3() { # $1=side:fabricated registry 三版(module/manifest 同 publish 同文;sha256 真摘要)
+    local side=$1 v
+    for v in 1.0.0 1.1.0 2.0.0; do
+        mkdir -p "$PUB/reg/probe/$v"
+        pub_w 'pkg {
+    manifest_version = 1
+    name = "probe"
+    version = "'"$v"'"
+}
+' "$PUB/reg/probe/$v/manifest"
+        pub_w 'fn probe_hi() {
+    println("probe-'"$v"'")
+}
+' "$PUB/reg/probe/$v/module"
+        shasum -a 256 "$PUB/reg/probe/$v/module" | cut -d' ' -f1 > "$PUB/reg/probe/$v/sha256"
+    done
+}
+pub_fx_dupreg() { # $1=side:probe 夹具 + 1.0.0 已占位(重复版本例;语料零写面)
+    local side=$1
+    pub_fx_probe "$side"
+    mkdir -p "$PUB/reg/probe/1.0.0"
+    cp "$PUB/probe/Ctron.ctcl" "$PUB/reg/probe/1.0.0/manifest"
+    cp "$PUB/probe/src/main.ct" "$PUB/reg/probe/1.0.0/module"
+    shasum -a 256 "$PUB/reg/probe/1.0.0/module" | cut -d' ' -f1 > "$PUB/reg/probe/1.0.0/sha256"
+}
+pub_fx_app_mf() { # $1=side:裸 app 清单(new 同文;name=app)—— 目录建到 app/
+    mkdir -p "$PUB/app"
+    pub_w 'pkg {
+    manifest_version = 1
+    name = "app"
+    version = "0.1.0"
+}
+' "$PUB/app/Ctron.ctcl"
+}
+pub_fx_chain() { # $1=side:真发布链 1.0.0→1.1.0→2.0.0(side 各自执行)+ 裸 app;语料 = 全链 add
+    local side=$1 exe
+    case $side in
+        sh) exe="sh $SHREF" ;;
+        *) exe="$NAT" ;;
+    esac
+    PUB_VER=1.0.0 pub_fx_probe "$side"
+    (cd "$PUB/probe" && CTRON_REGPATH=../reg $exe publish) > /dev/null 2>&1
+    PUB_VER=1.1.0 pub_fx_probe "$side"
+    (cd "$PUB/probe" && CTRON_REGPATH=../reg $exe publish) > /dev/null 2>&1
+    PUB_VER=2.0.0 pub_fx_probe "$side"
+    (cd "$PUB/probe" && CTRON_REGPATH=../reg $exe publish) > /dev/null 2>&1
+    PUB_VER=""
+    pub_fx_app_mf "$side"
+}
+pub_fx_app() { # $1=side:registry 三版 + 裸 app 清单
+    local side=$1
+    pub_fx_reg3 "$side"
+    pub_fx_app_mf "$side"
+}
+pub_fx_app_dep() { # $1=side:app 已装态(dep 块 + pkgs/probe(2.0.0)+ Ctron.lock 缺省重解析)
+    local side=$1
+    pub_fx_app "$side"
+    printf '
+dep "probe" {
+    version = "2.0.0"
+}
+' >> "$PUB/app/Ctron.ctcl"
+    mkdir -p "$PUB/app/pkgs/probe"
+    cp "$PUB/reg/probe/2.0.0/module" "$PUB/app/pkgs/probe/probe.ct"
+    cp "$PUB/reg/probe/2.0.0/manifest" "$PUB/app/pkgs/probe/Ctron.ctcl"
+}
+pub_run() { # $1=side(sh|nat) $2=子目录(""=根),其余 = 语料(捕获至 sh/nat.out)
+    local side=$1 sub=$2; shift 2
+    if [ -n "$sub" ]; then
+        if [ "$side" = sh ]; then
+            (cd "$PUB/$sub" && CTRON_REGPATH=../reg sh "$SHREF" "$@") > "$T/sh.out" 2>&1
+        else
+            (cd "$PUB/$sub" && CTRON_REGPATH=../reg "$NAT" "$@") > "$T/nat.out" 2>&1
+        fi
+    else
+        if [ "$side" = sh ]; then
+            (cd "$PUB" && CTRON_REGPATH=reg sh "$SHREF" "$@") > "$T/sh.out" 2>&1
+        else
+            (cd "$PUB" && CTRON_REGPATH=reg "$NAT" "$@") > "$T/nat.out" 2>&1
+        fi
+    fi
+}
+pub_case() { # $1=prep 名(空=无) $2=子目录(""=根) $3=label,其余 = 语料
+    local prep=$1 sub=$2 label=$3; shift 3
+    rm -rf "$PUB"; mkdir -p "$PUB"
+    [ -n "$prep" ] && "$prep" sh
+    pub_run sh "$sub" "$@"; r1=$?
+    rm -rf "$PUBT"; cp -R "$PUB" "$PUBT"
+    rm -rf "$PUB"; mkdir -p "$PUB"
+    [ -n "$prep" ] && "$prep" nat
+    pub_run nat "$sub" "$@"; r2=$?
+    if [ "$r1" = "$r2" ] && cmp -s "$T/sh.out" "$T/nat.out" && diff -r "$PUBT" "$PUB" > "$T/tree.diff" 2>&1; then
+        pass=$((pass+1)); echo "  ok  : $label(rc=$r2;逐字节+rc+沙盒树 一致)"
+    else
+        fail=$((fail+1))
+        echo "  FAIL: $label(sh_rc=$r1 native_rc=$r2)"
+        diff "$T/sh.out" "$T/nat.out" 2>&1 | sed 's/^/    /' | sed -n '1,10p'
+        sed 's/^/    tree: /' "$T/tree.diff" 2>/dev/null | sed -n '1,10p'
+    fi
+}
+
+echo "== new/add/publish/lock 臂(W4 波3 批1:registry 协议,同路径基每侧现造现清)=="
+pub_case ""    ""     "new 缺参(rc2)"                          new
+pub_case ""    ""     "new 正例(app/)"                          new app
+pub_case ""    ""     "new 脚手架产物树(diff -r:清单+hello)"        new app
+pub_case ""    ""     "publish 缺清单(rc2)"                      publish
+pub_case ""    ""     "add 缺清单(rc2)"                         add probe
+pub_case ""    ""     "lock 缺清单(rc2)"                        lock
+pub_case ""    ""     "add 名非法(rc2;首字符数字)"                 add 7bad
+pub_case ""    ""     "add 名非法(rc2;越界字符)"                   add "pr obe"
+pub_case ""    ""     "add 约束非法(rc2;越界字符)"                 add "probe@1.0!"
+PUB_VER="" pub_case pub_fx_probe probe "publish 正例(三件落+sha256 文件逐字)" publish
+pub_case pub_fx_dupreg probe "publish 重复版本(rc2;版本不可覆盖)"       publish
+PUB_VER=1.1.0 pub_case pub_fx_probe probe "publish 第二版 1.1.0"        publish
+PUB_VER=2.0.0 pub_case pub_fx_probe probe "publish 第三版 2.0.0"        publish
+PUB_VER=1.0   pub_case pub_fx_probe probe "publish 非 semver(rc2)"      publish
+pub_case pub_fx_app    app  "add registry 无包(rc2)"                 add nosuchpkg
+pub_case pub_fx_app    app  "add 无满足约束(rc2;前缀 9)"               add "probe@9"
+pub_case pub_fx_chain  app  "add 正例无约束(publish 链造 registry;取最大)" add probe
+pub_case pub_fx_app_dep app "add 重复 dep(stderr 跳过行+产树)"          add probe
+pub_case pub_fx_app    app  "add 前缀约束 @1(取 1.1.0)"               add "probe@1"
+pub_case pub_fx_app    app  "add 精确约束 @1.0.0(两点=精确)"           add "probe@1.0.0"
+pub_case pub_fx_app_dep app "lock 正例(rc0)"                        lock
+PUB_VER=""
+# lock 缺 ctron-dep 场:两侧 exe/脚本各拷异位同布局目录(BIN=同目录无 ctron-dep)→ die2 逐字
+NOD="$T/nod"
+rm -rf "$NOD"; mkdir -p "$NOD/sh/w" "$NOD/nat/w"
+cp "$SHREF" "$NOD/sh/w/ctron"; chmod +x "$NOD/sh/w/ctron"
+cp "$NAT" "$NOD/nat/w/ctron"; chmod +x "$NOD/nat/w/ctron"
+for side in sh nat; do
+    printf 'pkg {
+    manifest_version = 1
+    name = "w"
+    version = "0.1.0"
+}
+' > "$NOD/$side/w/Ctron.ctcl"
+done
+(cd "$NOD/sh/w" && sh ./ctron lock) > "$T/sh.out" 2>&1; r1=$?
+(cd "$NOD/nat/w" && ./ctron lock) > "$T/nat.out" 2>&1; r2=$?
+report "lock 缺 ctron-dep(异位 exe,die2 rc2)" "$r1" "$r2"
+
 echo "== drv_parity: $pass ok / $fail fail =="
 [ "$fail" -eq 0 ] || exit 1

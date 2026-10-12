@@ -31,6 +31,8 @@
 
 use proc.{run, run_argv, run_argv_rc, argv_to_blob}
 use std.fs.{list, walk}
+use std.str.{contains, starts_with, ends_with}
+use std.crypto.{sha256_hex}
 
 fn usage() {
     println("ctron —— Ctron 工具链驱动")
@@ -1969,6 +1971,383 @@ fn cmd_clean(allFlag: Bool) -> I32 {
     return 0
 }
 
+// ---- new/add/publish/lock 臂(W4 波3 批1;sh :1215-1308 逐字镜像)----
+
+// T49 registry 定位(sh REG=${CTRON_REGPATH:-$HOME/.ctron/registry} 同构:
+// :- = 空值亦回落;HOME 经 env_get)
+fn reg_path() -> Str {
+    var r = env_get("CTRON_REGPATH")
+    if r.len > 0 {
+        return r
+    }
+    return env_get("HOME") + "/.ctron/registry"
+}
+
+// add_validate(:412)名段白名单:非空、全 [A-Za-z0-9_-]、首字符非 - 非数字
+// (sh case ""|*[!A-Za-z0-9_-]*|[-0-9]* 同判)
+fn dep_name_ok(name: Str) -> Bool {
+    if name.len == 0 {
+        return false
+    }
+    var b0 = byte_at(name, 0)
+    if b0 == 45 || (b0 >= 48 && b0 <= 57) {
+        return false
+    }
+    var i: I32 = 0
+    while i < name.len {
+        var b = byte_at(name, i)
+        if !((b >= 65 && b <= 90) || (b >= 97 && b <= 122) || (b >= 48 && b <= 57) || b == 95 || b == 45) {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+// add_validate 约束段白名单:grep -q '[^A-Za-z0-9.^~<>=,*_-]' 同判 —— 任一字节
+// 出类即非法(方括号类不经 shell case 的坑,sh 侧已登记)
+fn dep_req_ok(req: Str) -> Bool {
+    var i: I32 = 0
+    while i < req.len {
+        var b = byte_at(req, i)
+        if !((b >= 65 && b <= 90) || (b >= 97 && b <= 122) || (b >= 48 && b <= 57) || b == 46 || b == 94 || b == 126 || b == 60 || b == 62 || b == 61 || b == 44 || b == 42 || b == 95 || b == 45) {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+// 版本第 idx 段(0..2)前导数字值;缺段/非数字起 = 0(sh sort -t. -k<n>n 口径:
+// 非数字字段按 0 参与数值比较)
+fn ver_part(v: Str, idx: I32) -> I64 {
+    var i: I32 = 0
+    var comp: I32 = 0
+    while comp < idx {
+        if i >= v.len {
+            return 0
+        }
+        if byte_at(v, i) == 46 {
+            comp += 1
+        }
+        i += 1
+    }
+    var n: I64 = 0
+    while i < v.len {
+        var b = byte_at(v, i)
+        if b < 48 || b > 57 {
+            break
+        }
+        n = n * 10 + (b - 48).as[I64]()
+        i += 1
+    }
+    return n
+}
+
+// 三段数值全序 ≥(tail -1 语义:全等时取字节序靠后者 —— 候选按 list 字节序
+// 扫过即替位,等值者末位胜出 = sort 稳定尾取同形)
+fn ver_ge(a: Str, b: Str) -> Bool {
+    var k: I32 = 0
+    while k < 3 {
+        var pa = ver_part(a, k)
+        var pb = ver_part(b, k)
+        if pa != pb {
+            return pa > pb
+        }
+        k += 1
+    }
+    return true
+}
+
+// ls | sort -t. -k1,1n -k2,2n -k3,3n | tail -1:三段数值最大者(入表已是字节序)
+fn max_ver(vs: List[Str]) -> Str {
+    var best = ""
+    var j: I64 = 0
+    while j < vs.len {
+        var v = vs[j]
+        if best.len == 0 || ver_ge(v, best) {
+            best = v
+        }
+        j += 1
+    }
+    return best
+}
+
+fn cmd_new(dir: Str) -> I32 {
+    // sh new 臂(:1215-1221):mkdir -p 败 = 裸 exit 2(无诊断);清单/hello
+    // printf 同文;echo 行逐字
+    if !fs_mkdir(dir + "/src") {
+        return 2
+    }
+    fs_write(dir + "/Ctron.ctcl", "pkg \{\n    manifest_version = 1\n    name = \"" + basename_sh(dir) + "\"\n    version = \"0.1.0\"\n}\n")
+    fs_write(dir + "/src/main.ct", "fn main() \{\n    println(\"hello, ctron\")\n}\n")
+    println("ctron: 已生成 " + dir + "/(ctron run " + dir + "/src/main.ct 试跑)")
+    return 0
+}
+
+fn cmd_add(spec: Str) -> I32 {
+    // sh add 臂(:1240-1277)+ add_validate(:412-430)逐字镜像
+    var name = spec
+    var req = ""
+    var at: I32 = -1
+    var i: I32 = 0
+    while i < spec.len {
+        if byte_at(spec, i) == 64 {
+            at = i
+            break
+        }
+        i += 1
+    }
+    if at >= 0 {
+        name = byte_slice(spec, 0, at)
+        req = byte_slice(spec, at + 1, spec.len)
+    }
+    if !dep_name_ok(name) {
+        return fail2("add: 依赖名非法: '" + name + "'(形: <name>[@<版本约束>],name = [A-Za-z_][A-Za-z0-9_-]*)")
+    }
+    if req.len > 0 {
+        if !dep_req_ok(req) {
+            return fail2("add: 版本约束非法: '" + req + "'(semver 约束形,T49 实装)")
+        }
+    }
+    if !fs_exists("Ctron.ctcl") {
+        return fail2("add: 当前目录缺 Ctron.ctcl(项目模式)")
+    }
+    var reg = reg_path()
+    if !fs_exists(reg + "/" + name) {
+        return fail2("add: registry 无包 " + name + "(registry: " + reg + ";试: ctron publish)")
+    }
+    var ver = ""
+    if req.len == 0 {
+        ver = max_ver(list(reg + "/" + name))
+    } else {
+        var dots: I32 = 0
+        var k: I32 = 0
+        while k < req.len {
+            if byte_at(req, k) == 46 {
+                dots += 1
+            }
+            k += 1
+        }
+        if dots >= 2 {
+            // sh case *.*.*):两点以上 = 精确版本直取
+            ver = req
+        } else {
+            // 前缀约束(X / X.Y):case "$REQ"|"$REQ".* 收集 —— 段界前缀
+            // (v == req,或 req 后恰为 '.'),再同序取最大
+            var cands = List[Str]()
+            var vers = list(reg + "/" + name)
+            var j: I64 = 0
+            while j < vers.len {
+                var v = vers[j]
+                if v == req || (v.len > req.len && byte_at(v, req.len) == 46 && starts_with(v, req)) {
+                    cands.push(v)
+                }
+                j += 1
+            }
+            ver = max_ver(cands)
+        }
+    }
+    if ver.len == 0 {
+        return fail2("add: " + name + " 无满足约束 " + req + " 的版本")
+    }
+    if !fs_exists(reg + "/" + name + "/" + ver + "/module") {
+        return fail2("add: registry 损坏:缺 module(" + name + "@" + ver + ")")
+    }
+    var mf = read_file("Ctron.ctcl")
+    if contains(mf, "dep \"" + name + "\"") {
+        eprint("ctron: dep \"" + name + "\" 已在清单(不重复追加)\n")
+    } else {
+        fs_write("Ctron.ctcl", mf + "\ndep \"" + name + "\" \{\n    version = \"" + ver + "\"\n}\n")
+    }
+    fs_mkdir("pkgs/" + name)
+    fs_write("pkgs/" + name + "/" + name + ".ct", read_file(reg + "/" + name + "/" + ver + "/module"))
+    fs_write("pkgs/" + name + "/Ctron.ctcl", read_file(reg + "/" + name + "/" + ver + "/manifest"))
+    // 已安装行走 echo_line(/bin/echo 即时物理写):后随 ctron-dep 子进程 fd1 直写,
+    // println 发射态 = stdio 块缓冲会反序(fmt 文件名行先例同病同方)
+    echo_line("ctron: 已安装 pkgs/" + name + "/(" + name + "@" + ver + ")")
+    var depbin = bin_dir() + "/ctron-dep"
+    if !fs_exists(depbin) {
+        return fail2("add: 缺 ctron-dep(重装工具链;或试: ctc.sh dep Ctron.ctcl)")
+    }
+    var argv = List[Str]()
+    argv.push(depbin)
+    argv.push("run")
+    argv.push(env_get("PWD") + "/Ctron.ctcl")
+    let rc = blob_rc_cwd(argv, "")
+    if rc != 0 {
+        return 1
+    }
+    return 0
+}
+
+fn cmd_lock() -> I32 {
+    // sh lock 臂(:1278-1282):清单守卫 + ctron-dep 缺件 die2 + spawn rc 直通
+    if !fs_exists("Ctron.ctcl") {
+        return fail2("lock: 当前目录缺 Ctron.ctcl")
+    }
+    var depbin = bin_dir() + "/ctron-dep"
+    if !fs_exists(depbin) {
+        return fail2("lock: 缺 ctron-dep(重装工具链;或试: ctc.sh dep Ctron.ctcl)")
+    }
+    var argv = List[Str]()
+    argv.push(depbin)
+    argv.push("run")
+    argv.push(env_get("PWD") + "/Ctron.ctcl")
+    return blob_rc_cwd(argv, "")
+}
+
+// 清单键值提取(sh sed -n 's/^ *key *= *"\(.*\)".*/\1/p' | head -1 同构):首个
+// 匹配行胜;捕获 = 锚引号至行内最末引号之间(greedy .* 语义);无匹配行/空捕获
+// 皆空串([ -n ] 判空回退与 sh 同形)
+fn manifest_value(txt: Str, key: Str) -> Str {
+    var ls: I32 = 0
+    var i: I32 = 0
+    while i <= txt.len {
+        if i == txt.len || byte_at(txt, i) == 10 {
+            var line = byte_slice(txt, ls, i)
+            var p: I32 = 0
+            while p < line.len && byte_at(line, p) == 32 {
+                p += 1
+            }
+            var ok: Bool = true
+            var ki: I32 = 0
+            while ki < key.len {
+                if p >= line.len || byte_at(line, p) != byte_at(key, ki) {
+                    ok = false
+                    break
+                }
+                p += 1
+                ki += 1
+            }
+            if ok {
+                while p < line.len && byte_at(line, p) == 32 {
+                    p += 1
+                }
+                if p < line.len && byte_at(line, p) == 61 {
+                    p += 1
+                    while p < line.len && byte_at(line, p) == 32 {
+                        p += 1
+                    }
+                    if p < line.len && byte_at(line, p) == 34 {
+                        var q0 = p
+                        var q1: I32 = -1
+                        var r: I32 = p + 1
+                        while r < line.len {
+                            if byte_at(line, r) == 34 {
+                                q1 = r
+                            }
+                            r += 1
+                        }
+                        if q1 > q0 {
+                            return byte_slice(line, q0 + 1, q1)
+                        }
+                    }
+                }
+            }
+            ls = i + 1
+        }
+        i += 1
+    }
+    return ""
+}
+
+// 严格 semver:^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$
+fn semver_ok(v: Str) -> Bool {
+    var i: I32 = 0
+    var c: I32 = 0
+    while c < 3 {
+        if c > 0 {
+            if i >= v.len || byte_at(v, i) != 46 {
+                return false
+            }
+            i += 1
+        }
+        var st = i
+        while i < v.len && byte_at(v, i) >= 48 && byte_at(v, i) <= 57 {
+            i += 1
+        }
+        var dl = i - st
+        if dl == 0 {
+            return false
+        }
+        if byte_at(v, st) == 48 && dl > 1 {
+            return false
+        }
+        c += 1
+    }
+    // 前置标识 -pre 与构建元数据 +build:非空 [0-9A-Za-z.-] 跑
+    var s: I32 = 0
+    while s < 2 {
+        if i < v.len && (byte_at(v, i) == 45 || byte_at(v, i) == 43) {
+            i += 1
+            var st2 = i
+            while i < v.len {
+                var b = byte_at(v, i)
+                if !((b >= 65 && b <= 90) || (b >= 97 && b <= 122) || (b >= 48 && b <= 57) || b == 45 || b == 46) {
+                    break
+                }
+                i += 1
+            }
+            if i == st2 {
+                return false
+            }
+        }
+        s += 1
+    }
+    return i == v.len
+}
+
+fn cmd_publish() -> I32 {
+    // sh publish 臂(:1283-1308)逐字:清单守卫/name(缺 = basename PWD)/
+    // version 提取/严格 semver/单文件守卫/版本不可覆盖/三件落(manifest+module+
+    // sha256 —— 摘要经 std.crypto sha256_hex,sh shasum 同字节同摘要,语料钉)
+    if !fs_exists("Ctron.ctcl") {
+        return fail2("publish 需项目清单 Ctron.ctcl(当前目录)")
+    }
+    var mf = read_file("Ctron.ctcl")
+    var pname = manifest_value(mf, "name")
+    if pname.len == 0 {
+        pname = basename_sh(env_get("PWD"))
+    }
+    var pver = manifest_value(mf, "version")
+    if pver.len == 0 {
+        return fail2("publish: 清单缺 version")
+    }
+    if !semver_ok(pver) {
+        return fail2("publish: version '" + pver + "' 不符严格 semver")
+    }
+    if !fs_exists("src/main.ct") {
+        return fail2("publish: v0 registry 单文件包,需 src/main.ct")
+    }
+    var pn = walk("src")
+    var pn_ct: I64 = 0
+    var wi: I64 = 0
+    while wi < pn.len {
+        if ends_with(pn[wi], ".ct") {
+            pn_ct += 1
+        }
+        wi += 1
+    }
+    if pn_ct != 1 {
+        return fail2("publish: v0 registry 单文件包(src/ 下有 " + pn_ct.to_string() + " 个 .ct);多文件 tar 志向")
+    }
+    var ptgt = reg_path() + "/" + pname + "/" + pver
+    if fs_exists(ptgt) {
+        return fail2("publish: " + pname + "@" + pver + " 已发布(版本不可覆盖)")
+    }
+    if !fs_mkdir(ptgt) {
+        return 2
+    }
+    fs_write(ptgt + "/manifest", mf)
+    var mod_txt = read_file("src/main.ct")
+    fs_write(ptgt + "/module", mod_txt)
+    var digest = sha256_hex(mod_txt)
+    fs_write(ptgt + "/sha256", digest + "\n")
+    println("ctron: 已发布 " + pname + "@" + pver + " → " + ptgt + "(sha256:" + digest + ")")
+    return 0
+}
+
 fn main() -> I32 {
     var n: I64 = ctron_prog_args_n()
     // 无参 = 整版 usage + rc 2(sh:[ $# -lt 1 ])
@@ -2388,6 +2767,29 @@ fn main() -> I32 {
             ci += 1
         }
         return cmd_clean(allF)
+    }
+    if cmd == "new" {
+        // W4 波3 批1:new 臂(sh :1215-1221):缺参 rc2 逐字;$1 之外静默丢弃
+        if n < 2 {
+            return fail2("new 需要目录名")
+        }
+        return cmd_new(ctron_prog_args_at(1))
+    }
+    if cmd == "add" {
+        // W4 波3 批1:add 臂(sh :1240-1277):缺参 rc2 逐字 → 校验白名单 →
+        // registry 版本解析/安装/dep 块追加 → ctron-dep 刷新(rc 非零 = 1)
+        if n < 2 {
+            return fail2("add 需要依赖名(形: <name>[@<版本约束>])")
+        }
+        return cmd_add(ctron_prog_args_at(1))
+    }
+    if cmd == "publish" {
+        // W4 波3 批1:publish 臂(sh :1283-1308):实参全忽略(sh 臂无 $* 消费)
+        return cmd_publish()
+    }
+    if cmd == "lock" {
+        // W4 波3 批1:lock 臂(sh :1278-1282):spawn ctron-dep,rc 直通
+        return cmd_lock()
     }
     // 其余一切名字 = sh 同款未知子命令(stderr + rc 2)
     eprint(unknown_line(cmd))
