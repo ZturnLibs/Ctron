@@ -62,5 +62,49 @@ if [ -x "$T/probe.bin" ]; then
     fi
 fi
 
+# ④ G4:cdylib 产物形态回环(build --lib 出 dylib+export → 第二程序 dlopen 吃回)
+CTC="$ROOT/compiler/ctc.sh"
+cat > "$T/libexp.ct" << 'EOF'
+#[export]
+fn dylib_probe_val() -> I32 {
+    return 777
+}
+
+fn main() {
+    println("host")
+}
+EOF
+cat > "$T/loop.ct" << 'EOF'
+#[dlsym]
+extern "c" fn dylib_probe_val() -> I32
+
+fn main() {
+    let h: I64 = dlopen_global("$T/libexp.dylib")
+    if h == 0 {
+        println("loopback-probe load-err=" + dlerror_str())
+        return
+    }
+    println("loopback-probe v=" + dylib_probe_val().to_string())
+}
+EOF
+if [ "$(uname)" = "Darwin" ]; then
+    "$CTC" build "$T/libexp.ct" --lib -o "$T/libexp.dylib" > /dev/null 2>&1
+    sed "s|\$T/libexp.dylib|$T/libexp.dylib|" "$T/loop.ct" > "$T/loop2.ct"
+    CTRON_STDPATH="$ROOT/lib" "$CTC" build "$T/loop2.ct" -o "$T/loop.bin" > /dev/null 2>&1
+    if [ -x "$T/loop.bin" ] && "$T/loop.bin" run "$T/loop2.ct" 2>/dev/null | grep -q "loopback-probe v=777"; then
+        pass=$((pass+1)); echo "  PASS dyn_so (cdylib 回环 777)"
+    else
+        echo "  FAIL dyn_so (cdylib 回环)"; fail=$((fail+1))
+    fi
+    # ⑤ universal(lipo 双架构)
+    if "$CTC" build "$T/libexp.ct" --lib --universal -o "$T/libexp2.dylib" > /dev/null 2>&1 && lipo -info "$T/libexp2.dylib" 2>/dev/null | grep -q "x86_64 arm64"; then
+        pass=$((pass+1)); echo "  PASS dyn_so (universal x86_64+arm64)"
+    else
+        echo "  FAIL dyn_so (universal)"; fail=$((fail+1))
+    fi
+else
+    echo "  SKIP dyn_so (cdylib/universal:Darwin 门控)"
+fi
+
 echo "dyn_so: pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]

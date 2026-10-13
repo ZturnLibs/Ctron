@@ -44,6 +44,8 @@ for a in "$@"; do
     --deterministic) export CTRON_RT_SEED=1 ;;
     --target=*) TARGET=${a#--target=} ;;
     --target) prev_t=1 ;;
+    --lib) CDLIB=1 ;;          # G4:cdylib 产物形态(-dynamiclib/-shared)
+    --universal) UNIV=1 ;;     # G4:darwin 双架构单遍(-arch x2)
     esac
 done
 # T36 后端注册表(§9.7 插件化地板):triple/链接器最小面;C native=首个后端。
@@ -510,8 +512,20 @@ case $mode in
             rm -f "$TMPC"
             echo "ctc.sh: 已构建 $OUTBIN(target: $TARGET;运行: node 胶水,见 lib/rt/wasm32/README.md)"
         else
+            # G4:产物形态旗标(cdylib/universal;Darwin 门控,其余平台 --lib=linux shared)
+            FORM_FLAGS=""
+            if [ "$(uname)" = "Darwin" ]; then
+                if [ "${CDLIB:-0}" = "1" ]; then
+                    FORM_FLAGS="-dynamiclib -install_name @rpath/$(basename "$OUTBIN")"
+                fi
+                if [ "${UNIV:-0}" = "1" ]; then
+                    FORM_FLAGS="$FORM_FLAGS -arch x86_64 -arch arm64"
+                fi
+            elif [ "${CDLIB:-0}" = "1" ]; then
+                FORM_FLAGS="-shared -fPIC"
+            fi
             # shellcheck disable=SC2086
-            $TGT_CC -w "$TMPC" -o "$OUTBIN" $GUILDFLAGS $LDFLAGS_COLLECTED || { echo "ctc.sh: build 链接失败($TGT_CC)" >&2; exit 1; }
+            $TGT_CC -w $FORM_FLAGS "$TMPC" -o "$OUTBIN" $GUILDFLAGS $LDFLAGS_COLLECTED || { echo "ctc.sh: build 链接失败($TGT_CC)" >&2; exit 1; }
             echo "ctc.sh: 已构建 $OUTBIN(target: ${TARGET:-native};运行: ./$OUTBIN run $IN)"
         fi
         rc=0
