@@ -1896,3 +1896,10 @@ e083d902/23f7089a/a74b8956/b32d79e1)**:W1 scope 退出 join-all(spec §07 兑现
 dlopen_global(库)→#[dlsym(from_handle)](h, ...) 逐调调用。挂账:根 ctron 驱动链接行同面
 (随原生驱动器 lane);链式 const 引用;坑入册:无三元血律再踩(静默崩)/#[dlsym] 按声明名解析
 (真符号走 link_name 无引号家法)/未注解 let 句柄 i32 截断三踩/attr_arg 首括号语义(叠 attr 相斥)。
+
+**G4 收尾批(2026-10-11,计划 2026-10-11-steno-g4-closeout-plan.md 0e07a27a)**:cdylib 产物形态
+(--lib:darwin -dynamiclib+install_name @rpath;linux -shared -fPIC)+universal binary(--universal:
+darwin 单遍 -arch x86_64 -arch arm64,fat 验证 lipo)——纯驱动面,发射 C 零变化;门:tests/ffi/dyn_so
+4/0(真 .so 双形态+负例+cdylib 回环 777+universal fat)+suite 119/120·120/120(03m 超时=负载 flake
+复跑定谳)+gc 9/0。**P1-6 关闭**:旗标消费(G2-W3)+cdylib+universal 齐备;签名/公证不入 ctron(J8);
+根 ctron 驱动链接行同面随原生驱动器 lane(登记)。
