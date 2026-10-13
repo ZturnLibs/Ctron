@@ -3,7 +3,7 @@
 // HMAC-SHA-256 RFC 4231 case 2(ASCII 键)、ed25519 签验 roundtrip + 篡改消息/签名负例、
 // 真实熵非退化(两抽不同)。CI 纪律:纯计算,零网络零 fs(tests/net 同口径的回环约束)。
 // 与 std/crypto 纯实现的关系:同值不同速——向量即双轨互证锚(loom selftest 亦持)。
-use crypto.{sha256_hex_fast, sha256_hex_raw, hmac_hex_fast, ed25519_keypair_hex, ed25519_sign_hex, ed25519_verify_hex, rand_bytes}
+use crypto.{sha256_hex_fast, sha256_hex_raw, hmac_hex_fast, ed25519_keypair_hex, ed25519_sign_hex, ed25519_verify_hex, rand_bytes, sha256_new, sha256_update, sha256_final_hex}
 
 test "sha256 rfc6234 vectors" {
     assert_eq(sha256_hex_fast("abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
@@ -58,6 +58,25 @@ test "ed25519 sign/verify roundtrip + tamper negatives" {
     assert(ed25519_verify_hex(uh, msg, bad) != 1)
     // 非法 hex 面 → -1(参数错路径)
     assert(ed25519_verify_hex("zz" + byte_slice(uh, 2, 64), msg, sig) == -1)
+}
+
+test "sha256 stream chunked == one-shot (G5-W1)" {
+    var buf: U8[] = [0] ** 100
+    var i: I32 = 0
+    while i < 100 {
+        buf[i] = ((i * 7 + 11) % 256).as[U8]()
+        i = i + 1
+    }
+    let one = sha256_hex_raw(buf, buf.len)
+    let h = sha256_new()
+    sha256_update(h, buf, 0, 30)
+    sha256_update(h, buf, 30, 60)
+    sha256_update(h, buf, 90, 10)
+    let many = sha256_final_hex(h)
+    assert_eq(one, many)
+    let h2 = sha256_new()
+    sha256_update(h2, buf, 0, 100)
+    assert_eq(sha256_final_hex(h2), one)
 }
 
 test "rand non-degenerate" {

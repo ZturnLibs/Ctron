@@ -6,7 +6,7 @@
 // 纯计算面,无 Cap trait → 无 caps 声明(E4010 只审 use std.<key>.<Name> + &Name 形参)。
 // 密钥文件落盘(0600/O_EXCL)归消费方(loom 侧 rawio/sig 门面组合)。
 // e2e:tests/crypto(RFC 6234 向量 + ed25519 roundtrip + 篡改负例 + rand 非退化)。
-use crypto.bind.{ctron_crypto_sha256, ctron_crypto_sha256_raw, ctron_crypto_hmac_sha256, ctron_crypto_ed25519_keypair_hex, ctron_crypto_ed25519_sign_hex, ctron_crypto_ed25519_verify_hex, ctron_crypto_rand_bytes}
+use crypto.bind.{ctron_crypto_sha256, ctron_crypto_sha256_raw, ctron_sha256_new, ctron_sha256_update, ctron_sha256_final, ctron_crypto_hmac_sha256, ctron_crypto_ed25519_keypair_hex, ctron_crypto_ed25519_sign_hex, ctron_crypto_ed25519_verify_hex, ctron_crypto_rand_bytes}
 
 // hex 数字(I64 值域 0..15 → 单字符;loom clock.ct 同款)
 fn hex_digit(v: I64) -> Str {
@@ -42,6 +42,22 @@ pub fn sha256_hex_fast(s: Str) -> Str {
 }
 
 // SHA-256 over 字节平面(逻辑长度 n 显式;视图容量 ≠ 逻辑长度;data 只读非 var——loom 同款 ABI 先例)
+// G5-W1:sha256 流式(句柄面)——大文件块入;update 链任意次;final 出 32B 并
+// 释放句柄(final 后句柄失效=调用方契约)。分块与 one-shot 摘要逐字同值(EVP 单源)。
+pub fn sha256_new() -> I64 {
+    return ctron_sha256_new()
+}
+
+pub fn sha256_update(h: I64, data: U8[], off: I64, n: I64) {
+    ctron_sha256_update(h, data, off, n)
+}
+
+pub fn sha256_final_hex(h: I64) -> Str {
+    var digest: U8[32] = [0] ** 32
+    ctron_sha256_final(h, digest)
+    return digest_hex(digest)
+}
+
 pub fn sha256_hex_raw(data: U8[], n: I64) -> Str {
     var digest: U8[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     ctron_crypto_sha256_raw(data, n, digest)

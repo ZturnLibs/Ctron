@@ -27,6 +27,31 @@ void ctron_crypto_sha256_raw(ctron_view_w8u data, int64_t n, ctron_view_w8u out)
     SHA256(n > 0 ? data.d : (const uint8_t*)"", (size_t)(n > 0 ? n : 0), out.d);
 }
 
+// ---- SHA-256 流式(G2-W5→G5-W1;EVP_MD_CTX 句柄面:大文件块入,破 Str 域+512MB 上限;
+// 句柄 malloc 跨调用存续,final 即释放;句柄失效/重复 final=调用方契约,v0 无卫) ----
+void* ctron_sha256_new(void) {
+    EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+    if (!ctx) { return 0; }
+    if (EVP_DigestInit_ex(ctx, EVP_sha256(), NULL) != 1) {
+        EVP_MD_CTX_free(ctx);
+        return 0;
+    }
+    return (void*)ctx;
+}
+
+void ctron_sha256_update(void* h, ctron_view_w8u data, int64_t off, int64_t n) {
+    if (!h) { return; }
+    if (off < 0 || n < 0 || off + n > data.n) { return; }
+    EVP_DigestUpdate((EVP_MD_CTX*)h, n > 0 ? data.d + off : (const uint8_t*)"", (size_t)(n > 0 ? n : 0));
+}
+
+void ctron_sha256_final(void* h, ctron_view_w8u out) {
+    if (!h) { return; }
+    unsigned int outlen = 0;
+    EVP_DigestFinal_ex((EVP_MD_CTX*)h, out.d, &outlen);
+    EVP_MD_CTX_free((EVP_MD_CTX*)h);
+}
+
 void ctron_crypto_hmac_sha256(const char* key, int64_t klen, const char* data, int64_t n, ctron_view_w8u out) {
     unsigned int outlen = 0;
     HMAC(EVP_sha256(), key, (int)klen, (const uint8_t*)data, (size_t)(n > 0 ? n : 0), out.d, &outlen);

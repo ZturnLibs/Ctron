@@ -8,6 +8,9 @@
 // keypair 视图写 64 ASCII hex 字节无尾随换行(文件格式化归消费方)。
 pub extern "c" fn ctron_crypto_sha256(data: Str, n: I64, var out: U8[])
 pub extern "c" fn ctron_crypto_sha256_raw(data: U8[], n: I64, var out: U8[])
+pub extern "c" fn ctron_sha256_new() -> I64
+pub extern "c" fn ctron_sha256_update(h: I64, data: U8[], off: I64, n: I64)
+pub extern "c" fn ctron_sha256_final(h: I64, var out: U8[])
 pub extern "c" fn ctron_crypto_hmac_sha256(key: Str, klen: I64, data: Str, n: I64, var out: U8[])
 pub extern "c" fn ctron_crypto_ed25519_keypair_hex(var priv_hex: U8[], var pub_hex: U8[]) -> I32
 pub extern "c" fn ctron_crypto_ed25519_sign_hex(privhex: Str, msg: Str, n: I64, var out: U8[]) -> I64
