@@ -109,6 +109,12 @@ git commit -m "feat(driver): 垫片翻转+install+自举梯(W4 波3 批4)——�
 
 ---
 
-## 执行记录
+## 执行记录(2026-10-10,W4 波3 四批全落库过审,翻转成立)
 
-(执行时逐任务回写;真终审结论随批入册。)
+- **批1 `dcee7442`**:new/add/publish/lock T49 面。对拍 88→110;sha256 文件双钉(树 diff+echo 行);数字版本序活体探针(0.10.0>0.9.0)。评审 Approved(15 语料钉+6 手核消息全等)。
+- **批2 `7dec1ea0`(WIP 保护)+`6a61803f`(收尾)**:bench+pkg verify/attest/log/seal。执行口径=实现子代理限额墙死亡遗 +926 行完整实现 → WIP 保护落库(防 stash 卷带)→ 收尾代理写语料 14 行,**语料抓活修 driver 四处**(bench 分派臂死码/seal 无参用法/log rev-parse execv 无 PATH→find_in_path 仅捕获腿/seal self_digest 尾空行 isEnd 空段)。对拍 110→**124**;git 日期钉(GIT_AUTHOR/COMMITTER_DATE 同值=同树同短哈希)。评审 Approved(四修复全对 oracle 验,语料全判别)。
+- **批3 `a595d07d` + 登记 `efa44da3`**:pkg trace record/replay(MemFs 码gen,最大单件)。drv.ct 码gen dev-time 与 sh 金样 4 形态 cmp 逐字;单 `trace_build_drv` 双臂消 record/replay 码gen 偏斜险;三层转义图码注。**计划纠错**:E5056 前缀属 verify --deep 腿,trace replay 判词无前缀(oracle 文本为准)。对拍 124→**136**。评审 Approved + 两 Important 镜像或登记裁决=**登记**(fs 种子泄漏 quirk[sh NF≥1→NF=0 混序泄行,native 正确侧]/多行 --fs 内容[sh 静默截断坏轨迹 vs native E1001 响亮拒])→ `efa44da3` 码注+报告双录。
+- **批4 `e5250b66` 垫片翻转**:根 ctron 头部 18 行哨兵(三定位:dev compiler/bin/ctron→源码线 bin/ctron→装机 ctron-drv;CTRON_SHIM_SH=1 强制 sh 面=对拍 stable handle+即时回退),sh 体 0 删行逐字节不动(cmp 证);drv_parity SHREF 强制回落面(翻转后门依然真实);Makefile prebuilt 家族+ctron_proc.c 链+bootstrap 阶梯段(管线实测绿)。门:136/0+43/0 经垫片+21/0 原生+fast 双面逐字+回退探针双布局。
+- **真终审(翻转合并审查)**:**Ready to merge — Yes**。哨兵三布局 marker 探针/回退完整性 cmp 证/exec 无损 trace 证/CTRON_SHIM_SH 先于 exec/对拍门仍 sh-vs-native 非自比;全门终审者亲跑;债 triage 全 RIDE,**唯一硬条件=tools/release.sh 须在下一次发布切割前补 prebuilt/ctron.c 发射**(Makefile all/install 已硬依赖;登记归发布泳道)。
+- **挂账终录**:①tools/release.sh 驱动器发射(发布切割前硬条件);②发射模板 raw argv 逃生口(编译器泳道改进,剥臂在册运转);③-w 捕获截断面(波2 捕获面正解);④ps1 Dv-EnvSetup(Windows CI);⑤meta_check 13 处对端在库红;⑥ex-* rc0 复验;⑦W4波3 Minor 十余枚(trace 两分歧登记/三病理角消息分歧/find_in_path X_OK/Log rc 末轮等)。
+- **W5 触发件**(spec §8 尾波):gui 链接面归一(残余 examples run.sh 迁移)+残余 run.sh 退役+shell 面 ≤10 终盘。
