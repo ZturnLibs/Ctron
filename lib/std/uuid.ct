@@ -20,7 +20,7 @@ pub extern "c" fn ctron_entropy_fill(buf: &I64[], n: I64) -> I64
 
 // 随机字节取 n 个(0..255;失败/短取 = 空表,调用方 fail-closed)
 fn urand(n: I32) -> List[I32] {
-    var lane: I64[16] = [0, 0, 0, 0]
+    var lane: I64[16] = [0] ** 16
     var w0: I64 = 4294967296
     var r: I64 = w0 - w0 + n
     var rc = ctron_entropy_fill(lane, r)

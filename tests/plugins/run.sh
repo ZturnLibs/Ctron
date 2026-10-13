@@ -95,18 +95,19 @@ else
 fi
 
 # 9) 容器全形(List[struct]/Option[struct];v2.2 解陷阱;双臂同判)
-#    emit 步 CTRON_GC=0 过渡旗在册(G1-T1 scrape-while-live 未愈:新 HEAD bin
-#    GC=1 十连全腐[旧 bin 曾单发净=概率触发恶化中],3b5abe70 移交账延续;
-#    G1 销账后撤旗回归默认口径)
+#    过渡旗已撤:GC scrape-while-live 已修(GC collect 入口 setjmp 寄存器溢出根
+#    [Boehm GC_with_callee_saves 同款]——callee-saved 寄存器活指针不上栈则精确
+#    槽+保守栈扫双盲,旧 Member@15/qval 垃圾行同根;GC=1 十连净+与 off 逐字
+#    一致复立不变量)
 "$CC" run "$ROOT/tests/plugins/json_demo/src/containers.ct" > "$T/ctn.out" 2>&1
 if [ $? -eq 0 ] && grep -q 'rt3-ok' "$T/ctn.out"; then
     ok "json_demo_containers interp(List/Option struct 全形)"
 else
     bad "json_demo_containers interp" "$T/ctn.out"
 fi
-CTRON_GC=0 "$EMIT" run "$ROOT/tests/plugins/json_demo/src/containers.ct" > "$T/ctn.c" 2>"$T/ctn.err"
+"$EMIT" run "$ROOT/tests/plugins/json_demo/src/containers.ct" > "$T/ctn.c" 2>"$T/ctn.err"
 if [ $? -eq 0 ] && cc -o "$T/ctnbin" "$T/ctn.c" 2>/dev/null && "$T/ctnbin" > "$T/ctn_native.out" 2>&1 && grep -q 'rt3-ok' "$T/ctn_native.out"; then
-    ok "json_demo_containers emit(容器全形 双臂同判;GC=0 过渡旗)"
+    ok "json_demo_containers emit(容器全形 双臂同判)"
 else
     bad "json_demo_containers emit" "$T/ctn.err"
 fi
