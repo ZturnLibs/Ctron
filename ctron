@@ -17,6 +17,24 @@ DEVROOT=$BIN
 if [ -f "$BIN/compiler/ctc.sh" ]; then
     ROOT=$BIN
 fi
+# W4 波3 批4 垫片翻转:原生驱动器(Ctron 自写,compiler/driver/src/main.ct)在场
+# 即 exec——三定位:$BIN/compiler/bin/ctron(dev 布局 native.sh 产物)、$BIN/bin/ctron
+# (源码线 make 产物,prebuilt/ctron.c 链 lib/proc/c_src/ctron_proc.c)、$BIN/ctron-drv
+# (装机布局 <prefix>/bin 同目录;脚本自身占用 ctron 名,装机名让位 ctron-drv,
+# Makefile install 同名落位)。env CTRON_SHIM_SH=1 强制走下方 sh 实现:对拍门
+# (tests/drv_parity)stable handle 兼即时回退开关(删任一二进制 = 自然回落同效)。
+# 缺件时静默穿过——下方 sh 实现全量保留为回落体,逐字不动。
+if [ "${CTRON_SHIM_SH:-}" != "1" ]; then
+    if [ -x "$BIN/compiler/bin/ctron" ]; then
+        exec "$BIN/compiler/bin/ctron" "$@"
+    fi
+    if [ -x "$BIN/bin/ctron" ]; then
+        exec "$BIN/bin/ctron" "$@"
+    fi
+    if [ -x "$BIN/ctron-drv" ]; then
+        exec "$BIN/ctron-drv" "$@"
+    fi
+fi
 # dev 兼容回落:仅当同目录无二进制、且仓库 dev 布局命中时才切换,安装布局不受影响
 if [ ! -x "$BIN/ctron-cc" ] && [ -x "$BIN/compiler/bin/ctron-cc" ]; then
     BIN="$BIN/compiler/bin"

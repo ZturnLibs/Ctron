@@ -5,7 +5,7 @@ PREFIX ?= $(HOME)/.ctron
 DEST = $(PREFIX)
 
 .PHONY: all install clean
-all: bin/ctron-cc bin/ctron-chk bin/ctron-emit bin/ctron-fmt
+all: bin/ctron-cc bin/ctron-chk bin/ctron-emit bin/ctron-fmt bin/ctron
 
 bin:
 	mkdir -p bin
@@ -13,9 +13,26 @@ bin:
 bin/ctron-%: prebuilt/ctron-%.c | bin
 	$(CC) $(CFLAGS) -o $@ $<
 
+# 用户驱动器 bin/ctron(W4 波3 批4,prebuilt 家族加一员):发射 C 源 = 
+# compiler/driver/src/main.ct,链接 proc 垫片(use proc 委派族缺符号,同
+# compiler/native.sh 驱动链行 :116)。prebuilt/ctron.c 与家族四件同为发射固定点
+# 成品(release 时经 tools/release.sh 落 prebuilt/;发射后须剥除发射模板的两条
+# C main 包装臂——native.sh :104-115 守卫+剥臂同款,剥前 grep -qF 双臂 fail-loud):
+#   sh compiler/ctc.sh emit compiler/driver/src/main.ct prebuilt/ctron.c
+#   grep -qF 'if (argc >= 2 && !strcmp(argv[1], "--version")) { puts(ctron_version); return 0; }' prebuilt/ctron.c
+#   grep -qF 'if (argc >= 3 && strcmp(argv[1], "run") == 0) { ctron_cli_input = argv[2]; ctron_argv_off = 3; }' prebuilt/ctron.c
+#   sed -e 's|if (argc >= 2 \&\& !strcmp(argv\[1\], "--version")) { puts(ctron_version); return 0; }||' \
+#       -e 's|if (argc >= 3 \&\& strcmp(argv\[1\], "run") == 0) { ctron_cli_input = argv\[2\]; ctron_argv_off = 3; }||' \
+#       prebuilt/ctron.c > prebuilt/ctron.c.s && mv prebuilt/ctron.c.s prebuilt/ctron.c
+bin/ctron: prebuilt/ctron.c lib/proc/c_src/ctron_proc.c | bin
+	$(CC) $(CFLAGS) -o $@ prebuilt/ctron.c lib/proc/c_src/ctron_proc.c
+
 install: all
 	install -d $(DEST)/bin $(DEST)/lib $(DEST)/share/doc
 	install bin/ctron-cc bin/ctron-chk bin/ctron-emit bin/ctron-fmt ctron $(DEST)/bin/
+	# 驱动器装机名让位 ctron-drv:脚本自身占用 $(DEST)/bin/ctron(装成 ctron 即覆毁
+	# sh 回落体);根 ctron 哨兵第三定位 $BIN/ctron-drv 与此同名落位(W4 波3 批4)
+	install bin/ctron $(DEST)/bin/ctron-drv
 	cp -R lib/. $(DEST)/lib/
 	[ ! -f VERSION ] || install VERSION $(DEST)/
 	install README.md docs/superpowers/specs/2026-09-17-toolchain-distribution-design.md $(DEST)/share/doc/ 2>/dev/null || true

@@ -4,6 +4,10 @@
 # stdout+stderr 合流捕获,字节级 diff(cmp) + rc 对比,逐行报告。
 # gt 纪律:两实现对同一语料的输出必须逐字节(含换行)一致——首跑即抓差异逐条修,
 # 修向永远是原生侧(sh 文本是 oracle)。
+# W4 波3 批4(垫片翻转):SHREF 经根脚本哨兵会 exec 原生件——对拍退化为自比。
+# CTRON_SHIM_SH=1 全程导出:SHREF 侧强制走垫片回落面(sh 实现保留体,哨兵逃逸
+# 开关,语义 = 翻转前原样),NAT 侧原生件不读此变量——对拍门在翻转后依然有效
+# (垫片回落面 vs 原生)。脚本内嵌套 sh ctron 调用经 env 继承同面,两侧各自自洽。
 # 缺件 = SKIP 显式登记,门绿(镜像 bare/wasm 环境门惯例):sh 参考或原生驱动器缺席
 # (后者先跑 compiler/native.sh)。
 # 语料波1 = 已实现臂全集(--version|-V/--help|-h/help/help <cmd>/<cmd> --help 拦截/
@@ -24,6 +28,9 @@ DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(dirname "$(dirname "$DIR")")
 SHREF="$ROOT/ctron"
 NAT="$ROOT/compiler/bin/ctron"
+# 垫片翻转逃逸(见头注):SHREF 侧全程强制 sh 实现;NAT(原生件)不受此变量影响
+CTRON_SHIM_SH=1
+export CTRON_SHIM_SH
 T=$(mktemp -d /tmp/ctron_drvp.XXXXXX)
 trap 'rm -rf "$T"' EXIT
 # 委派族语料用相对夹具路径 → 钉 cwd = 仓库根(任目录可跑;PWD 同导给两侧实现,
