@@ -3773,6 +3773,12 @@ fn cmd_pkg_trace(rest: List[Str]) -> I32 {
                     return fail2("pkg trace record: 用例 " + tfn + "(" + targs + ") 输出多行(纯函数轨迹面向单值)")
                 }
             }
+            // 轨迹块写(批3 评审 Important×2 登记处;裁决 = 登记 不镜像,native 正确侧):
+            // ① sh fs 泄漏 quirk 不镜像——sh TR_FSLINES 仅 NF≥1 分支重置而块写出口
+            //    无条件非空即印,NF≥1→NF=0 混序泄前例 fs 行入后块(sh replay 随之误
+            //    解析);本侧 pairs 每例现造零陈旧态,纯块恒无 fs 行。
+            // ② 多行 --fs 内容:sh 行制 manifest 首行静默截断成坏轨迹(rc0);本侧
+            //    全量入码 gen → E1001 响亮拒(record rc2 运行失败)。
             var blk = "trace \"" + tfn + "\" \{\n"
             var pi: I32 = 0
             while pi < pairs.len {
