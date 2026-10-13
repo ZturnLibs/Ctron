@@ -1,0 +1,4 @@
+// nl —— drv_parity trace 语料夹具(多行输出拒;纯函数轨迹面向单值)
+fn mx_nl() -> Str {
+    return "a\nb"
+}

@@ -533,13 +533,19 @@ done
 (cd "$NOD/nat/w" && ./ctron lock) > "$T/nat.out" 2>&1; r2=$?
 report "lock 缺 ctron-dep(异位 exe,die2 rc2)" "$r1" "$r2"
 
-# ---- bench/pkg seal/attest/log 臂(W4 波3 批2)----
+# ---- bench/pkg seal/attest/log/trace 臂(W4 波3 批2+3)----
 # bench:注册表清单+未注册 die2 入册;族 spawn = 真基准计时面(ns/op 逐行非确定)
 # 字节不可对拍,登记暂缓不入册(sh cmd_bench :386-411 实行为 oracle,在案)。
 # seal/attest/log:同路径基沙盒($ART/$LOGD 每侧现造现清,同 wave3 批1 pub_case
 # 纪律)——self_digest/commit 短哈希逐字面对拍;log 侧 git 日期钉死
 # (GIT_AUTHOR/COMMITTER_DATE,两侧同值 → 同树同哈希,commit 短哈希才可对拍),
 # 记录树 diff -r(attest.ctcl 内容寻址字节;.git 不入 diff)。
+# trace(W4 波3 批3):record/replay 同路径基沙盒($TRB 每侧现造现清)。产物对拍
+# 锚(批3 最强验收)的落地口径:sh 侧 mktemp drv.ct 用后即焚不可直接 diff →
+# 语料以轨迹文件(.ctrt)字节 diff -r + stdout/stderr/rc 对拍为实用 oracle
+# (.ctrt 内嵌 expect/wrote = drv.ct 执行产物;drv.ct 码gen 自身字节同构性另以
+#  开发期探针钉定,见 task-w4-w3-3 报告)。多行输出拒/源含 main 守卫与残留空
+# .ctrt 副作用(截断在 mkdir 后)一并入语料。
 run_case "bench 无参(注册表清单 rc0)"  bench
 run_case "bench 未注册族(rc2 逐字)"    bench nosuch
 
@@ -655,7 +661,79 @@ log_case "pkg log append(git 日期钉,commit 哈希+记录树)" 1 0 append "$LO
 log_case "pkg log append 幂等(已存在行)"                  2 0 append "$LOGD" "$ART"
 log_case "pkg log query 名腿(toolchain/trace_count)"     1 1 query "$LOGD" thing
 log_case "pkg log query 全表(名清单)"                     1 1 query "$LOGD"
-# pkg trace:分派臂 rc2 诚实暂缓(批C 复放腿同批;语料不入,同 --deep 复放腿账)
+
+# ---- pkg trace record/replay 臂(W4 波3 批3;同路径基沙盒 + .ctrt 产物树 diff)----
+TRFX=tests/drv_parity/fixtures/trace
+TRB="$T/trb"
+TRTREE="$T/tr.tree"
+tr_side() { # 沙盒现造:三夹具拷入(同路径基,两侧各一)
+    rm -rf "$TRB"
+    mkdir -p "$TRB"
+    cp "$ROOT/$TRFX/pure.ct" "$ROOT/$TRFX/mix.ct" "$ROOT/$TRFX/nl.ct" "$TRB/"
+}
+tr_rec2() { # $1=side:静默双例档(mix;greet 读种子 + save 假种子含 wrote 面)
+    if [ "$1" = sh ]; then
+        sh "$SHREF" pkg trace record "$TRB/mix.ct" --case mx_greet=fs --fs name.txt=ada --case mx_save=fs --fs dummy.txt=d > /dev/null 2>&1
+    else
+        "$NAT" pkg trace record "$TRB/mix.ct" --case mx_greet=fs --fs name.txt=ada --case mx_save=fs --fs dummy.txt=d > /dev/null 2>&1
+    fi
+}
+tr_rec1() { # $1=side:静默单例档(pure;expect 钉 42)
+    if [ "$1" = sh ]; then
+        sh "$SHREF" pkg trace record "$TRB/pure.ct" --case mx_add=2,40 > /dev/null 2>&1
+    else
+        "$NAT" pkg trace record "$TRB/pure.ct" --case mx_add=2,40 > /dev/null 2>&1
+    fi
+}
+tr_mut_expect() { # 篡改 expect(42→43):E5056 族判词面
+    sed 's/expect = "42"/expect = "43"/' "$TRB/traces/pure.ctrt" > "$TRB/t.m" && mv "$TRB/t.m" "$TRB/traces/pure.ctrt"
+}
+tr_mut_args() { # 篡改 args(2,40→2,nope):重建码编译败运行失败面
+    sed 's/args = "2,40"/args = "2,nope"/' "$TRB/traces/pure.ctrt" > "$TRB/t.m" && mv "$TRB/t.m" "$TRB/traces/pure.ctrt"
+}
+tr_case() { # $1=label $2=prep(side 名,空=无) $3=mutator(空=无),其余 = 语料
+    label=$1; prep=$2; mut=$3; shift 3
+    tr_side
+    [ -n "$prep" ] && "$prep" sh
+    [ -n "$mut" ] && "$mut"
+    (cd "$ROOT" && sh "$SHREF" "$@") > "$T/sh.out" 2>&1; r1=$?
+    rm -rf "$TRTREE"; [ -d "$TRB/traces" ] && cp -R "$TRB/traces" "$TRTREE"
+    tr_side
+    [ -n "$prep" ] && "$prep" nat
+    [ -n "$mut" ] && "$mut"
+    (cd "$ROOT" && "$NAT" "$@") > "$T/nat.out" 2>&1; r2=$?
+    # 轨迹树面:双侧皆无 = 跳;不对称或 diff 异 = FAIL(空 .ctrt 残留例同覆盖)
+    tree_part="skip"
+    if [ -d "$TRTREE" ] || [ -d "$TRB/traces" ]; then
+        if [ -d "$TRTREE" ] && [ -d "$TRB/traces" ] && diff -r "$TRTREE" "$TRB/traces" > "$T/tree.diff" 2>&1; then
+            tree_part="ok"
+        else
+            tree_part="bad"
+        fi
+    fi
+    if [ "$r1" = "$r2" ] && cmp -s "$T/sh.out" "$T/nat.out" && [ "$tree_part" != bad ]; then
+        pass=$((pass+1)); echo "  ok  : $label(rc=$r2;逐字节+rc$( [ "$tree_part" = ok ] && echo '+轨迹树' ) 一致)"
+    else
+        fail=$((fail+1))
+        echo "  FAIL: $label(sh_rc=$r1 native_rc=$r2)"
+        diff "$T/sh.out" "$T/nat.out" 2>&1 | sed 's/^/    /' | sed -n '1,10p'
+        [ -f "$T/tree.diff" ] && sed 's/^/    tree: /' "$T/tree.diff" | sed -n '1,10p'
+    fi
+}
+
+echo "== pkg trace record/replay 臂(W4 波3 批3:守卫 + 码gen + .ctrt 产物树)=="
+run_case  "pkg trace record 缺 --case(rc2)"              pkg trace record tests/artifact_demo/provider/eff.ct
+run_case  "pkg trace record 源含 main(rc2)"               pkg trace record tests/drv_parity/fixtures/hello.ct --case foo=1
+run_case  "pkg trace record fn 名非法(rc2;首字符数字)"     pkg trace record tests/artifact_demo/provider/eff.ct --case 9bad=1
+tr_case   "record NF=0 多行输出拒(rc2;残留空 .ctrt 入树)"  ""  ""  pkg trace record "$TRB/nl.ct" --case mx_nl=
+tr_case   "record 纯函数单例(rc0;.ctrt 产物 pin α)"        ""  ""  pkg trace record "$TRB/pure.ct" --case mx_add=2,40
+tr_case   "record 多用例同名两块(rc0;flush 语义)"           ""  ""  pkg trace record "$TRB/pure.ct" --case mx_add=1,2 --case mx_add=10,-3
+tr_case   "record --fs 种子引号内容(rc0;FC_E 转义;pin β)"  ""  ""  pkg trace record "$TRB/mix.ct" --case mx_greet=fs --fs=cfg.txt=a\"b "--fs=name.txt=x'y"
+tr_case   "record wrote 面(rc0;双写+数据 esc 入块)"        ""  ""  pkg trace record "$TRB/mix.ct" --case mx_save=fs --fs dummy.txt=d
+run_case  "pkg trace replay 无轨迹文件(rc2)"               pkg trace replay tests/artifact_demo/provider/eff.ct
+tr_case   "replay 正例双例含 wrote(rc0)"                   tr_rec2 ""  pkg trace replay "$TRB/mix.ct"
+tr_case   "replay 篡改 expect(判词 rc1)"                   tr_rec1 tr_mut_expect pkg trace replay "$TRB/pure.ct"
+tr_case   "replay 篡改 args 编译败(rc2 运行失败)"            tr_rec1 tr_mut_args pkg trace replay "$TRB/pure.ct"
 
 echo "== drv_parity: $pass ok / $fail fail =="
 [ "$fail" -eq 0 ] || exit 1

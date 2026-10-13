@@ -32,7 +32,9 @@
 //     spawn sh 脚本 rc 直通)+ pkg 分派 verify/attest/log/seal(verify L1 三段
 //     判决+--deep 委派 ctron-verify 与 attest 腿/复放腿挂账批C;seal ctron-ast
 //     env 通道 set+restore+traces 拾取+SHA256SUMS 整串序+self_digest 注入;
-//     log git 委派 -c 身份逐字+append-only 守卫;trace rc2 诚实暂缓同批C)。
+//     log git 委派 -c 身份逐字+append-only 守卫)。
+// pkg trace 面(W4 波3 批3):record/replay 码gen 全量(WSB/MemFs 合成/三层转义
+//     谱/单值守卫/E5056 族判词逐字;--deep 复放腿深码gen 异构仍挂账,见分派臂注)。
 
 use proc.{run, run_argv, run_argv_rc, argv_to_blob}
 use std.fs.{list, walk}
@@ -2360,7 +2362,8 @@ fn cmd_publish() -> I32 {
 // --deep 复放腿挂账(批C):轨迹码gen + ctron-cc 逐例复放与 C 轨迹批共用机械,
 // 本批 = ctron-verify 委派 + attest 腿(E5057)+ 判决行;复放计数恒 0(有轨
 // 工件的 --deep 不入对拍语料——sh 真行为在案,诚实暂缓非分歧)。
-// pkg trace 分派臂同因 rc2 诚实暂缓(同批C;语料不含)。
+// pkg trace 分派臂 rc2 暂缓已随批3 撤除(record/replay 全量落地;--deep 复放腿
+// 异构码gen 仍挂账,见 pkg 分派臂注)。
 // git 委派:run_argv_rc 直 exec(-c user.name/-c user.email 逐字);sh git add 的
 // >/dev/null 2>&1 静音面不模拟(正常路径零输出;病理告警登记不语料化)。
 
@@ -3285,6 +3288,592 @@ fn cmd_pkg_seal(rest: List[Str]) -> I32 {
     return 0
 }
 
+// ---- pkg trace record/replay(W4 波3 批3;sh cmd_pkg_trace :510-773 逐字镜像)----
+// 黄金轨迹(编排层码gen;宿主 ctron-cc run 捕获):α 纯函数值 = to_string 规范形;
+// γ 效果函数 --fs 种子挂最近 --case,args 位写 MemFs 变量名。轨迹块 = trace 行制
+// (fn/args/expect + fs 种子对 + wrote 面)。
+// 转义层谱(码gen 陷阱面,三层各有口径):
+//   L0 本文件串字面量 → " 需 \",\ 需 \\,{ 需 \{(} 裸写,\} 非法 E1001);
+//   L1 生成 drv.ct 内的字面量 → 种子内容/args 经 trace_esc_q("→\")(= sh
+//      sed 's/"/\\"/g');写积累串里的 "\n" 两字符 → L0 写作 \\n;
+//   L2 .ctrt 行文本 → args 经 esc_q 落盘,replay 侧 trace_unesc_q(= sed
+//      's/\\"/"/g');expect/wrote 原样落盘原样读(sh 口径,不转义)。
+// 已知病理(如实镜像 sh,不修):fs 种子内容含 " 时 replay 只再做一次加转义
+// (L1 双重转义 → 生成串编译败 → 运行失败 rc2 路径);expect 含 " 时块格式
+// 破形(awk 解析口径分叉)——语料避开,登记在案。
+
+fn trace_fn_ok(s: Str) -> Bool {
+    // case $TR_FN in ""|*[!A-Za-z0-9_]*|[0-9]*) 同判 = [A-Za-z_][A-Za-z0-9_]*
+    if s.len == 0 {
+        return false
+    }
+    var c = byte_at(s, 0)
+    if !((c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95) {
+        return false
+    }
+    var i: I32 = 1
+    while i < s.len {
+        c = byte_at(s, i)
+        if !((c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c == 95) {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+fn trace_esc_q(s: Str) -> Str {
+    // sed 's/"/\\"/g':双引号前插反斜杠(byte_slice 攒形保多字节序, capture 同款)
+    var r = ""
+    var run: I32 = 0
+    var i: I32 = 0
+    while i < s.len {
+        if byte_at(s, i) == 34 {
+            r = r + byte_slice(s, run, i) + "\\\""
+            run = i + 1
+        }
+        i += 1
+    }
+    return r + byte_slice(s, run, s.len)
+}
+
+fn trace_unesc_q(s: Str) -> Str {
+    // sed 's/\\"/"/g':反斜杠+双引号对 → 双引号(孤立反斜杠不动)
+    var r = ""
+    var run: I32 = 0
+    var i: I32 = 0
+    while i < s.len {
+        if byte_at(s, i) == 92 {
+            if i + 1 < s.len {
+                if byte_at(s, i + 1) == 34 {
+                    r = r + byte_slice(s, run, i) + "\""
+                    i += 1
+                    run = i + 1
+                }
+            }
+        }
+        i += 1
+    }
+    return r + byte_slice(s, run, s.len)
+}
+
+fn trace_first_line(s: Str) -> Str {
+    // $(printf '%s\n' "$TR_OUT" | sed -n '1p'):首行(空串 → 空;无 \n = 全串)
+    if s.len == 0 {
+        return ""
+    }
+    var nl = find_from(s, "\n", 0)
+    if nl < 0 {
+        return s
+    }
+    return byte_slice(s, 0, nl)
+}
+
+fn trace_atoi(s: Str) -> I32 {
+    // 自产 NF/NW 计数字串还原(非数字即止 = 0;sh read 脏值病理面不合作口径)
+    var v: I32 = 0
+    var i: I32 = 0
+    while i < s.len {
+        var c = byte_at(s, i)
+        if c < 48 || c > 57 {
+            return v
+        }
+        v = v * 10 + (c - 48)
+        i += 1
+    }
+    return v
+}
+
+fn trace_capture_out(var buf: U8[]) -> Str {
+    // $(ctron-cc run ...) 语义:捕获全量(UTF-8 保真)+ 尾 \n 全剥
+    var s = capture_str(buf)
+    while s.len > 0 {
+        if byte_at(s, s.len - 1) == 10 {
+            s = byte_slice(s, 0, s.len - 1)
+        } else {
+            break
+        }
+    }
+    return s
+}
+
+fn trace_wrote_lines(out: Str) -> List[Str] {
+    // sed -n '/^---writes---$/,$p' | sed '1d' | grep -v '^$':首个 ---writes---
+    // 行后的非空行(grep -v 空行滤,写积累为空的病理面同判)
+    var ls = List[Str]()
+    var inW: Bool = false
+    var start: I32 = 0
+    var p: I32 = 0
+    while p <= out.len {
+        var isEnd: Bool = p == out.len
+        if isEnd || byte_at(out, p) == 10 {
+            var ln = byte_slice(out, start, p)
+            if inW {
+                if ln.len > 0 {
+                    ls.push(ln)
+                }
+            } else {
+                if ln == "---writes---" {
+                    inW = true
+                }
+            }
+            start = p + 1
+            if isEnd {
+                break
+            }
+        }
+        p += 1
+    }
+    return ls
+}
+
+fn trace_flush(cases: List[Str], cfn: Str, cargs: Str, pairs: List[Str]) {
+    // sh TR_FLUSH 同构:落一条用例(fn/args/NF 三行头 + NF 对 path/content;
+    // manifest 行制语义的内存同构,NF 由对数自算)
+    if cfn.len == 0 {
+        return
+    }
+    cases.push(cfn)
+    cases.push(cargs)
+    cases.push((pairs.len / 2).to_string())
+    var z: I32 = 0
+    while z < pairs.len {
+        cases.push(pairs[z])
+        z += 1
+    }
+}
+
+fn trace_build_drv(src: Str, tfn: Str, targs: Str, pairs: List[Str]) -> Str {
+    // 码gen 核(record/replay 双臂同构;sh 两个 printf 块逐字节):NF≥1 =
+    // esc 头 + 源 + WSB/MemFs 合成(字段声明/读分支链回 Ok(bN.to_string())/
+    // 写积累 esc(path)+" "+esc(data)+"\n" 经 Box 入 log/exists 链)+ main
+    // match(Ok → println(v.to_string()),Err → <err>)+ ---writes--- 面;
+    // NF=0 = 纯值 main。L1 层转义只在种子内容(esc_q);args 原样内插。
+    var np: I32 = pairs.len / 2
+    var d = ""
+    if np >= 1 {
+        d = "use std.json.\{ esc }\n"
+    }
+    d = d + src
+    if np >= 1 {
+        var fields = ""
+        var reads = ""
+        var exch = ""
+        var init = ""
+        var i: I32 = 0
+        while i < np {
+            var fp = pairs[i * 2]
+            var fc = trace_esc_q(pairs[i * 2 + 1])
+            fields = fields + "    let f" + i.to_string() + ": Str\n    let b" + i.to_string() + ": Str\n"
+            reads = reads + "        if path == self.f" + i.to_string() + " \{\n            return Ok(self.b" + i.to_string() + ".to_string())\n        }\n"
+            exch = exch + "        if path == self.f" + i.to_string() + " \{\n            return true\n        }\n"
+            init = init + " f" + i.to_string() + ": \"" + fp + "\", b" + i.to_string() + ": \"" + fc + "\","
+            i += 1
+        }
+        d = d + "\nclass WSB \{\n    let s: Str\n}\n\n"
+        d = d + "class MemFs \{\n" + fields + "    let log: Box[WSB]\n}\n\n"
+        d = d + "impl Fs for MemFs \{\n    fn read_to_string(&self, path: Str) -> Result[String, FsError] \{\n" + reads + "        return Err(FsError \{ message: \"not found\".to_string() })\n    }\n"
+        d = d + "    fn write(&self, path: Str, data: Str) -> Result[Void, FsError] \{\n        let inner = self.log\n        inner.s = inner.s + esc(path) + \" \" + esc(data) + \"\\n\"\n        return Ok(void)\n    }\n"
+        d = d + "    fn exists(&self, path: Str) -> Bool \{\n" + exch + "        return false\n    }\n}\n\n"
+        d = d + "fn main() \{\n    let wsb = WSB \{ s: \"\" }\n    let fs = MemFs \{ " + init + " log: Box[WSB](wsb) }\n    match " + tfn + "(" + targs + ") \{\n        Ok(v) => println(v.to_string())\n        Err(_) => println(\"<err>\")\n    }\n    println(\"---writes---\")\n    print(fs.log.s)\n}\n"
+    } else {
+        d = d + "\nfn main() \{\n    println(" + tfn + "(" + targs + ").to_string())\n}\n"
+    }
+    return d
+}
+
+fn trace_drv_dir() -> Str {
+    // sh mktemp -d /tmp/ctron_tr.XXXXXX 同位:固定名 + 用前净除(登记偏差:
+    // 并发 trace 同名互踩;have_cc_probe 固定名先例同账)
+    return "/tmp/ctron_tr_drv"
+}
+
+fn trace_run_drv(drv: Str, var buf: U8[]) -> I32 {
+    // 写 drv.ct + CTRON_STDPATH 注入(sh 单命令前缀作用域 = 本进程 setenv,
+    // 一次性命令进程面同构)+ ctron-cc run stdout 捕获。stderr 直通非合流 =
+    // sh 2>&1 的登记偏差(编译诊断 stdout 恒空 → 合并序不可辨,字节同)。
+    var d = trace_drv_dir()
+    delete_tree(d)
+    fs_mkdir(d)
+    fs_write(d + "/drv.ct", drv)
+    env_set("CTRON_STDPATH", repo_root() + "/lib/std")
+    var argv = List[Str]()
+    argv.push(bin_dir() + "/ctron-cc")
+    argv.push("run")
+    argv.push(d + "/drv.ct")
+    var blob: U8[4096] = [0, 0, 0, 0, 0, 0, 0, 0]
+    let bn = argv_to_blob(argv, blob)
+    if bn < 0 {
+        return 127
+    }
+    return run_argv("", blob, bn.as[I64](), buf)
+}
+
+fn trace_parse_ctrt(text: Str) -> List[Str] {
+    // sh replay awk 块提取逐字(trace "/^  fs /等行前缀 + ^}$ 出块):出块序 =
+    // fn,args,nf,种子对(path/content 交错),expect,nw,wlines。awk sub 单次
+    // 替换/尾引号剥除序(先 " = " 换制表符再剥尾 ")与 split 取 pa[1]/pa[2]
+    // (第三段起弃)同口径。
+    var out = List[Str]()
+    var cfn = ""
+    var cargs = ""
+    var cexp = ""
+    var nfs: I32 = 0
+    var nws: I32 = 0
+    var pairs = List[Str]()
+    var wls = List[Str]()
+    var start: I32 = 0
+    var p: I32 = 0
+    while p <= text.len {
+        var isEnd: Bool = p == text.len
+        if isEnd || byte_at(text, p) == 10 {
+            var ln = byte_slice(text, start, p)
+            if starts_with(ln, "trace \"") {
+                var l = byte_slice(ln, 7, ln.len)
+                if ends_with(l, "\" \{") {
+                    l = byte_slice(l, 0, l.len - 3)
+                }
+                cfn = l
+                cargs = ""
+                cexp = ""
+                nfs = 0
+                nws = 0
+                pairs = List[Str]()
+                wls = List[Str]()
+            } else if starts_with(ln, "  fs ") {
+                var q = ln
+                if starts_with(q, "  fs \"") {
+                    q = byte_slice(q, 6, q.len)
+                }
+                var tab = find_from(q, "\" = \"", 0)
+                var joined = q
+                if tab >= 0 {
+                    joined = byte_slice(q, 0, tab) + "\t" + byte_slice(q, tab + 5, q.len)
+                }
+                if ends_with(joined, "\"") {
+                    joined = byte_slice(joined, 0, joined.len - 1)
+                }
+                var t1 = find_from(joined, "\t", 0)
+                var path = joined
+                var content = ""
+                if t1 >= 0 {
+                    var t2 = find_from(joined, "\t", t1 + 1)
+                    if t2 < 0 {
+                        t2 = joined.len
+                    }
+                    path = byte_slice(joined, 0, t1)
+                    content = byte_slice(joined, t1 + 1, t2)
+                }
+                pairs.push(path)
+                pairs.push(content)
+                nfs += 1
+            } else if starts_with(ln, "  args = ") {
+                var a = ln
+                if starts_with(a, "  args = \"") {
+                    a = byte_slice(a, 10, a.len)
+                }
+                if ends_with(a, "\"") {
+                    a = byte_slice(a, 0, a.len - 1)
+                }
+                cargs = a
+            } else if starts_with(ln, "  expect = ") {
+                var x = ln
+                if starts_with(x, "  expect = \"") {
+                    x = byte_slice(x, 12, x.len)
+                }
+                if ends_with(x, "\"") {
+                    x = byte_slice(x, 0, x.len - 1)
+                }
+                cexp = x
+            } else if starts_with(ln, "  wrote ") {
+                wls.push(byte_slice(ln, 8, ln.len))
+                nws += 1
+            } else if ln == "}" {
+                out.push(cfn)
+                out.push(cargs)
+                out.push(nfs.to_string())
+                var z: I32 = 0
+                while z < pairs.len {
+                    out.push(pairs[z])
+                    z += 1
+                }
+                out.push(cexp)
+                out.push(nws.to_string())
+                z = 0
+                while z < wls.len {
+                    out.push(wls[z])
+                    z += 1
+                }
+            }
+            start = p + 1
+            if isEnd {
+                break
+            }
+        }
+        p += 1
+    }
+    return out
+}
+
+fn cmd_pkg_trace(rest: List[Str]) -> I32 {
+    // sh cmd_pkg_trace(:510-773):子命令/工具链守卫 → --case/--fs 参数循环
+    // (--case flush 前例;--fs 种子挂最近例;fn 名白名单)→ 源守卫(缺参/
+    // 缺席/含 main 拒)→ record:逐例码gen + ctron-cc run 捕获(单值守卫/
+    // 运行失败拒)+ 轨迹块追加;replay:块解析 → 同构重建 → 逐字比对
+    // (mismatch 判词:NF≥1 首行 + 全文两段,NF=0 单段全嵌)。
+    if rest.len < 1 {
+        return fail2("pkg trace 需要子命令(用法: pkg trace record <src.ct> --case <fn>=<args> [--fs <path>=<content>]... / pkg trace replay <src.ct>)")
+    }
+    var sub = rest[0]
+    if sub != "record" && sub != "replay" {
+        return fail2("pkg trace: 未知子命令 '" + sub + "'(现支持: record replay)")
+    }
+    if !fs_exists(bin_dir() + "/ctron-cc") {
+        return fail2("pkg trace: 缺 ctron-cc(重装工具链;或先: compiler/native.sh)")
+    }
+    var cases = List[Str]()
+    var cfn = ""
+    var cargs = ""
+    var cfss = List[Str]()
+    var src = ""
+    var prev: I32 = 0
+    var i: I32 = 1
+    while i < rest.len {
+        var a = rest[i]
+        if prev == 1 {
+            var cut = find_from(a, "=", 0)
+            if cut < 0 {
+                cfn = a
+                cargs = a
+            } else {
+                cfn = byte_slice(a, 0, cut)
+                cargs = byte_slice(a, cut + 1, a.len)
+            }
+            if !trace_fn_ok(cfn) {
+                return fail2("pkg trace record: fn 名非法: '" + cfn + "'([A-Za-z_][A-Za-z0-9_]*)")
+            }
+            prev = 0
+            i += 1
+            continue
+        }
+        if prev == 2 {
+            if cfn.len == 0 {
+                return fail2("pkg trace: --fs 须跟在 --case 之后(种子挂最近用例)")
+            }
+            var cut2 = find_from(a, "=", 0)
+            if cut2 < 0 {
+                cfss.push(a)
+                cfss.push(a)
+            } else {
+                cfss.push(byte_slice(a, 0, cut2))
+                cfss.push(byte_slice(a, cut2 + 1, a.len))
+            }
+            prev = 0
+            i += 1
+            continue
+        }
+        if a == "--case" {
+            trace_flush(cases, cfn, cargs, cfss)
+            cfn = ""
+            cargs = ""
+            cfss = List[Str]()
+            prev = 1
+        } else if a == "--fs" {
+            prev = 2
+        } else if starts_with(a, "--case=") {
+            trace_flush(cases, cfn, cargs, cfss)
+            cfn = ""
+            cargs = ""
+            cfss = List[Str]()
+            var v = byte_slice(a, 7, a.len)
+            var cut3 = find_from(v, "=", 0)
+            if cut3 < 0 {
+                cfn = v
+                cargs = v
+            } else {
+                cfn = byte_slice(v, 0, cut3)
+                cargs = byte_slice(v, cut3 + 1, v.len)
+            }
+            if !trace_fn_ok(cfn) {
+                return fail2("pkg trace record: fn 名非法: '" + cfn + "'([A-Za-z_][A-Za-z0-9_]*)")
+            }
+        } else if starts_with(a, "--fs=") {
+            if cfn.len == 0 {
+                return fail2("pkg trace: --fs 须跟在 --case 之后(种子挂最近用例)")
+            }
+            var v2 = byte_slice(a, 5, a.len)
+            var cut4 = find_from(v2, "=", 0)
+            if cut4 < 0 {
+                cfss.push(v2)
+                cfss.push(v2)
+            } else {
+                cfss.push(byte_slice(v2, 0, cut4))
+                cfss.push(byte_slice(v2, cut4 + 1, v2.len))
+            }
+        } else {
+            if src.len == 0 {
+                src = a
+            }
+        }
+        i += 1
+    }
+    if prev != 0 {
+        return fail2("pkg trace: --case/--fs 缺值")
+    }
+    if src.len == 0 {
+        return fail2("pkg trace " + sub + " 需要源文件")
+    }
+    if !is_file_p(src) {
+        return fail2("pkg trace: 源文件不存在: " + src)
+    }
+    var srctext = read_file(src)
+    if find_from(srctext, "fn main", 0) >= 0 {
+        return fail2("pkg trace: 源含 main(轨迹面向无 main 的 provider 源)")
+    }
+    var tdir = abs_dir(dir_of(src))
+    var tstem = stem_of(src)
+    var ttgt = tdir + "/traces/" + tstem + ".ctrt"
+    if sub == "record" {
+        trace_flush(cases, cfn, cargs, cfss)
+        if cases.len == 0 {
+            return fail2("pkg trace record 需要 --case <fn>=<args>(可多例;--fs 种子挂最近 --case)")
+        }
+        // mkdir -p + 截断(sh mkdir -p / : > 同位;父目录恒在)
+        if !is_dir_p(tdir + "/traces") {
+            fs_mkdir(tdir + "/traces")
+        }
+        fs_write(ttgt, "")
+        var acc = ""
+        var buf: U8[262144] = [0, 0, 0, 0, 0, 0, 0, 0]
+        var n: I32 = 0
+        var ci: I32 = 0
+        while ci < cases.len {
+            var tfn = cases[ci]
+            var targs = cases[ci + 1]
+            var nf = trace_atoi(cases[ci + 2])
+            var pairs = List[Str]()
+            var z: I32 = 0
+            while z < nf * 2 {
+                pairs.push(cases[ci + 3 + z])
+                z += 1
+            }
+            ci += 3 + nf * 2
+            var drv = trace_build_drv(srctext, tfn, targs, pairs)
+            capture_zero(buf)
+            let rc = trace_run_drv(drv, buf)
+            var out = trace_capture_out(buf)
+            if rc != 0 {
+                eprint(out + "\n")
+                delete_tree(trace_drv_dir())
+                return fail2("pkg trace record: 用例 " + tfn + "(" + targs + ") 运行失败(rc=" + rc.to_string() + ")")
+            }
+            if nf == 0 {
+                if find_from(out, "\n", 0) >= 0 {
+                    delete_tree(trace_drv_dir())
+                    return fail2("pkg trace record: 用例 " + tfn + "(" + targs + ") 输出多行(纯函数轨迹面向单值)")
+                }
+            }
+            var blk = "trace \"" + tfn + "\" \{\n"
+            var pi: I32 = 0
+            while pi < pairs.len {
+                blk = blk + "  fs \"" + pairs[pi] + "\" = \"" + trace_esc_q(pairs[pi + 1]) + "\"\n"
+                pi += 2
+            }
+            blk = blk + "  args = \"" + trace_esc_q(targs) + "\"\n  expect = \"" + trace_first_line(out) + "\"\n"
+            if nf >= 1 {
+                var wls = trace_wrote_lines(out)
+                var wi: I32 = 0
+                while wi < wls.len {
+                    blk = blk + "  wrote " + wls[wi] + "\n"
+                    wi += 1
+                }
+            }
+            blk = blk + "}\n"
+            acc = acc + blk
+            fs_write(ttgt, acc)
+            delete_tree(trace_drv_dir())
+            n += 1
+        }
+        println("ctron: 轨迹已录制 " + n.to_string() + " 用例 → " + ttgt)
+        return 0
+    }
+    // replay(sh :704-773):轨迹块解析 → 同构重建 → 逐字比对
+    if !is_file_p(ttgt) {
+        return fail2("pkg trace replay: 无轨迹文件: " + ttgt)
+    }
+    var blocks = trace_parse_ctrt(read_file(ttgt))
+    if blocks.len == 0 {
+        return fail2("pkg trace replay: 轨迹文件无块: " + ttgt)
+    }
+    var buf: U8[262144] = [0, 0, 0, 0, 0, 0, 0, 0]
+    var n: I32 = 0
+    var bad: I32 = 0
+    var bi: I32 = 0
+    while bi < blocks.len {
+        var tfn = blocks[bi]
+        var targsU = trace_unesc_q(blocks[bi + 1])
+        var nf = trace_atoi(blocks[bi + 2])
+        var pairs = List[Str]()
+        var z: I32 = 0
+        while z < nf * 2 {
+            pairs.push(blocks[bi + 3 + z])
+            z += 1
+        }
+        bi += 3 + nf * 2
+        var exp = trace_unesc_q(blocks[bi])
+        bi += 1
+        var nw = trace_atoi(blocks[bi])
+        bi += 1
+        var wls = List[Str]()
+        z = 0
+        while z < nw {
+            wls.push(blocks[bi + z])
+            z += 1
+        }
+        bi += nw
+        var drv = trace_build_drv(srctext, tfn, targsU, pairs)
+        capture_zero(buf)
+        let rc = trace_run_drv(drv, buf)
+        var out = trace_capture_out(buf)
+        if rc != 0 {
+            eprint(out + "\n")
+            delete_tree(trace_drv_dir())
+            return fail2("pkg trace replay: 用例 " + tfn + "(" + targsU + ") 运行失败(rc=" + rc.to_string() + ")")
+        }
+        if nf >= 1 {
+            // sh TR_CANON 同构:expect + ---writes--- + wrote 面(%? 剥尾换行)
+            var canon = exp + "\n---writes---"
+            if wls.len > 0 {
+                var wj = ""
+                var k: I32 = 0
+                while k < wls.len {
+                    wj = wj + wls[k] + "\n"
+                    k += 1
+                }
+                canon = canon + "\n" + byte_slice(wj, 0, wj.len - 1)
+            }
+            if out != canon {
+                eprint("trace mismatch: " + tfn + "(" + targsU + ") 记录 " + exp + " 实际 " + trace_first_line(out) + "(含 wrote 面,全文见上)\n")
+                eprint(out + "\n")
+                bad += 1
+            }
+        } else {
+            if out != exp {
+                eprint("trace mismatch: " + tfn + "(" + targsU + ") 记录 " + exp + " 实际 " + out + "\n")
+                bad += 1
+            }
+        }
+        delete_tree(trace_drv_dir())
+        n += 1
+    }
+    if bad > 0 {
+        eprint("pkg trace replay: " + n.to_string() + " 用例中 " + bad.to_string() + " 不符\n")
+        return 1
+    }
+    println("trace replay OK: " + n.to_string() + " 用例")
+    return 0
+}
+
 fn main() -> I32 {
     var n: I64 = ctron_prog_args_n()
     // 无参 = 整版 usage + rc 2(sh:[ $# -lt 1 ])
@@ -3741,8 +4330,10 @@ fn main() -> I32 {
         return cmd_bench(rest)
     }
     if cmd == "pkg" {
-        // W4 波3 批2:pkg 分派臂(sh :1302-1310):verify/attest/log/seal 落地,
-        // trace rc2 诚实暂缓(录制/复放机械随批C,同 --deep 复放腿挂账;语料不含)
+        // W4 波3 批2+3:pkg 分派臂(sh :1302-1310):verify/attest/log/seal/trace
+        // 全落地(--deep 复放腿仍挂账:深腿码gen = 工件 deps 布局 + use 名.模.{
+        // fn 集} 头 + impl 陈旧证据查,与本批 record/replay 的源拷贝 drv 不同构,
+        // 不干净组合 → 维持暂缓,诚实登记)
         if n < 2 {
             return fail2("pkg 需要子命令(现支持: pkg verify [--deep] <工件目录> / pkg trace / pkg attest)")
         }
@@ -3757,7 +4348,7 @@ fn main() -> I32 {
             return cmd_pkg_verify(rest)
         }
         if sub == "trace" {
-            return fail2("pkg trace: 暂缓(S3 录制/复放机械随批C 接线;本批先行 verify/attest/log/seal)")
+            return cmd_pkg_trace(rest)
         }
         if sub == "attest" {
             return cmd_pkg_attest(rest)

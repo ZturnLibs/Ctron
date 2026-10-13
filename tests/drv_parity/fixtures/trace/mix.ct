@@ -1,0 +1,20 @@
+// mix —— drv_parity trace 语料夹具(纯函数 + Fs 效果函数;无 main;S3-α/γ 双面:
+// 读种子/双写面含引号数据经 esc/exists 门控假种子路径;效果面 pub = E4010
+// 能力查的 provider 豁免形,artifact_demo/provider/eff.ct 先例同构)
+use std.fs.{Fs, FsError}
+
+pub fn mx_add(x: I32, y: I32) -> I32 {
+    return x + y
+}
+
+pub fn mx_greet(fs: &Fs) -> Result[String, FsError] {
+    return fs.read_to_string("name.txt")
+}
+
+pub fn mx_save(fs: &Fs) -> Result[Void, FsError] {
+    let a = fs.write("out.txt", "payload")
+    if fs.exists("gate.txt") {
+        return a
+    }
+    return fs.write("log.bin", "a\"b")
+}

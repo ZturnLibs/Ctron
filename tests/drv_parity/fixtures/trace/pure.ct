@@ -1,0 +1,4 @@
+// pure —— drv_parity trace 语料夹具(纯函数;无 main;S3-α 单值面)
+fn mx_add(x: I32, y: I32) -> I32 {
+    return x + y
+}
