@@ -128,7 +128,7 @@ task "smoke" {
 | W2 收编开闸 | 试点域 run.sh 改由 task 表驱动(2–3 个形态最简域,如 examples 子集 + tests/plugins);meta_check 增扫"脚本私清缓存";usage/文档同步 | 试点域原门全绿(run.sh 删除或降为一行委派);meta_check 绿 |
 | W3 std 前置件 | §7 三件(env 写 / 递归 walk / proc 门面),各自独立批次独立绿 | 各自模块门 + smoke 全绿(标准泳道口径) |
 | W4 原生驱动器 | std/config L1 通用面 → driver 骨架(run/check/doc)→ 逐族对拍 → 垫片翻转 | 与 sh 实现黄金对拍逐字节一致(全子命令语料);现有全门绿;翻转后 dev+install 双布局冒烟 |
-| W5 收编收官 | 残余 run.sh 逐域退役;shell 面盘点 ≤10(bootstrap/安装/薄垫片);文档与 tour 同步 | 全门绿;run.sh 存量收敛至白名单(C 宿主引导/安装/垫片);CI 绿 |
+| W5 收编收官(**已执行 2026-10-14,终盘报告见 2026-10-10-build-driver-w5-close.md**) | 残余 run.sh 逐域退役;shell 面盘点 ≤10(bootstrap/安装/薄垫片);文档与 tour 同步。**执行账**:批1 落库 6 例收编(run.sh 6 删+ex-* 任务),批3 情景例 4 例豁免(ctecho/ctslink/todo_api/todo_app,ctecho 活调用者 smoke.sh 零扰)+ex- 委派入口 2 枚+shell 14 份分类终盘(地基非债);批2 4 例未启动——**触发件在册**:存量发射回归 `run(ViewCall)` 合成面 rt_window_loop_d 第2参 s/i 失配(86478cc0 后 34 提交窗在库,三证非批1 引入),治愈后批1 五任务零再编辑翻转绿、批2 同模板收编 | 门:**drv_parity 136 / ctron_smoke 43 / tasks 21 / fast 2-4 全绿**;fast 步1 meta_check 13 处 = 在库既有债在册;gate 22 步未跑(收官豁免,归 CI);run.sh 存量 14→8(6 删+4 豁免集成门+4 批2 停摆,终态 4 全豁免待触发件愈);CI 未跑(不 push) |
 
 顺序弹性:W3 与 W1/W2 无依赖,可穿插;W4 前必须 W3 齐。
 
