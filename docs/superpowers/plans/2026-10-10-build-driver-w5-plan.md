@@ -74,6 +74,11 @@ git commit -m "refactor(examples): GUI 例收编第一批 6 例(W5 批1)——�
 
 ---
 
-## 执行记录
+## 执行记录(2026-10-10,W5 三批落库,收官带触发件)
 
-(执行时逐任务回写;泳道收官随批入册。)
+- **批1 `fa668ba1`**:GUI 例收编 6 例(清单 gui 面+ex-* 任务+run.sh 删+README)。**1/6 绿(gui_files,显式 src 装配绕过合成面=任务管线获证);5 例挂对端在飞发射回归**(run(ViewCall) 合成面 rt_window_loop_d 实参码 s/i 失配;三重归因:HEAD 原 run.sh 同挂/W2 验收过的 ex-gui-calc 同挂/净 /tmp 重建复现;窗口=10-09 阶梯绿后 34 compiler/src 提交,对端正飞 driver_emit.ct)。治愈判据归 task-w5-1-report.md;五任务零改等树愈复验。
+- **批2:停摆(同触发件)**——gui_counter/gui_cjk/gui_zitie/todo 四例 run.sh 原样在库,治愈后照批1 模板收编(简报模板已定)。
+- **批3 `2fa58fd7`**:情景例豁免登记(ctecho[smoke.sh:804-806 活调用者零扰实证]/ctslink[BLOCKED 软门与任务信号语义冲突]/todo_api/todo_app[env 矩阵两相位])+委派条目 ex-ctecho/ex-todo-api(ex-* 族 8→10)+终盘报告落档(`2026-10-10-build-driver-w5-close.md`:16 例终态表 2+6[5 停]+4 豁免+4 停;编排 shell 14 份五族=地基非债;tests 147=集成门,测试协议内建=开放项)+spec §8 W5 行诚实勾验。评审 Approved(全部量化断言对树复现:4446 行/147 run.sh/10 ex-*/8 残余 run.sh)。
+- **终态门**:drv_parity 136/0+ctron_smoke 43/0+tasks 21/0+fast 2-4 绿(步1=对端 meta_check 13 处在库债);gate 22 步归 CI。
+- **触发件(泳道唯一开放项)**:对端 run(ViewCall) 合成面回归治愈后 → 批2 四例照模板收编 + 批1 五任务复验(零改)→ spec §8 全勾。
+- **泳道总账(W1-W5)**:W1 任务面+全量门+ci.sh 翻转;W2 task.cwd+试点收编+私清缓存扫描;W3 三前置件;W4 三波=驱动器 19 臂 Ctron 自写+**垫片翻转成立(真终审 Yes)**;W5 收编收官(带触发件)。examples run.sh 14→8(6 删+4 批2 在库);编排 shell 14 份=地基五族;对拍语料终态 136。
