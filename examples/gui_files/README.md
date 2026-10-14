@@ -7,9 +7,12 @@
 ## 运行
 
 ```sh
-sh run.sh          # 构建 + headless 全链路断言(列表/导航/预览/错误态,全自动)
-sh run.sh --run    # 追加真实窗口(键入子目录或文件名 + 点打开/上级)
+ctron task ex-gui-files    # 仓库根执行:构建 + headless 全链路断言(列表/导航/预览/错误态,全自动)
 ```
+
+真窗交互(键入子目录或文件名 + 点打开/上级)未收编进任务表:本任务跑绿后
+`cd examples/gui_files` 执行 `env CTRON_GUI_RUN=1 ./build/gui_files.bin` 即开真窗口;
+手工命令见 `ctron.ctcl` 中 `ex-gui-files` 任务的 `desc`。
 
 ## 文件导览
 

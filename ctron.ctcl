@@ -12,6 +12,42 @@ task "ex-gui-calc" {
     cwd = "examples/gui_calc"
 }
 
+task "ex-gui-dash" {
+    steps = ["mkdir -p build", "sh ../../vendor/gui/build.sh", "sh ../../compiler/ctc.sh build src/main.ct -o build/gui_dash.bin", "echo gui_dash: 构建+链接 OK - ctc build 自动链接", "env CTRON_GUI_HEADLESS=1 build/gui_dash.bin"]
+    desc = "gui_dash 收编(原 run.sh 无条件核心:vendor 构建→ctc build 清单自动链接→headless 断言;产物 build/gui_dash.bin);真窗交互路径(--run)未收编:本任务跑绿后 cd examples/gui_dash 执行 build/gui_dash.bin 即开真窗口(不带 CTRON_GUI_HEADLESS,refresh 按钮换数)"
+    cwd = "examples/gui_dash"
+}
+
+task "ex-gui-snippets" {
+    steps = ["mkdir -p build", "sh ../../vendor/gui/build.sh", "sh ../../compiler/ctc.sh build src/main.ct -o build/gui_snippets.bin", "echo gui_snippets: 构建+链接 OK - ctc build 自动链接", "env CTRON_GUI_HEADLESS=1 build/gui_snippets.bin"]
+    desc = "gui_snippets 收编(原 run.sh 无条件核心:vendor 构建→ctc build 清单自动链接→headless 断言;产物 build/gui_snippets.bin);真窗交互路径(--run)未收编:本任务跑绿后 cd examples/gui_snippets 执行 build/gui_snippets.bin 即开真窗口(不带 CTRON_GUI_HEADLESS,组件库实战验证)"
+    cwd = "examples/gui_snippets"
+}
+
+task "ex-gui-widgets" {
+    steps = ["mkdir -p build", "sh ../../vendor/gui/build.sh", "sh ../../compiler/ctc.sh build src/main.ct -o build/gui_widgets.bin", "echo gui_widgets: 构建+链接 OK - ctc build 自动链接", "env CTRON_GUI_HEADLESS=1 build/gui_widgets.bin"]
+    desc = "gui_widgets 收编(原 run.sh 无条件核心:vendor 构建→ctc build 清单自动链接→headless 断言;产物 build/gui_widgets.bin);真窗交互路径(--run)未收编:本任务跑绿后 cd examples/gui_widgets 执行 build/gui_widgets.bin 即开真窗口(不带 CTRON_GUI_HEADLESS,Select/WList/Dialog 交互演示)"
+    cwd = "examples/gui_widgets"
+}
+
+task "ex-gui-contacts" {
+    steps = ["mkdir -p build", "sh ../../vendor/gui/build.sh", "sh ../../compiler/ctc.sh build src/main.ct -o build/gui_contacts.bin", "echo gui_contacts: 构建+链接 OK - ctc build 自动链接", "env CTRON_GUI_HEADLESS=1 build/gui_contacts.bin"]
+    desc = "gui_contacts 收编(原 run.sh 无条件核心:vendor 构建→ctc build 清单自动链接→headless 断言;产物 build/gui_contacts.bin);真窗交互路径(--run)未收编:本任务跑绿后 cd examples/gui_contacts 执行 build/gui_contacts.bin 即开真窗口(不带 CTRON_GUI_HEADLESS,PersonCard slot 投影 / TagRow 行事件)"
+    cwd = "examples/gui_contacts"
+}
+
+task "ex-gui-themes" {
+    steps = ["mkdir -p build", "sh ../../vendor/gui/build.sh", "sh ../../compiler/ctc.sh build src/main.ct -o build/gui_themes.bin", "echo gui_themes: 构建+链接 OK - ctc build 自动链接", "env CTRON_GUI_HEADLESS=1 build/gui_themes.bin"]
+    desc = "gui_themes 收编(原 run.sh 无条件核心:vendor 构建→ctc build 清单自动链接→headless 断言;产物 build/gui_themes.bin);真窗交互路径(--run)未收编:本任务跑绿后 cd examples/gui_themes 执行 build/gui_themes.bin 即开真窗口(不带 CTRON_GUI_HEADLESS,键 1-8 切换八主题)"
+    cwd = "examples/gui_themes"
+}
+
+task "ex-gui-files" {
+    steps = ["mkdir -p build", "sh ../../vendor/gui/build.sh", "sh ../../compiler/ctc.sh build src/main.ct -o build/gui_files.bin", "echo gui_files: 构建+链接 OK - ctc build 自动链接", "env CTRON_GUI_HEADLESS=1 build/gui_files.bin"]
+    desc = "gui_files 收编(原 run.sh 无条件核心:vendor 构建→ctc build 清单自动链接→headless 断言;产物 build/gui_files.bin);真窗交互路径未收编(原 run.sh --run 追加 CTRON_GUI_RUN=1 真实窗口:键入子目录或文件名 + 点打开/上级):本任务跑绿后 cd examples/gui_files 执行 env CTRON_GUI_RUN=1 build/gui_files.bin 即开真窗口"
+    cwd = "examples/gui_files"
+}
+
 task "ex-todo-v10" {
     steps = ["mkdir -p build", "sh ../../vendor/gui/build.sh", "sh ../../compiler/ctc.sh emit src/main.ct build/todo_v10.c", "cc -O1 -w -I../../vendor/gui/clay -I../../vendor/gui/raylib -I../../vendor/gui/freetype/include -o build/todo_v10.bin build/todo_v10.c ../../pkgs/gui/c_src/ctron_gui.c ../../pkgs/gui/c_src/ft_shim.c ../../vendor/gui/build/libfreetype.a ../../vendor/gui/build/libraylib.a -framework Cocoa -framework OpenGL -framework IOKit -framework CoreFoundation -framework CoreVideo", "env CTRON_GUI_HEADLESS=1 build/todo_v10.bin", "echo todo_v10: §10.3 合成面 headless 全绿"]
     desc = "todo_v10 试点收编(原 run.sh 无条件核心:vendor 构建→emit→cc 手工链接→headless 断言;cc 链接参数取 darwin 臂,linux 臂未收编归 W5 链接面归一);真窗交互路径(CTRON_GUI_RUN=1)未收编,已随 run.sh 删除,手工命令见 git 史"

@@ -3,3 +3,12 @@ pkg {
     name = "gui_files_example"
     version = "0.1.0"
 }
+
+gui {
+    entry = "app.ctml"
+}
+
+dependencies {
+    gui
+}
+
