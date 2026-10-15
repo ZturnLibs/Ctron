@@ -506,7 +506,7 @@ class CheckRunner {
         if (this.running) { this.queued = uri; return; }
         this.running = true;
         log(`[check] ${fsPath}`);
-        const child = spawn(this.ctronc, ['check', '--format=json', fsPath], {});
+        const child = spawn(this.ctronc, ['check', fsPath, '--format=json'], {});
         let out = '';
         child.stdout.on('data', (d) => { out += d.toString('utf8'); });
         child.on('exit', () => {
