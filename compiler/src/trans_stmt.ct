@@ -870,6 +870,37 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 // 切片视图 let(§3.6,P1-D):初值三分支——数组字面量(堆)/内联数组退化/其余直发
                 var vt = ct_ctype(ty)
                 var vec = ct_ctype(byte_slice(ty, 1, ty.len))
+                // G5-W1:Repeat 切片位——堆块 + 首块展开 + 块复制(d[i]=d[i-n0]);
+                // 零块 memset 特判(F25 同门)
+                if st[4][0] == "Repeat" {
+                    var rp5 = st[4]
+                    var alr5 = rp5[1]
+                    var n05: I64 = (alr5.len - 1).as[I64]()
+                    var cnt5 = "1"
+                    if rp5[2][0] == "Int" { cnt5 = lit_to_dec(rp5[2][1]) }
+                    var allz5 = true
+                    var z5: I32 = 1
+                    while z5 < alr5.len {
+                        if or2(alr5[z5][0] != "Int", alr5[z5][1] != "0") {
+                            allz5 = false
+                        }
+                        z5 += 1
+                    }
+                    eln(vt + " t_" + pat[1] + ";", env)
+                    eln("t_" + pat[1] + ".n = (long long)(" + cnt5 + ") * " + n05.to_string() + ";", env)
+                    eln("t_" + pat[1] + ".d = (" + vec + "*)ctron_amalloc(sizeof(" + vec + ") * ((long long)(" + cnt5 + ") * " + n05.to_string() + "));", env)
+                    if allz5 {
+                        eln("memset(t_" + pat[1] + ".d, 0, sizeof(" + vec + ") * ((long long)(" + cnt5 + ") * " + n05.to_string() + "));", env)
+                    } else {
+                        var k6: I32 = 1
+                        while k6 < alr5.len {
+                            eln("t_" + pat[1] + ".d[" + (k6 - 1).to_string() + "] = " + ct_expr(alr5[k6], env, file) + ";", env)
+                            k6 += 1
+                        }
+                        eln("\{ long long _ri = " + n05.to_string() + "; long long _n0 = " + n05.to_string() + "; long long _tot = (long long)(" + cnt5 + ") * _n0; while (_ri < _tot) \{ t_" + pat[1] + ".d[_ri] = t_" + pat[1] + ".d[_ri - _n0]; _ri += 1; } }", env)
+                    }
+                    return env_bind(env, pat[1], ty)
+                }
                 if st[4][0] == "ArrLit" {
                     var al2 = st[4]
                     var n2: I32 = al2.len - 1
