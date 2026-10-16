@@ -1,0 +1,48 @@
+// lib/down/down.ct —— 下载器域包(G5-W4):下载策略纯计算面
+// ═══ 面(v0;网络 IO 循环由消费方持有——跨模块类型闭包债:down→http.client 的
+// fn 引用原型不随合并发出(在册),故 down 只出纯计算件)═══
+//   range_extra(start) -> Str        Range 请求头(extra 槽用;start=0 → 空串)
+//   next_start(status, start, body_len) -> I64   本轮起点判定(-1=状态非 2xx;
+//       200 → 0 全量重来;206 → start 续传;CL 响应 body_len=声明长度)
+//   retry_backoff(round) -> I64      重试退避(100/400/1600ms 指数)
+//   hash_ok(got_hex, want_hex) -> I32  哈希对比(want 空串=跳过恒 1)
+// ═══ 消费方循环模板(cli 见 tests/down/src/cli.ct)═══
+//   start = .part size(续传)→ open(Range)→ next_start 判定 → 逐块 read+落盘
+//   +sha256_update → CL 满/close → final 对比 hash_ok;败则 retry_backoff 重试。
+
+pub fn range_extra(start: I64) -> Str {
+    if start > 0 {
+        return "Range: bytes=" + start.to_string() + "\r\n"
+    }
+    return ""
+}
+
+pub fn next_start(status: I64, start: I64, body_len: I64) -> I64 {
+    if status == 206 {
+        return start
+    }
+    if status == 200 {
+        return 0
+    }
+    return -1
+}
+
+pub fn retry_backoff(round: I32) -> I64 {
+    var back = 100
+    var b: I32 = 0
+    while b < round {
+        back = back * 4
+        b += 1
+    }
+    return back
+}
+
+pub fn hash_ok(got_hex: Str, want_hex: Str) -> I32 {
+    if want_hex.len == 0 {
+        return 1
+    }
+    if got_hex == want_hex {
+        return 1
+    }
+    return 0
+}
