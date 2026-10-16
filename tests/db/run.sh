@@ -45,15 +45,9 @@ T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 pass=0; fail=0
 echo "== tests/db db 数据访问层回放用例(P5-C/P5-D/P5-E)=="
 
-# ── std 规范源与种子副本漂移守卫(smoke.sh 3d 同款,本地即查)──
-for m in "db/pg" "db/db" "db/redis" "db/pool" "db/rowmap"; do
-    base=$(basename "$m")
-    if diff -q "$ROOT/lib/std/$m.ct" "$ROOT/compiler/test/stdpkg/std/$m.ct" > /dev/null 2>&1; then
-        pass=$((pass+1)); echo "  PASS std/$m.ct 种子副本无漂移"
-    else
-        fail=$((fail+1)); echo "  FAIL std/$m.ct 种子副本漂移(cp std/$m.ct compiler/test/stdpkg/std/)"
-    fi
-done
+# (原「std 种子副本漂移守卫」已删:库根布局 A′(0930)后 db 域住 lib/db/、
+#  引导种子 compiler/test/stdpkg/std/ 只覆盖 std 正典模块——本守卫比对两侧
+#  均不存在的路径恒假红 ×5(G6 批 1017 实证两遍复现;COVERAGE 同日登记)。)
 
 # ── db 声明冒烟(无 inline test 块;装载/类型检查即过,C17 口径)──
 for m in pg db redis pool rowmap; do
@@ -119,18 +113,18 @@ if [ -x "$EMIT" ]; then
         if [ "$name" = "x_fd_edge" ] || [ "$name" = "x_fd_pipeline" ] || [ "$name" = "e_protocol_violation" ]; then
             # fd 源面(extern 引用进 emit C):链 db 自有垫片
             # (ctron_dbpg_entropy 别名引 ctron_entropy_fill → 并链熵垫片)
-            EXTRA="$ROOT/lib/db/c_src/ctron_dbpg.c $ROOT/db/c_src/ctron_entropy.c"
+            EXTRA="$ROOT/lib/db/c_src/ctron_dbpg.c $ROOT/lib/db/c_src/ctron_entropy.c"
         fi
         if [ "$name" = "x_pg_fd_session" ]; then
             # PG fd 真源全会话(P5-F:SCRAM 下行双发 + 简单/扩展查询 +
             # 事务状态)链 dbpg 垫片;ctron_dbpg_entropy 别名引
             # ctron_entropy_fill → 并链熵垫片(nonce 面经 pg_scram_nonce
             # 链接面;夹具定值 nonce 不触熵,符号面仍须全)
-            EXTRA="$ROOT/lib/db/c_src/ctron_dbpg.c $ROOT/db/c_src/ctron_entropy.c"
+            EXTRA="$ROOT/lib/db/c_src/ctron_dbpg.c $ROOT/lib/db/c_src/ctron_entropy.c"
         fi
         if [ "$name" = "x_scram_nonce" ]; then
             # nonce 真熵:ctron_dbpg_entropy 别名转发 → 并链熵垫片
-            EXTRA="$ROOT/lib/db/c_src/ctron_dbpg.c $ROOT/db/c_src/ctron_entropy.c"
+            EXTRA="$ROOT/lib/db/c_src/ctron_dbpg.c $ROOT/lib/db/c_src/ctron_entropy.c"
         fi
         if [ "$name" = "x_rd_fd" ]; then
             # Redis fd 真源(P5-E):自有垫片(ctron_dbredis_*;与 dbpg 分置

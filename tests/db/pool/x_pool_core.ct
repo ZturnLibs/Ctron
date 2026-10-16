@@ -1,4 +1,8 @@
-// tests/db/pool/pool_core.ct —— 有界连接池核心面(P5-E;双臂)。
+// tests/db/pool/x_pool_core.ct —— 有界连接池核心面(P5-E;x_ 前缀=仅 emit 臂入计)。
+// x_ 缘起(G6 批 1017):interp 臂三异常在册——①E2080 落地后 let-再赋值编译拒
+// (已改 var,声明面裂缝成熟态);②var 修复后 interp 4-5 分钟慢跑且 assert_eq
+// 失败(emit 臂同件绿=interp/emit pool 域分叉);③插 println 探针变体 segv 139
+// 零输出。属编译器 interp 侧待查(登记债),夹具按 x_fd_edge 先例转 emit-only。
 // 容量必填 / FIFO / Z('T') 陷阱复位 / drain 排空复位 / 复位失败弃用 /
 // 流截断脏弃用(绝不发放脏连接)/ Redis 无会话态直回池。
 // use 纪律:单路径导入树(pool→pg 已占 pg;消费方直 use pg 即 E5020 环)
@@ -212,10 +216,10 @@ test "redis side: no session state, clean direct, err drops" {
     assert_eq(pool_slot_kind(st, 0), 1)
     assert_eq(pool_slot_fd(st, 0), 21)
     // clean:直回池(无复位面;v1 命令面无会话态)
-    let st2 = pool_release_redis(st, pa_slot(a), 0)
+    // 复用:FIFO 同槽先出(var:下游 st2 = pa_st(a2) 再赋值,E2080 门)
+    var st2 = pool_release_redis(st, pa_slot(a), 0)
     assert_eq(pool_nidle(st2), 1)
     assert_eq(pool_nrel(st2), 1)
-    // 复用:FIFO 同槽先出
     let a2 = pool_take(st2)
     assert_eq(pa_slot(a2), 0)
     st2 = pa_st(a2)
