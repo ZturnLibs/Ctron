@@ -690,6 +690,176 @@ pub fn rr_fd(r: HttpResp) -> I64 { return r.fd }
 // err 码:1 连接败 / 2 发送败 / 3 接收败(干净)/ 4 接收败(有字节或帧坏)/
 // 5 解析 / 6 Location 坏 / 7 重定向超限。重试一次仅限【复用连接】上的发送
 // 败或零字节读败(对端已关语义);有部分响应字节绝不重发。
+// G5-W3:流式体读三件(Open/ReadBody/Close)——响应头读入即返回,体经
+// ReadBody 逐块消费(边收边落盘/边哈希);v0 口径:CL 明长响应(chunked/EOF
+// 终结挂账)、无 keep 复用、无重定向跟随;err=5 TLS 握手败。
+// HttpOpen.body_got = 已消费体字节游标(调用方持结构续传给 ReadBody)。
+pub struct HttpOpen {
+    var rc: I64
+    var err: I64
+    var status: I64
+    var body_len: I64
+    var body_got: I64
+    var buf_n: I64
+    var fd: I64
+    var ctx: I64
+}
+
+fn cx_open_zero() -> HttpOpen {
+    return HttpOpen { rc: -1, err: 0, status: -1, body_len: -1, body_got: 0, buf_n: 0, fd: -1, ctx: -1 }
+}
+
+// 读头循环(TLS 路):读到 head_end 为止;体前缀 memmove 到 buf[0]
+fn cx_read_head_tls(ctx: I64, var buf: U8[], cap: I64, var scr: U8[], scap: I64, rto: I64) -> CxRead {
+    let lim = http_limits_default()
+    var n: I64 = 0
+    var need_head = 1
+    var hend: I64 = 0
+    while need_head == 1 {
+        let head = http_parse_head(buf, n, lim)
+        let rc = http_rc(head)
+        if rc == 1 {
+            need_head = 0
+            hend = http_head_end(head)
+        } else {
+            if rc == -1 {
+                if n == 0 {
+                    return cx_rd(-2, 0, 0, 0)
+                }
+                return cx_rd(-4, n, 0, 0)
+            }
+            if n >= cap {
+                return cx_rd(-3, n, 0, 0)
+            }
+            let r = cx_read_append(0, ctx, buf, n, cap, scr, scap, rto)
+            if r <= 0 {
+                if n == 0 {
+                    return cx_rd(-2, 0, 0, 0)
+                }
+                return cx_rd(-1, n, 0, 0)
+            }
+            n = n + r
+        }
+    }
+    return cx_rd(0, n, n - hend, hend)
+}
+
+// ① 打开:连接+握手+发请求+读头;体前缀移 buf[0];返回游标结构
+pub fn client_open_tls(io: HttpNet, method: Str, host: Str, port: I64, path: Str, extra: Str, var body: U8[], blen: I64, var buf: U8[], cap: I64, var scr: U8[], timeout_ms: I64, deadline_ms: I64, ca: Str) -> HttpOpen {
+    let t0 = ctron_net_now_ns()
+    let cb = Box[Box64](Box64 { v: -1 })
+    if ctron_net_tcp_connect(host, port, cb) != 0 {
+        return cx_open_zero()
+    }
+    let fd = cb.v
+    let ctx = ctron_tls_ctx_new(0)
+    var tlsok: I64 = 0
+    if ctx > 0 {
+        if ctron_tls_use_ca_bundle(ctx, ca) == 0 {
+            ctron_tls_set_hostname(ctx, host)
+            if ctron_tls_handshake(ctx, fd) == 0 {
+                tlsok = 1
+            }
+        }
+    }
+    if tlsok == 0 {
+        if ctx > 0 {
+            ctron_tls_close(ctx)
+        }
+        ctron_net_close(fd)
+        return cx_open_zero()
+    }
+    let head = msg_request_line(method, path, 1) + msg_header("Host", host + ":" + port.to_string()) + extra + msg_cl_header(blen) + msg_head_end()
+    var w = ctron_tls_write(ctx, head, head.len)
+    if w >= 0 && blen > 0 {
+        w = ctron_tls_write_v(ctx, body, blen)
+    }
+    if w < 0 {
+        ctron_tls_close(ctx)
+        ctron_net_close(fd)
+        return cx_open_zero()
+    }
+    let el = (ctron_net_now_ns() - t0) / 1000000
+    var rto = timeout_ms
+    if deadline_ms > 0 {
+        var rem = deadline_ms - el
+        if rem < 1 { rem = 1 }
+        if rto > rem { rto = rem }
+    }
+    let crd = cx_read_head_tls(ctx, buf, cap, scr, scr.len.as[I64](), rto)
+    if crd.rc != 0 {
+        ctron_tls_close(ctx)
+        ctron_net_close(fd)
+        return cx_open_zero()
+    }
+    var h = http_parse_head(buf, crd.n, http_limits_default())
+    let st = http_status_of(h)
+    var clen: I64 = -1
+    if http_body_kind(h) == 0 {
+        clen = http_clen(h)
+    }
+    // 体前缀 memmove 到 buf[0](头之后的已收字节)
+    var got = crd.blen
+    if got > 0 {
+        var i: I64 = 0
+        while i < got {
+            buf[i.as[I32]()] = buf[crd.left + i].as[U8]()
+            i += 1
+        }
+    }
+    var out = cx_open_zero()
+    out.rc = 0
+    out.status = st
+    out.body_len = clen
+    out.body_got = got
+    out.buf_n = got
+    out.fd = fd
+    out.ctx = ctx
+    return out
+}
+
+// ② 读体下一块:tls_read 到 scr → 拷 buf[off..];返回 n(0=体完;<0 败)
+pub fn client_read_body_tls(io: HttpNet, var op: HttpOpen, var buf: U8[], off: I64, want: I64, var scr: U8[], timeout_ms: I64) -> I64 {
+    if op.ctx < 0 {
+        return -1
+    }
+    if op.body_len >= 0 && op.body_got >= op.body_len {
+        return 0
+    }
+    if want <= 0 || want > scr.len {
+        return -1
+    }
+    let r = ctron_tls_read(op.ctx, scr, want, timeout_ms)
+    if r <= 0 {
+        return r
+    }
+    if off + r > buf.len {
+        return -1
+    }
+    var i: I64 = 0
+    while i < r {
+        buf[off + i] = scr[i].as[U8]()
+        i += 1
+    }
+    op.body_got = op.body_got + r
+    if op.buf_n < off + r {
+        op.buf_n = off + r
+    }
+    return r
+}
+
+// ③ 关闭(TLS close_notify + fd 关闭;句柄槽置 -1 防误用)
+pub fn client_close_tls(io: HttpNet, var op: HttpOpen) {
+    if op.ctx > 0 {
+        ctron_tls_close(op.ctx)
+        op.ctx = -1
+    }
+    if op.fd > 0 {
+        ctron_net_close(op.fd)
+        op.fd = -1
+    }
+}
+
 // G5-W2:HTTPS 客户端面——明文 TCP connect → TLS 握手(ctx:ca 锚+SNI=host)
 // → 帧读写全走 TLS 垫片。v0 口径:无 keep-alive 复用(每请求新连,响亮关闭);
 // 无重定向跟随(响应原样返回,跟随=调用方);deadline_ms=整请求预算(内部

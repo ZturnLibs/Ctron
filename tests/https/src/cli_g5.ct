@@ -13,6 +13,42 @@ fn main() {
         println("cli-probe err=" + r.err.to_string())
         return
     }
+
+    // G5-W3:流式三件(Open/ReadBody/Close)——第二连接,分块拉取并拼装断言
+    var buf2: U8[] = [0] ** 8192
+    var scr2: U8[] = [0] ** 4096
+    var empty2: U8[] = [0] ** 0
+    let op = client_open_tls(io, "GET", "127.0.0.1", port, "/", "", empty2, 0, buf2, buf2.len, scr2, 5000, 8000, cert)
+    if op.rc != 0 {
+        println("stream-probe open-err=" + op.err.to_string())
+        return
+    }
+    var off: I64 = op.body_got
+    while off < op.body_len || (op.body_len < 0 && off < 8192) {
+        let rr = client_read_body_tls(io, op, buf2, off, 4096, scr2, 3000)
+        if rr <= 0 {
+            break
+        }
+        off = off + rr
+        if op.body_len >= 0 && off >= op.body_len {
+            break
+        }
+    }
+    client_close_tls(io, op)
+    var sok: I32 = 1
+    if op.status != 200 || op.body_len != 5 {
+        sok = 0
+    }
+    if buf2[0].as[I32]() != 104 { sok = 0 }
+    if buf2[1].as[I32]() != 101 { sok = 0 }
+    if buf2[2].as[I32]() != 108 { sok = 0 }
+    if buf2[3].as[I32]() != 108 { sok = 0 }
+    if buf2[4].as[I32]() != 111 { sok = 0 }
+    if sok == 1 {
+        println("stream-probe ok status=200 blen=5 hello")
+    } else {
+        println("stream-probe bad status={op.status} blen={op.body_len}")
+    }
     // 体断言:buf[body_off..] 前 5 字节 = "hello"(104 101 108 108 111)
     var ok: I32 = 1
     var i: I32 = 0

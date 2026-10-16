@@ -1,4 +1,4 @@
-// G5-W2 服务端:TLS self-signed 回声(单请求 200 "hello")
+// G5-W2 服务端:TLS self-signed 回环(内联三轮;Box 形参在册不可发射故不抽 fn)
 use net.{Net_probe, net_tcp_listen, net_tcp_accept_t, net_close}
 use tls.{tls_server, tls_handshake, tls_read, tls_write_str, tls_close, tls_conn_ctx}
 
@@ -13,26 +13,46 @@ fn main() {
         return
     }
     println("srv ready")
-    var ab = Box[Box64](Box64 { v: -1 })
-    if net_tcp_accept_t(net, lb.v, 20000, ab) != 0 {
-        println("srv accept-timeout")
+    var ab1 = Box[Box64](Box64 { v: -1 })
+    if net_tcp_accept_t(net, lb.v, 20000, ab1) != 0 {
+        println("srv accept1-timeout")
         return
     }
-    let h: I64 = tls_server(net, ab.v, cert, key)
-    if h < 0 {
-        println("srv ctx-fail")
+    let h1: I64 = tls_server(net, ab1.v, cert, key)
+    if h1 < 0 {
+        println("srv ctx1-fail")
         return
     }
-    let conn: TlsConn = TlsConn { ctx: h }
-    if tls_handshake(net, conn, ab.v) != 0 {
-        println("srv hs-fail")
+    let c1: TlsConn = TlsConn { ctx: h1 }
+    if tls_handshake(net, c1, ab1.v) != 0 {
+        println("srv hs1-fail")
         return
     }
-    var buf: U8[] = [0] ** 4096
-    let rn = tls_read(net, conn, buf, 4096, 5000)
-    tls_write_str(net, conn, "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello")
-    tls_close(net, conn)
-    net_close(net, ab.v)
-    net_close(net, lb.v)
-    println("srv done read=" + rn.to_string())
+    var b1: U8[] = [0] ** 4096
+    let r1 = tls_read(net, c1, b1, 4096, 5000)
+    tls_write_str(net, c1, "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello")
+    tls_close(net, c1)
+    net_close(net, ab1.v)
+    println("srv done1 read=" + r1.to_string())
+    var ab2 = Box[Box64](Box64 { v: -1 })
+    if net_tcp_accept_t(net, lb.v, 20000, ab2) != 0 {
+        println("srv accept2-timeout")
+        return
+    }
+    let h2: I64 = tls_server(net, ab2.v, cert, key)
+    if h2 < 0 {
+        println("srv ctx2-fail")
+        return
+    }
+    let c2: TlsConn = TlsConn { ctx: h2 }
+    if tls_handshake(net, c2, ab2.v) != 0 {
+        println("srv hs2-fail")
+        return
+    }
+    var b2: U8[] = [0] ** 4096
+    let r2 = tls_read(net, c2, b2, 4096, 5000)
+    tls_write_str(net, c2, "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello")
+    tls_close(net, c2)
+    net_close(net, ab2.v)
+    println("srv done2 read=" + r2.to_string())
 }

@@ -57,6 +57,11 @@ if grep -q "cli-probe ok status=200 body=hello" "$T/cli.out"; then
 else
     echo "  FAIL https (client): $(tail -1 "$T/cli.out")"; fail=$((fail+1))
 fi
+if grep -q "stream-probe ok status=200 blen=5 hello" "$T/cli.out"; then
+    pass=$((pass+1)); echo "  PASS https (流式三件 Open/ReadBody/Close)"
+else
+    echo "  FAIL https (stream): $(grep "stream-probe" "$T/cli.out" | tail -1)"; fail=$((fail+1))
+fi
 if grep -q "srv ready" "$T/srv.out" 2>/dev/null; then
     echo "  INFO https (srv ready 在案)"
 fi
