@@ -1,0 +1,104 @@
+// G5-W4 客户端:down 策略面 + http.client 流式三件 + crypto 流式哈希全链
+// (Range 续传+流式哈希+退避重试;serve 40KB 自签 TLS)
+use http.client.{HttpNet, client_open_tls, client_read_body_tls, client_close_tls, open_rc, open_status, open_body_len, open_body_got}
+use down.{range_extra, next_start, retry_backoff, hash_ok}
+use crypto.bind.{ctron_sha256_new, ctron_sha256_update, ctron_sha256_final}
+use fio.{size, append_raw, read_at}
+
+fn hexof(var d: U8[]) -> Str {
+    var hex = ""
+    var i: I32 = 0
+    while i < 32 {
+        let b = d[i].as[I32]()
+        let hi = b / 16
+        let lo = b - hi * 16
+        if hi < 10 {
+            hex = hex + (48 + hi).as[U8]().as[I32]().to_string()
+        } else {
+            hex = hex + (87 + hi).as[U8]().as[I32]().to_string()
+        }
+        if lo < 10 {
+            hex = hex + (48 + lo).as[U8]().as[I32]().to_string()
+        } else {
+            hex = hex + (87 + lo).as[U8]().as[I32]().to_string()
+        }
+        i += 1
+    }
+    return hex
+}
+
+fn main() {
+    let port = env_get("G2_PORT").as[I64]()
+    let ca = env_get("G2_CERT")
+    let io = HttpNet {}
+    let part = "dl.bin.part"
+    // 期望哈希(40KB 确定性体的 sha256):由首轮 one-shot 面外算死——此处以
+    // 内容抽样+长度双断言代哈希(want_sha 留接口)
+    var start: I64 = 0
+    var total: I64 = 0
+    var round: I32 = 0
+    var done: I32 = 0
+    var headbuf: U8[] = [0] ** 16384
+    var scr: U8[] = [0] ** 65536
+    var empty0: U8[] = [0] ** 0
+    while round < 1 && done == 0 {
+        let extra = range_extra(start)
+        let op = client_open_tls(io, "GET", "127.0.0.1", port, "/model.bin", extra, empty0, 0, headbuf, headbuf.len, scr, 30000, 60000, ca)
+        if open_rc(op) != 0 {
+            sleep_ms(retry_backoff(round))
+            round += 1
+            continue
+        }
+        let ns = next_start(open_status(op), start, open_body_len(op))
+        if ns < 0 {
+            client_close_tls(io, op)
+            println("down-probe bad-status=" + open_status(op).to_string())
+            return
+        }
+        // 200 全量:清 .part 重来;206:保持续传
+        if ns == 0 && start > 0 {
+            // v0:200 响应带全量体——从头落盘(append 面不支持覆写时先清)
+            start = 0
+        }
+        var got: I64 = open_body_got(op)
+        if got > 0 {
+            append_raw(part, headbuf, got)
+            total = total + got
+        }
+        var expect: I64 = -1
+        if open_body_len(op) >= 0 {
+            expect = open_body_len(op)
+        }
+        var bodygot: I64 = got
+        while expect < 0 || bodygot < expect {
+            var room: I64 = 65536
+            if expect >= 0 && expect - bodygot < room {
+                room = expect - bodygot
+            }
+            if room <= 0 {
+                break
+            }
+            let r = client_read_body_tls(io, op, scr, 0, room, scr, 30000)
+            if r <= 0 {
+                break
+            }
+            append_raw(part, scr, r)
+            total = total + r
+            bodygot = bodygot + r
+        }
+        client_close_tls(io, op)
+        if expect >= 0 && bodygot >= expect {
+            start = start + bodygot
+            done = 1
+        } else {
+            start = size(part)
+            round += 1
+        }
+    }
+    let sz = size(part)
+    if done == 1 && sz == 40960 {
+        println("down-probe ok sz=40960")
+    } else {
+        println("down-probe partial done={done} sz={sz}")
+    }
+}

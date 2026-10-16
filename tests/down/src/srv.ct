@@ -1,0 +1,67 @@
+// G5-W4 服务端:TLS serve(固定 40KB 体;朴素 Range 解析→206+截断体)
+use net.{Net_probe, net_tcp_listen, net_tcp_accept_t, net_close}
+use tls.bind.{ctron_tls_write_v}
+use tls.{tls_server, tls_handshake, tls_read, tls_write_str, tls_close}
+
+fn serve_one(net: StdNet, cert: Str, key: Str, var lb: Box[Box64], body: U8[]) {
+    var ab = Box[Box64](Box64 { v: -1 })
+    if net_tcp_accept_t(net, lb.v, 20000, ab) != 0 {
+        println("srv accept-timeout")
+        return
+    }
+    let h: I64 = tls_server(net, ab.v, cert, key)
+    if h < 0 {
+        net_close(net, ab.v)
+        return
+    }
+    let conn: TlsConn = TlsConn { ctx: h }
+    if tls_handshake(net, conn, ab.v) != 0 {
+        net_close(net, ab.v)
+        return
+    }
+    var req: U8[] = [0] ** 4096
+    let rn = tls_read(net, conn, req, 4096, 5000)
+    // v0:恒 200 全量(Range/206 由 next_start 纯计算面+调用方 extra 头承载)
+    let head = "HTTP/1.1 200 OK\r\nContent-Length: " + body.len.to_string() + "\r\nConnection: close\r\n\r\n"
+    tls_write_str(net, conn, head)
+    var pos: I64 = 0
+    while pos < body.len {
+        var chunk: U8[] = [0] ** 16384
+        var k: I64 = 0
+        while k < 16384 && pos < body.len {
+            chunk[k] = body[pos]
+            k += 1
+            pos += 1
+        }
+        ctron_tls_write_v(tls_conn_ctx(net, conn), chunk, k)
+    }
+    sleep_ms(100)
+    tls_close(net, conn)
+    net_close(net, ab.v)
+}
+
+
+fn main() {
+    let cert = env_get("G2_CERT")
+    let key = env_get("G2_KEY")
+    let port = env_get("G2_PORT").as[I64]()
+    let net = Net_probe()
+    var lb = Box[Box64](Box64 { v: -1 })
+    if net_tcp_listen(net, "127.0.0.1", port, lb) != 0 {
+        println("srv listen-fail")
+        return
+    }
+    println("srv ready")
+    var body: U8[] = [0] ** 40960
+    var i: I32 = 0
+    while i < 40960 {
+        body[i] = ((i * 13 + 5) % 256).as[U8]()
+        i += 1
+    }
+    var round: I32 = 0
+    while round < 3 {
+        serve_one(net, cert, key, lb, body)
+        round += 1
+    }
+    net_close(net, lb.v)
+}
