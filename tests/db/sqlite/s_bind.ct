@@ -1,0 +1,97 @@
+// G6 夹具②:bind 标量四族 + reset 重绑复用(round 2 覆写 round 1)
+use db.sqlite.{SqliteDb, sqlite_std, sqlite_open, sqlite_close, sqlite_exec, sqlite_prepare, sqlite_step_stmt, sqlite_finalize, sqlite_reset, sqlite_bind_i64, sqlite_bind_f64, sqlite_bind_text, sqlite_bind_null, sqlite_col_i64, sqlite_col_text, sqlite_col_type, sqlite_row, sqlite_done, sqlite_type_null, sqc_ok, sqs_ok}
+
+fn main() {
+    let t = sqlite_std()
+    let c = sqlite_open(t, ":memory:")
+    if sqc_ok(c) != 1 {
+        println("sqlite-probe FAIL open")
+        return
+    }
+    if sqlite_exec(c, "CREATE TABLE p(k INTEGER PRIMARY KEY, iv INTEGER, fv REAL, tv TEXT, nv)") != 0 {
+        println("sqlite-probe FAIL ddl")
+        return
+    }
+    let ins = sqlite_prepare(c, "INSERT INTO p(iv, fv, tv, nv) VALUES(?, ?, ?, ?)")
+    if sqs_ok(ins) != 1 {
+        println("sqlite-probe FAIL prepare")
+        return
+    }
+    if sqlite_bind_i64(ins, 1, 42) != 0 {
+        println("sqlite-probe FAIL bind1")
+        return
+    }
+    if sqlite_bind_f64(ins, 2, 2.5) != 0 {
+        println("sqlite-probe FAIL bind2")
+        return
+    }
+    if sqlite_bind_text(ins, 3, "hello") != 0 {
+        println("sqlite-probe FAIL bind3")
+        return
+    }
+    if sqlite_bind_null(ins, 4) != 0 {
+        println("sqlite-probe FAIL bind4")
+        return
+    }
+    if sqlite_step_stmt(ins) != sqlite_done() {
+        println("sqlite-probe FAIL step1")
+        return
+    }
+    if sqlite_reset(ins) != 0 {
+        println("sqlite-probe FAIL reset")
+        return
+    }
+    sqlite_bind_i64(ins, 1, -7)
+    sqlite_bind_f64(ins, 2, 0.25)
+    sqlite_bind_text(ins, 3, "second")
+    sqlite_bind_i64(ins, 4, 5)
+    if sqlite_step_stmt(ins) != sqlite_done() {
+        println("sqlite-probe FAIL step2")
+        return
+    }
+    sqlite_finalize(ins)
+    let sel = sqlite_prepare(c, "SELECT iv, fv, tv, nv FROM p ORDER BY k")
+    if sqs_ok(sel) != 1 {
+        println("sqlite-probe FAIL select")
+        return
+    }
+    var n: I64 = 0
+    while sqlite_step_stmt(sel) == sqlite_row() {
+        if n == 0 {
+            if sqlite_col_i64(sel, 0) != 42 {
+                println("sqlite-probe FAIL iv0")
+                return
+            }
+            if sqlite_col_text(sel, 2) != "hello" {
+                println("sqlite-probe FAIL tv0")
+                return
+            }
+            if sqlite_col_type(sel, 3) != sqlite_type_null() {
+                println("sqlite-probe FAIL nv0-type")
+                return
+            }
+            if sqlite_col_text(sel, 3) != "" {
+                println("sqlite-probe FAIL nv0-text")
+                return
+            }
+        }
+        if n == 1 {
+            if sqlite_col_i64(sel, 0) != -7 {
+                println("sqlite-probe FAIL iv1")
+                return
+            }
+            if sqlite_col_i64(sel, 3) != 5 {
+                println("sqlite-probe FAIL nv1")
+                return
+            }
+        }
+        n += 1
+    }
+    if n != 2 {
+        println("sqlite-probe FAIL rows=" + n.to_string())
+        return
+    }
+    sqlite_finalize(sel)
+    sqlite_close(c)
+    println("sqlite-probe ok bind reuse=2")
+}

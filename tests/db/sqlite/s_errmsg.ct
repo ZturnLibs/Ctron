@@ -1,0 +1,37 @@
+// G6 夹具③:errmsg/errcode 负面(prepare 坏 SQL + exec 坏 SQL)
+use db.sqlite.{SqliteDb, sqlite_std, sqlite_open, sqlite_close, sqlite_exec, sqlite_prepare, sqlite_errcode, sqlite_errmsg, sqc_ok, sqs_ok}
+
+fn main() {
+    let t = sqlite_std()
+    let c = sqlite_open(t, ":memory:")
+    if sqc_ok(c) != 1 {
+        println("sqlite-probe FAIL open")
+        return
+    }
+    let bad = sqlite_prepare(c, "SELECT * FROM no_such_table")
+    if sqs_ok(bad) == 1 {
+        println("sqlite-probe FAIL prepare-should-fail")
+        return
+    }
+    let rc = sqlite_errcode(c)
+    if rc == 0 {
+        println("sqlite-probe FAIL rc-zero")
+        return
+    }
+    let msg = sqlite_errmsg(c)
+    if msg.len == 0 {
+        println("sqlite-probe FAIL msg-empty")
+        return
+    }
+    println("sqlite-probe ok errmsg rc=" + rc.to_string() + " len=" + msg.len.to_string())
+    if sqlite_exec(c, "INSERT INTO missing VALUES(1)") == 0 {
+        println("sqlite-probe FAIL exec-should-fail")
+        return
+    }
+    if sqlite_errmsg(c).len == 0 {
+        println("sqlite-probe FAIL msg-empty2")
+        return
+    }
+    println("sqlite-probe ok exec-neg rc=" + sqlite_errcode(c).to_string())
+    sqlite_close(c)
+}

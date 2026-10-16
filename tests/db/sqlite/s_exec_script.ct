@@ -1,0 +1,55 @@
+// G6 夹具⑥:exec 多语句脚本(BEGIN/INSERT×2/COMMIT 一发;ROLLBACK 回滚面)
+use db.sqlite.{SqliteDb, sqlite_std, sqlite_open, sqlite_close, sqlite_exec, sqlite_prepare, sqlite_step_stmt, sqlite_finalize, sqlite_col_i64, sqlite_row, sqc_ok, sqs_ok}
+
+fn main() {
+    let t = sqlite_std()
+    let c = sqlite_open(t, ":memory:")
+    if sqc_ok(c) != 1 {
+        println("sqlite-probe FAIL open")
+        return
+    }
+    if sqlite_exec(c, "CREATE TABLE s(k INTEGER PRIMARY KEY, v TEXT)") != 0 {
+        println("sqlite-probe FAIL ddl")
+        return
+    }
+    if sqlite_exec(c, "BEGIN; INSERT INTO s(v) VALUES('a'); INSERT INTO s(v) VALUES('b'); COMMIT;") != 0 {
+        println("sqlite-probe FAIL script-commit")
+        return
+    }
+    let sel = sqlite_prepare(c, "SELECT COUNT(*) FROM s")
+    if sqs_ok(sel) != 1 {
+        println("sqlite-probe FAIL prepare-count")
+        return
+    }
+    if sqlite_step_stmt(sel) != sqlite_row() {
+        println("sqlite-probe FAIL step-count")
+        return
+    }
+    let n = sqlite_col_i64(sel, 0)
+    sqlite_finalize(sel)
+    if n != 2 {
+        println("sqlite-probe FAIL count=" + n.to_string())
+        return
+    }
+    if sqlite_exec(c, "BEGIN; INSERT INTO s(v) VALUES('c'); ROLLBACK;") != 0 {
+        println("sqlite-probe FAIL script-rollback")
+        return
+    }
+    let sel2 = sqlite_prepare(c, "SELECT COUNT(*) FROM s")
+    if sqs_ok(sel2) != 1 {
+        println("sqlite-probe FAIL prepare-count2")
+        return
+    }
+    if sqlite_step_stmt(sel2) != sqlite_row() {
+        println("sqlite-probe FAIL step-count2")
+        return
+    }
+    let n2 = sqlite_col_i64(sel2, 0)
+    sqlite_finalize(sel2)
+    if n2 != 2 {
+        println("sqlite-probe FAIL count2=" + n2.to_string())
+        return
+    }
+    sqlite_close(c)
+    println("sqlite-probe ok exec_script count=2")
+}

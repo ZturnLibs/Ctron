@@ -1,0 +1,60 @@
+// G6 夹具①:内存库 DDL + 字面量 INSERT + SELECT 往返(int/text/f64 三族)
+use db.sqlite.{SqliteDb, sqlite_std, sqlite_open, sqlite_close, sqlite_exec, sqlite_prepare, sqlite_step_stmt, sqlite_finalize, sqlite_col_i64, sqlite_col_text, sqlite_col_f64, sqlite_row, sqc_ok, sqs_ok}
+
+fn main() {
+    let t = sqlite_std()
+    let c = sqlite_open(t, ":memory:")
+    if sqc_ok(c) != 1 {
+        println("sqlite-probe FAIL open")
+        return
+    }
+    if sqlite_exec(c, "CREATE TABLE t(id INTEGER PRIMARY KEY, name TEXT, score REAL)") != 0 {
+        println("sqlite-probe FAIL ddl")
+        return
+    }
+    if sqlite_exec(c, "INSERT INTO t(name, score) VALUES('alice', 9.5)") != 0 {
+        println("sqlite-probe FAIL ins1")
+        return
+    }
+    if sqlite_exec(c, "INSERT INTO t(name, score) VALUES('bob', 7.0)") != 0 {
+        println("sqlite-probe FAIL ins2")
+        return
+    }
+    let s = sqlite_prepare(c, "SELECT id, name, score FROM t ORDER BY id")
+    if sqs_ok(s) != 1 {
+        println("sqlite-probe FAIL prepare")
+        return
+    }
+    var n: I64 = 0
+    while sqlite_step_stmt(s) == sqlite_row() {
+        if n == 0 {
+            if sqlite_col_i64(s, 0) != 1 {
+                println("sqlite-probe FAIL id0")
+                return
+            }
+            if sqlite_col_text(s, 1) != "alice" {
+                println("sqlite-probe FAIL name0")
+                return
+            }
+        }
+        if n == 1 {
+            if sqlite_col_text(s, 1) != "bob" {
+                println("sqlite-probe FAIL name1")
+                return
+            }
+            let sc = sqlite_col_f64(s, 2)
+            if sc - 7.0 > 0.01 || 7.0 - sc > 0.01 {
+                println("sqlite-probe FAIL score1")
+                return
+            }
+        }
+        n += 1
+    }
+    if n != 2 {
+        println("sqlite-probe FAIL rows=" + n.to_string())
+        return
+    }
+    sqlite_finalize(s)
+    sqlite_close(c)
+    println("sqlite-probe ok basic rows=2")
+}

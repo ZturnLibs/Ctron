@@ -1,0 +1,42 @@
+// G6 夹具⑤:文件库落盘重开持久(两程:建库落数 → 重开读回;路径经 CT_SQLITE_FILE)
+use db.sqlite.{SqliteDb, sqlite_std, sqlite_open, sqlite_close, sqlite_exec, sqlite_prepare, sqlite_step_stmt, sqlite_finalize, sqlite_col_text, sqlite_row, sqc_ok, sqs_ok}
+
+fn main() {
+    let path = env_get("CT_SQLITE_FILE")
+    let t = sqlite_std()
+    let c = sqlite_open(t, path)
+    if sqc_ok(c) != 1 {
+        println("sqlite-probe FAIL open1")
+        return
+    }
+    if sqlite_exec(c, "CREATE TABLE f(k INTEGER PRIMARY KEY, v TEXT)") != 0 {
+        println("sqlite-probe FAIL ddl")
+        return
+    }
+    if sqlite_exec(c, "INSERT INTO f(v) VALUES('persist')") != 0 {
+        println("sqlite-probe FAIL ins")
+        return
+    }
+    sqlite_close(c)
+    let c2 = sqlite_open(t, path)
+    if sqc_ok(c2) != 1 {
+        println("sqlite-probe FAIL open2")
+        return
+    }
+    let s = sqlite_prepare(c2, "SELECT v FROM f")
+    if sqs_ok(s) != 1 {
+        println("sqlite-probe FAIL prepare")
+        return
+    }
+    if sqlite_step_stmt(s) != sqlite_row() {
+        println("sqlite-probe FAIL step")
+        return
+    }
+    if sqlite_col_text(s, 0) != "persist" {
+        println("sqlite-probe FAIL value")
+        return
+    }
+    sqlite_finalize(s)
+    sqlite_close(c2)
+    println("sqlite-probe ok file persist")
+}

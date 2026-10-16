@@ -156,6 +156,11 @@ def check_file(path: Path) -> list[str]:
     if relparts0 and relparts0[0] == "http" and len(relparts0) > 2:
         # http/ 泳道子目录源文件(frm_route 等由 http/run.sh 驱动,非 test 块语义)
         return errors
+    if relparts0 and relparts0[0] == "db" and relparts0[1] == "sqlite":
+        # db/sqlite:G6 门面夹具(探针 main 自断言,tests/db/sqlite/run.sh
+        # emit-only 门自驱 + grep "sqlite-probe ok";非 test 块语义,
+        # net/src 泳道先例)。
+        return errors
     kind = kind_of(path)
     if kind is None:
         return errors

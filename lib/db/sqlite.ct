@@ -1,0 +1,206 @@
+// db/sqlite.ct —— SQLite 绑定门面(G6;P1-7;vendored amalgamation 走 c_src)
+// since: std-0.6 stability: experimental
+// ═══ 形态(J5 裁决)═══
+//   vendored amalgamation 3.54.0(lib/db/c_src/sqlite3.c 原样落位)+ 微垫片
+//   ctron_sqlite.c(open/prepare 两出参翻返回值 + rc 静态槽;dbpg_connect 直返
+//   fd 同形),其余 step/finalize/reset/bind/column/exec/errmsg/changes/rowid/
+//   close 全直宣 sqlite3_* 原型(bind.ct 单行纪律)。发射消费方链接面:
+//   c_src/sqlite3.c -DSQLITE_OMIT_LOAD_EXTENSION + c_src/ctron_sqlite.c
+//   (tests/db/sqlite/run.sh 为配方范本)。SQLCipher = 换 amalgamation +
+//   pragma key,同一张门面(P2 挂账)。
+// ═══ 能力面(对齐 db.ct §12.1 StdDb 形)═══
+//   能力 token 自有 `SqliteDb`/`sqlite_std()`(门面首参显形)——不 use db.ct
+//   (严格互斥树:消费方对 db 域门面二选一 use;同 net/tls 门面句柄 I64
+//   直持形)。真源 = 文件/内存库,无网络面,pg 式回放腿不需要(设计 §8)。
+// ═══ 依赖纪律 ═══
+//   零 std 依赖纯叶(db/pg.ct 同口径);str_from_c 为语言内建(深拷 C-owned
+//   串,§9.6;无需模块导入)。inline test 不落本文件(C17 宿主敏感,db
+//   P5-A 口径);行为面全在 tests/db/sqlite(emit-only:interp 无 extern
+//   运行时)。
+// ═══ v0 界面 ═══
+//   - MVP 面 = open/prepare/step/bind 标量四族(I64/F64/Str/NULL)/column
+//     取值(count/type/i64/f64/text)/errmsg/errcode/exec(多语句脚本面,
+//     事务 v0 = exec("BEGIN"))/last_rowid/changes/close/finalize/reset。
+//   - blob 双向挂账(U8[]↔void* 整形非 MVP;column_text 面 text 已覆盖
+//     常规读写)。多线程连接共享挂账(v0 单连接单线程假设;OPENFlags
+//     未含 FULLMUTEX)。pzTail 挂账(v0 单语句 prepare,多语句走 exec)。
+//   - 跨模块数值消费 = struct 标量字段 + 自由 getter 家法(HttpOpen/
+//     open_* 同款;sqc_*/sqs_* 前缀)。
+//   - SQLITE_TRANSIENT = -1(bind_text 经此让 sqlite 自拷,调用方串
+//     生命周期与语句解耦);col_text 对 NULL 胞返空串(先判 type 的
+//     显式面另经 sqlite_col_type)。
+
+// ---- 能力 token(门面首参显形) ----
+
+pub struct SqliteDb {
+}
+
+pub fn sqlite_std() -> SqliteDb {
+    return SqliteDb { }
+}
+
+// ---- 连接/语句持态(getter 家法;emit 面 struct 值语义跨模块) ----
+
+pub struct SqlConn {
+    var ok: I64
+    var h: I64
+    var rc: I64
+}
+
+pub struct SqlStmt {
+    var ok: I64
+    var st: I64
+}
+
+pub fn sqc_ok(c: SqlConn) -> I64 { return c.ok }
+pub fn sqc_h(c: SqlConn) -> I64 { return c.h }
+pub fn sqc_rc(c: SqlConn) -> I64 { return c.rc }
+
+pub fn sqs_ok(s: SqlStmt) -> I64 { return s.ok }
+pub fn sqs_st(s: SqlStmt) -> I64 { return s.st }
+
+// ---- 垫片 extern(open/prepare 出参翻返回值 + rc 静态槽) ----
+
+pub extern "c" fn ctron_sqlite_open(path: Str, flags: I64) -> I64
+pub extern "c" fn ctron_sqlite_prepare(h: I64, sql: Str) -> I64
+pub extern "c" fn ctron_sqlite_last_rc() -> I64
+
+// ---- sqlite3 直绑 extern(单行形参表;句柄 I64;Str→const char* 零拷) ----
+
+pub extern "c" fn sqlite3_step(st: I64) -> I64
+pub extern "c" fn sqlite3_finalize(st: I64) -> I64
+pub extern "c" fn sqlite3_reset(st: I64) -> I64
+pub extern "c" fn sqlite3_bind_int64(st: I64, idx: I64, v: I64) -> I64
+pub extern "c" fn sqlite3_bind_double(st: I64, idx: I64, v: F64) -> I64
+pub extern "c" fn sqlite3_bind_text(st: I64, idx: I64, v: Str, n: I64, trans: I64) -> I64
+pub extern "c" fn sqlite3_bind_null(st: I64, idx: I64) -> I64
+pub extern "c" fn sqlite3_column_count(st: I64) -> I64
+pub extern "c" fn sqlite3_column_type(st: I64, idx: I64) -> I64
+pub extern "c" fn sqlite3_column_int64(st: I64, idx: I64) -> I64
+pub extern "c" fn sqlite3_column_double(st: I64, idx: I64) -> F64
+pub extern "c" fn sqlite3_column_text(st: I64, idx: I64) -> Str
+pub extern "c" fn sqlite3_errmsg(db: I64) -> Str
+pub extern "c" fn sqlite3_errcode(db: I64) -> I64
+pub extern "c" fn sqlite3_exec(db: I64, sql: Str, cb: I64, arg: I64, errmsg: I64) -> I64
+pub extern "c" fn sqlite3_last_insert_rowid(db: I64) -> I64
+pub extern "c" fn sqlite3_changes(db: I64) -> I64
+pub extern "c" fn sqlite3_close_v2(db: I64) -> I64
+
+// ---- 常量面(纯层无 static,值 fn 家法) ----
+
+pub fn sqlite_ok() -> I64 { return 0 }
+pub fn sqlite_row() -> I64 { return 100 }
+pub fn sqlite_done() -> I64 { return 101 }
+pub fn sqlite_open_rw_create() -> I64 { return 6 }
+pub fn sqlite_open_readonly() -> I64 { return 1 }
+pub fn sqlite_transient() -> I64 { return -1 }
+pub fn sqlite_type_int() -> I64 { return 1 }
+pub fn sqlite_type_float() -> I64 { return 2 }
+pub fn sqlite_type_text() -> I64 { return 3 }
+pub fn sqlite_type_blob() -> I64 { return 4 }
+pub fn sqlite_type_null() -> I64 { return 5 }
+
+// ---- 门面:连接 ----
+
+pub fn sqlite_open(t: SqliteDb, path: Str) -> SqlConn {
+    let h = ctron_sqlite_open(path, sqlite_open_rw_create())
+    if h == 0 {
+        return SqlConn { ok: 0, h: 0, rc: ctron_sqlite_last_rc() }
+    }
+    return SqlConn { ok: 1, h: h, rc: 0 }
+}
+
+pub fn sqlite_close(c: SqlConn) -> I64 {
+    if c.ok == 0 {
+        return 0
+    }
+    return sqlite3_close_v2(c.h)
+}
+
+pub fn sqlite_errcode(c: SqlConn) -> I64 {
+    return sqlite3_errcode(c.h)
+}
+
+pub fn sqlite_errmsg(c: SqlConn) -> Str {
+    return str_from_c(sqlite3_errmsg(c.h))
+}
+
+pub fn sqlite_exec(c: SqlConn, sql: Str) -> I64 {
+    return sqlite3_exec(c.h, sql, 0, 0, 0)
+}
+
+pub fn sqlite_last_rowid(c: SqlConn) -> I64 {
+    return sqlite3_last_insert_rowid(c.h)
+}
+
+pub fn sqlite_changes(c: SqlConn) -> I64 {
+    return sqlite3_changes(c.h)
+}
+
+// ---- 门面:语句 ----
+
+pub fn sqlite_prepare(c: SqlConn, sql: Str) -> SqlStmt {
+    let st = ctron_sqlite_prepare(c.h, sql)
+    if st == 0 {
+        return SqlStmt { ok: 0, st: 0 }
+    }
+    return SqlStmt { ok: 1, st: st }
+}
+
+pub fn sqlite_step_stmt(s: SqlStmt) -> I64 {
+    return sqlite3_step(s.st)
+}
+
+pub fn sqlite_finalize(s: SqlStmt) -> I64 {
+    if s.ok == 0 {
+        return 0
+    }
+    return sqlite3_finalize(s.st)
+}
+
+pub fn sqlite_reset(s: SqlStmt) -> I64 {
+    return sqlite3_reset(s.st)
+}
+
+// ---- 门面:绑定(标量四族;idx 1 基) ----
+
+pub fn sqlite_bind_i64(s: SqlStmt, idx: I64, v: I64) -> I64 {
+    return sqlite3_bind_int64(s.st, idx, v)
+}
+
+pub fn sqlite_bind_f64(s: SqlStmt, idx: I64, v: F64) -> I64 {
+    return sqlite3_bind_double(s.st, idx, v)
+}
+
+pub fn sqlite_bind_text(s: SqlStmt, idx: I64, v: Str) -> I64 {
+    return sqlite3_bind_text(s.st, idx, v, v.len, sqlite_transient())
+}
+
+pub fn sqlite_bind_null(s: SqlStmt, idx: I64) -> I64 {
+    return sqlite3_bind_null(s.st, idx)
+}
+
+// ---- 门面:取值(idx 0 基;col_text 对 NULL 胞返空串) ----
+
+pub fn sqlite_col_count(s: SqlStmt) -> I64 {
+    return sqlite3_column_count(s.st)
+}
+
+pub fn sqlite_col_type(s: SqlStmt, idx: I64) -> I64 {
+    return sqlite3_column_type(s.st, idx)
+}
+
+pub fn sqlite_col_i64(s: SqlStmt, idx: I64) -> I64 {
+    return sqlite3_column_int64(s.st, idx)
+}
+
+pub fn sqlite_col_f64(s: SqlStmt, idx: I64) -> F64 {
+    return sqlite3_column_double(s.st, idx)
+}
+
+pub fn sqlite_col_text(s: SqlStmt, idx: I64) -> Str {
+    if sqlite3_column_type(s.st, idx) == sqlite_type_null() {
+        return ""
+    }
+    return str_from_c(sqlite3_column_text(s.st, idx))
+}

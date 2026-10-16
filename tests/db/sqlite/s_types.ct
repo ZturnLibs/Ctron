@@ -1,0 +1,68 @@
+// G6 夹具⑦:col_type 判别(INTEGER/TEXT/REAL/NULL 四类)+ col_count + NULL 胞 text 空
+use db.sqlite.{SqliteDb, sqlite_std, sqlite_open, sqlite_close, sqlite_exec, sqlite_prepare, sqlite_step_stmt, sqlite_finalize, sqlite_col_count, sqlite_col_type, sqlite_col_text, sqlite_col_i64, sqlite_col_f64, sqlite_row, sqlite_type_int, sqlite_type_float, sqlite_type_text, sqlite_type_null, sqc_ok, sqs_ok}
+
+fn main() {
+    let t = sqlite_std()
+    let c = sqlite_open(t, ":memory:")
+    if sqc_ok(c) != 1 {
+        println("sqlite-probe FAIL open")
+        return
+    }
+    if sqlite_exec(c, "CREATE TABLE ty(a, b, c, d)") != 0 {
+        println("sqlite-probe FAIL ddl")
+        return
+    }
+    if sqlite_exec(c, "INSERT INTO ty VALUES(7, 'txt', 3.5, NULL)") != 0 {
+        println("sqlite-probe FAIL ins")
+        return
+    }
+    let s = sqlite_prepare(c, "SELECT a, b, c, d FROM ty")
+    if sqs_ok(s) != 1 {
+        println("sqlite-probe FAIL prepare")
+        return
+    }
+    if sqlite_step_stmt(s) != sqlite_row() {
+        println("sqlite-probe FAIL step")
+        return
+    }
+    if sqlite_col_count(s) != 4 {
+        println("sqlite-probe FAIL count=" + sqlite_col_count(s).to_string())
+        return
+    }
+    if sqlite_col_type(s, 0) != sqlite_type_int() {
+        println("sqlite-probe FAIL type-a")
+        return
+    }
+    if sqlite_col_type(s, 1) != sqlite_type_text() {
+        println("sqlite-probe FAIL type-b")
+        return
+    }
+    if sqlite_col_type(s, 2) != sqlite_type_float() {
+        println("sqlite-probe FAIL type-c")
+        return
+    }
+    if sqlite_col_type(s, 3) != sqlite_type_null() {
+        println("sqlite-probe FAIL type-d")
+        return
+    }
+    if sqlite_col_i64(s, 0) != 7 {
+        println("sqlite-probe FAIL val-a")
+        return
+    }
+    if sqlite_col_text(s, 1) != "txt" {
+        println("sqlite-probe FAIL val-b")
+        return
+    }
+    let fv = sqlite_col_f64(s, 2)
+    if fv - 3.5 > 0.001 || 3.5 - fv > 0.001 {
+        println("sqlite-probe FAIL val-c")
+        return
+    }
+    if sqlite_col_text(s, 3) != "" {
+        println("sqlite-probe FAIL val-d")
+        return
+    }
+    sqlite_finalize(s)
+    sqlite_close(c)
+    println("sqlite-probe ok types 4col")
+}

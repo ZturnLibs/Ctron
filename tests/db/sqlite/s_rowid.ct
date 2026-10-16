@@ -1,0 +1,54 @@
+// G6 夹具④:last_insert_rowid 递增 + changes 计数(UPDATE/DELETE)
+use db.sqlite.{SqliteDb, sqlite_std, sqlite_open, sqlite_close, sqlite_exec, sqlite_prepare, sqlite_step_stmt, sqlite_finalize, sqlite_last_rowid, sqlite_changes, sqlite_done, sqc_ok, sqs_ok}
+
+fn main() {
+    let t = sqlite_std()
+    let c = sqlite_open(t, ":memory:")
+    if sqc_ok(c) != 1 {
+        println("sqlite-probe FAIL open")
+        return
+    }
+    if sqlite_exec(c, "CREATE TABLE r(k INTEGER PRIMARY KEY, v TEXT)") != 0 {
+        println("sqlite-probe FAIL ddl")
+        return
+    }
+    if sqlite_exec(c, "INSERT INTO r(v) VALUES('a')") != 0 {
+        println("sqlite-probe FAIL ins1")
+        return
+    }
+    let r1 = sqlite_last_rowid(c)
+    if sqlite_exec(c, "INSERT INTO r(v) VALUES('b')") != 0 {
+        println("sqlite-probe FAIL ins2")
+        return
+    }
+    let r2 = sqlite_last_rowid(c)
+    if r2 != r1 + 1 {
+        println("sqlite-probe FAIL rowid-seq r1=" + r1.to_string() + " r2=" + r2.to_string())
+        return
+    }
+    if sqlite_exec(c, "UPDATE r SET v='x'") != 0 {
+        println("sqlite-probe FAIL upd")
+        return
+    }
+    let ch = sqlite_changes(c)
+    if ch != 2 {
+        println("sqlite-probe FAIL changes=" + ch.to_string())
+        return
+    }
+    let del = sqlite_prepare(c, "DELETE FROM r WHERE v='x'")
+    if sqs_ok(del) != 1 {
+        println("sqlite-probe FAIL prepare-del")
+        return
+    }
+    if sqlite_step_stmt(del) != sqlite_done() {
+        println("sqlite-probe FAIL step-del")
+        return
+    }
+    sqlite_finalize(del)
+    if sqlite_changes(c) != 2 {
+        println("sqlite-probe FAIL changes-del=" + sqlite_changes(c).to_string())
+        return
+    }
+    sqlite_close(c)
+    println("sqlite-probe ok rowid r2=" + r2.to_string())
+}
