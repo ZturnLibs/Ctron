@@ -1,0 +1,4 @@
+// G7 CI:ctron build 真驱动一例(Windows 冒烟腿;emit→cc→exe 全走驱动器)
+fn main() {
+    println("hello-g7 ok")
+}

@@ -13,3 +13,53 @@ jobs:
         run: python3 tools/std_doc.py --check
       - name: 全量门禁
         run: ./ci.sh
+
+  # G7(设计 §9):Windows 日常冒烟——今天 Windows 只活在 release.yml,日常门零覆盖。
+  # 配方 = release.yml windows stage 同款(msys2 MINGW64 + 预发射 C + gcc --stack);
+  # 加 driver 件(ctron-drv.c 并链 ctron_proc.c)让真 `ctron build` 入冒烟。
+  winpre:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 工具链(gcc/python3)
+        run: sudo apt-get update && sudo apt-get install -y gcc python3
+      - name: 宿主 seed + 发射预发射 C(cc/emit/chk/drv)
+        run: |
+          make -C compiler-c
+          sh compiler/build.sh
+          mkdir -p prebuilt
+          compiler/ctc.sh emit compiler/build/cc_run.ct   prebuilt/ctron-cc.c
+          compiler/ctc.sh emit compiler/build/cc_emit.ct  prebuilt/ctron-emit.c
+          compiler/ctc.sh emit compiler/build/cc_check.ct prebuilt/ctron-chk.c
+          compiler/ctc.sh emit compiler/driver/src/main.ct prebuilt/ctron-drv.c
+      - uses: actions/upload-artifact@v4
+        with: { name: prebuilt-ci, path: prebuilt/ }
+
+  windows-smoke:
+    needs: winpre
+    runs-on: windows-latest
+    # 块式写法:flow 形 `defaults: { run: { shell: msys2 {0} } }` 因 `{` 为 flow
+    # 指示符不可解析(release.yml 同款已验缺陷,本处以块式修正)
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with: { msystem: MINGW64, update: false, install: 'mingw-w64-x86_64-gcc make git diffutils' }
+      - uses: actions/download-artifact@v4
+        with: { name: prebuilt-ci, path: prebuilt }
+      - name: 构建四件(cc/emit/chk/drv;16MB 栈,drv 并链 proc 垫片)
+        run: |
+          mkdir -p compiler/bin
+          gcc -O2 -w -pthread -Wno-error=incompatible-pointer-types -Wl,--stack,16777216 -o compiler/bin/ctron-cc.exe   prebuilt/ctron-cc.c
+          gcc -O2 -w -pthread -Wno-error=incompatible-pointer-types -Wl,--stack,16777216 -o compiler/bin/ctron-emit.exe prebuilt/ctron-emit.c
+          gcc -O2 -w -pthread -Wno-error=incompatible-pointer-types -Wl,--stack,16777216 -o compiler/bin/ctron-chk.exe  prebuilt/ctron-chk.c
+          gcc -O2 -w -pthread -Wno-error=incompatible-pointer-types -Wl,--stack,16777216 -o compiler/bin/ctron.exe prebuilt/ctron-drv.c lib/proc/c_src/ctron_proc.c
+      - name: G7 冒烟道(hello/dlopen DLL/并发/__sync/CJK)
+        run: sh tests/win/smoke.sh
+      - name: ctron build 真驱动一例
+        run: |
+          cd tests/win/hello_proj
+          "$GITHUB_WORKSPACE/compiler/bin/ctron.exe" build
+          ls build/

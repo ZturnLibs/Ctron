@@ -1,0 +1,5 @@
+pkg {
+    manifest_version = 1
+    name = "hello_g7"
+    version = "0.1.0"
+}
