@@ -354,6 +354,12 @@ int64_t ctron_tls_write(int64_t h, const char* buf, int64_t n) {
     return (int64_t)ret;
 }
 
+
+// G5-W2:视图写包装(字节平面 body 用;与 char* 形异名同功,避免同符号双原型冲突)
+int64_t ctron_tls_write_v(int64_t h, ctron_view_w8u buf, int64_t n) {
+    return ctron_tls_write(h, (const char*)(n > 0 ? buf.d : ""), n);
+}
+
 /* 选定协议(握手后);无 ALPN/未协商 → ""。指针指回 ctx 自有 alpn 表,
  * 调用方 str_from_c 深拷即用。 */
 const char* ctron_tls_alpn_selected_s(int64_t h) {

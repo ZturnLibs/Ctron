@@ -1,0 +1,38 @@
+// G5-W2 服务端:TLS self-signed 回声(单请求 200 "hello")
+use net.{Net_probe, net_tcp_listen, net_tcp_accept_t, net_close}
+use tls.{tls_server, tls_handshake, tls_read, tls_write_str, tls_close, tls_conn_ctx}
+
+fn main() {
+    let cert = env_get("G2_CERT")
+    let key = env_get("G2_KEY")
+    let port = env_get("G2_PORT").as[I64]()
+    let net = Net_probe()
+    var lb = Box[Box64](Box64 { v: -1 })
+    if net_tcp_listen(net, "127.0.0.1", port, lb) != 0 {
+        println("srv listen-fail")
+        return
+    }
+    println("srv ready")
+    var ab = Box[Box64](Box64 { v: -1 })
+    if net_tcp_accept_t(net, lb.v, 20000, ab) != 0 {
+        println("srv accept-timeout")
+        return
+    }
+    let h: I64 = tls_server(net, ab.v, cert, key)
+    if h < 0 {
+        println("srv ctx-fail")
+        return
+    }
+    let conn: TlsConn = TlsConn { ctx: h }
+    if tls_handshake(net, conn, ab.v) != 0 {
+        println("srv hs-fail")
+        return
+    }
+    var buf: U8[] = [0] ** 4096
+    let rn = tls_read(net, conn, buf, 4096, 5000)
+    tls_write_str(net, conn, "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello")
+    tls_close(net, conn)
+    net_close(net, ab.v)
+    net_close(net, lb.v)
+    println("srv done read=" + rn.to_string())
+}

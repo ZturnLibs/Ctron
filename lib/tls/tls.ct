@@ -90,6 +90,12 @@ pub fn tls_server(net: StdNet, fd: I64, cert: Str, key: Str) -> I64 {
 
 // 设本端 ALPN 提供表("h2,http/1.1" 逗号串;mbedTLS 服务端按【服务端】偏好
 // 序选定)。必须在 tls_handshake 前调用;传空串 = 清除。
+// G5-W2:ctx getter(成员访问不出模块=getter 面;跨模块 TlsConn 字段读取
+// 撞发射器类型闭包在册债,client.ct 头注⑥同款绕行)
+pub fn tls_conn_ctx(net: StdNet, conn: TlsConn) -> I64 {
+    return conn.ctx
+}
+
 pub fn tls_set_alpn(net: StdNet, conn: TlsConn, protos: Str) -> I64 {
     return ctron_tls_set_alpn(conn.ctx, protos)
 }

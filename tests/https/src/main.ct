@@ -1,0 +1,55 @@
+// G5-W2:HTTPS 回环——服务端(TLS self-signed)×客户端(client_request_tls)
+// 用法:g2https <cert.pem> <key.pem> <port> server|client
+use net.{Net_probe, net_tcp_listen, net_tcp_accept_t, net_close, net_read_t, net_write_str, net_close as net_close_fd}
+use tls.{tls_server, tls_handshake, tls_read, tls_write_str, tls_close}
+use http.{client_request_tls, HttpNet}
+
+fn serve(cert: Str, key: Str, port: I64) {
+    let net = Net_probe()
+    var lb = Box[Box64](Box64 { v: -1 })
+    net_tcp_listen(net, "127.0.0.1", port, lb)
+    var ab = Box[Box64](Box64 { v: -1 })
+    if net_tcp_accept_t(net, lb.v, 15000, ab) != 0 {
+        println("srv accept-timeout")
+        return
+    }
+    let conn = tls_server(net, ab.v, cert, key)
+    if conn.ctx < 0 {
+        println("srv ctx-fail")
+        return
+    }
+    if tls_handshake(net, conn, ab.v) != 0 {
+        println("srv hs-fail")
+        return
+    }
+    var buf: U8[] = [0] ** 4096
+    let rn = tls_read(net, conn, buf, 4096, 5000)
+    let resp = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello"
+    tls_write_str(net, conn, resp)
+    tls_close(net, conn)
+    net_close(net, ab.v)
+    net_close(net, lb.v)
+    println("srv done read=" + rn.to_string())
+}
+
+fn client(cert: Str, port: I64) {
+    let io = HttpNet {}
+    var body: U8[] = [0] ** 0
+    var buf: U8[] = [0] ** 8192
+    var scr: U8[] = [0] ** 8192
+    let r = client_request_tls(io, "GET", "127.0.0.1", port, "/", "", body, 0, buf, buf.len, scr, 5000, 8000, cert)
+    if r.rc == 0 {
+        println("cli-probe status=" + r.status.to_string() + " body=" + buf.slice(0, r.body_len).to_string())
+    } else {
+        println("cli-probe err=" + r.err.to_string())
+    }
+}
+
+fn main() {
+    let args = Env.args()
+    if args.len >= 4 && args[3] == "server" {
+        serve(args[1], args[2], args[4].as[I64]())
+    } else {
+        client(args[1], args[3].as[I64]())
+    }
+}

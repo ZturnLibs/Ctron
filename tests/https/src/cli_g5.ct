@@ -1,0 +1,30 @@
+// G5-W2 客户端:client_request_tls(状态 200+体字节断言 "hello";deadline=8000ms)
+use http.client.{client_request_tls, HttpNet}
+
+fn main() {
+    let port = env_get("G2_PORT").as[I64]()
+    let cert = env_get("G2_CERT")
+    let io = HttpNet {}
+    var body: U8[] = [0] ** 0
+    var buf: U8[] = [0] ** 8192
+    var scr: U8[] = [0] ** 8192
+    let r = client_request_tls(io, "GET", "127.0.0.1", port, "/", "", body, 0, buf, buf.len, scr, 5000, 8000, cert)
+    if r.rc != 0 {
+        println("cli-probe err=" + r.err.to_string())
+        return
+    }
+    // 体断言:buf[body_off..] 前 5 字节 = "hello"(104 101 108 108 111)
+    var ok: I32 = 1
+    var i: I32 = 0
+    let hw: I32 = 104
+    if buf[r.body_off + 0].as[I32]() != hw { ok = 0 }
+    if buf[r.body_off + 1].as[I32]() != 101 { ok = 0 }
+    if buf[r.body_off + 2].as[I32]() != 108 { ok = 0 }
+    if buf[r.body_off + 3].as[I32]() != 108 { ok = 0 }
+    if buf[r.body_off + 4].as[I32]() != 111 { ok = 0 }
+    if r.status == 200 && ok == 1 {
+        println("cli-probe ok status=200 body=hello")
+    } else {
+        println("cli-probe bad status={r.status} ok={ok}")
+    }
+}
