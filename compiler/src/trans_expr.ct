@@ -1535,6 +1535,12 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if ag.len > 1 { u0 = ct_expr(ag[1], env, file) }
             return "ctron_utf8_enc((int)(" + u0 + "))"
         }
+        // CC2(2026-10-16):str_byte 内建——字节保真单字符构造(发射臂样板 ctron_str_byte)
+        if callee == "str_byte" {
+            var u1 = "0"
+            if ag.len > 1 { u1 = ct_expr(ag[1], env, file) }
+            return "ctron_str_byte((int)(" + u1 + "))"
+        }
         if callee == "panic" { return "ctron_panic(" + ct_call_args(ag, 1, env, file, "") + ")" }
         // Option/Result 构造(Phase 5):Ok/Err/Some(expr) → ct_res(载荷按型别包装)
         if cal[0] == "Ident" {

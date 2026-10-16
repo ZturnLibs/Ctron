@@ -28,6 +28,10 @@ trap 'rm -rf "$TMP"' EXIT
 [ -x "$DIR/build/cc_run.ct" ] || "$DIR/build.sh" > /dev/null
 mkdir -p "$BIN"
 
+# CC2(2026-10-16):str_byte/utf8_enc 解释臂宿主口(eval_call extern 直调桥符号源)
+cc -O2 -w -c "$DIR/host_shim/cc2_str.c" -o "$TMP/cc2_str.o"
+SHIM_O="$TMP/cc2_str.o"
+
 "$DIR/ctc.sh" emit "$DIR/build/cc_run.ct"  "$TMP/ctron_cc.c"   > /dev/null
 "$DIR/ctc.sh" emit "$DIR/build/cc_emit.ct" "$TMP/ctron_emit.c" > /dev/null
 "$DIR/ctc.sh" emit "$DIR/build/cc_check.ct" "$TMP/ctron_chk.c" > /dev/null
@@ -67,28 +71,28 @@ if [ -f "$ROOT/vendor/gui/build/libraylib.a" ]; then
     echo "native: ctron-cc 附带解释口径 extern 符号源(域库 shim + raylib)"
 fi
 
-cc -O2 -w -o "$BIN/ctron-cc" "$TMP/ctron_cc.c" $GUI_O $GUI_F
+cc -O2 -w -o "$BIN/ctron-cc" "$TMP/ctron_cc.c" $SHIM_O $GUI_O $GUI_F
 echo "native: bin/ctron-cc(运行驱动)← $(wc -l < "$TMP/ctron_cc.c") 行 C"
 
-cc -O2 -w -o "$BIN/ctron-emit" "$TMP/ctron_emit.c"
+cc -O2 -w -o "$BIN/ctron-emit" "$TMP/ctron_emit.c" $SHIM_O
 echo "native: bin/ctron-emit(发射驱动)← $(wc -l < "$TMP/ctron_emit.c") 行 C"
 
-cc -O2 -w -o "$BIN/ctron-chk" "$TMP/ctron_chk.c"
+cc -O2 -w -o "$BIN/ctron-chk" "$TMP/ctron_chk.c" $SHIM_O
 echo "native: bin/ctron-chk(检查驱动)← $(wc -l < "$TMP/ctron_chk.c") 行 C"
 
-cc -O2 -w -o "$BIN/ctron-fmt" "$TMP/ctron_fmt.c"
+cc -O2 -w -o "$BIN/ctron-fmt" "$TMP/ctron_fmt.c" $SHIM_O
 echo "native: bin/ctron-fmt(格式化驱动)← $(wc -l < "$TMP/ctron_fmt.c") 行 C"
 
-cc -O2 -w -o "$BIN/ctron-doc" "$TMP/ctron_doc.c"
+cc -O2 -w -o "$BIN/ctron-doc" "$TMP/ctron_doc.c" $SHIM_O
 echo "native: bin/ctron-doc(iface 投影驱动)← $(wc -l < "$TMP/ctron_doc.c") 行 C"
 
-cc -O2 -w -o "$BIN/ctron-dep" "$TMP/ctron_dep.c"
+cc -O2 -w -o "$BIN/ctron-dep" "$TMP/ctron_dep.c" $SHIM_O
 echo "native: bin/ctron-dep(依赖解析驱动,T49)← $(wc -l < "$TMP/ctron_dep.c") 行 C"
 
-cc -O2 -w -o "$BIN/ctron-verify" "$TMP/ctron_verify.c"
+cc -O2 -w -o "$BIN/ctron-verify" "$TMP/ctron_verify.c" $SHIM_O
 echo "native: bin/ctron-verify(工件深验驱动,T50/L3 载体)← $(wc -l < "$TMP/ctron_verify.c") 行 C"
 
-cc -O2 -w -o "$BIN/ctron-ast" "$TMP/ctron_ast.c"
+cc -O2 -w -o "$BIN/ctron-ast" "$TMP/ctron_ast.c" $SHIM_O
 echo "native: bin/ctron-ast(封印/序列化驱动,T50/S4-④)← $(wc -l < "$TMP/ctron_ast.c") 行 C"
 
 # W4 波1:用户驱动器 bin/ctron(Ctron 自写,compiler/driver/src/main.ct 单文件;

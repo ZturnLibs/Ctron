@@ -27,6 +27,15 @@ extern "c" fn ctron_ext_dispatch(nm: Str, a0: Str, a1: Str, a2: Str, a3: Str, a4
 #[trusted]
 extern "c" fn ctron_ext_fret() -> Str
 
+// CC2(2026-10-16):str_byte/utf8_enc 解释臂宿主口——字节保真构造。
+// 实现 = host_shim/cc2_str.c(malloc 无 GC 归还:解释器为开发档有界泄漏;
+// 发射臂用户程序走样板 ctron_str_byte,GC,无泄漏)。背景:解释臂 utf8_enc
+// 原实现经 dvi_str 递归自调恒返 U+FFFD(发射臂正常)——同批修复。
+#[trusted]
+extern "c" fn ctron_str_byte_t(dec: Str) -> Str
+#[trusted]
+extern "c" fn ctron_utf8_enc_t(dec: Str) -> Str
+
 // T26 进程参数底座(§8.1 Env.args):发射运行时模板定义(driver_emit.ct
 // main 入口寄存 argc/argv),自举解释器经 extern 直调(同 ctron_ext_dispatch 形)
 #[trusted]
@@ -577,10 +586,21 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
         if vals.len == 1 {
             var r8 = v_unbox(vals[0])
             if or2(r8.tag == 1, or2(r8.tag == 2, r8.tag == 3)) {
-                return e4("k", env, vS(utf8_enc(dvi_str(r8.iv.as[I32]()))), out)
+                // CC2:解释臂原 utf8_enc(dvi_str(...)) 递归自调恒返 U+FFFD——改宿主口
+                return e4("k", env, vS(ctron_utf8_enc_t(dvi_str(r8.iv.as[I32]()))), out)
             }
         }
         panic("utf8_enc arity")
+        return e4("a", env, vV2(), out)
+    }
+    if seq2(nm, "str_byte") {
+        if vals.len == 1 {
+            var r9 = v_unbox(vals[0])
+            if or2(r9.tag == 1, or2(r9.tag == 2, r9.tag == 3)) {
+                return e4("k", env, vS(ctron_str_byte_t(dvi_str(r9.iv.as[I32]()))), out)
+            }
+        }
+        panic("str_byte arity")
         return e4("a", env, vV2(), out)
     }
     if seq2(nm, "byte_at") {
