@@ -1944,3 +1944,18 @@ http.client fn 原型不随合并发出[在册])。tests/down e2e 3/0(本地 TLS
 同面,下次专场);坑:Box 形参在册不可发射(helper 抽 fn 撞墙→内联展开)、while 体 Drop 局部、
 实参位 Repeat 泛化不可达(let 绑定绕行)、夹具名避模块同名、域 STDPATH=lib/std。G5 四波全落
 (W1 sha256 流式/W2 https/W3 流式三件/W4 lib/down);秘本模型拉取全链=https+流式+哈希+续传。
+
+**G6 收官(2026-10-17,0c35cde2)**:SQLite 绑定 P1-7——vendored amalgamation 3.54.0
+(lib/db/c_src/sqlite3.c+sqlite3.h 原样;shell.c/sqlite3ext.h 不取)+ lib/db/sqlite.ct 门面
+MVP 面(open/prepare/step/bind 标量四族/column 取值/errmsg/errcode/exec 多语句/last_rowid/
+changes/close;事务 v0=exec("BEGIN"))。J5 形态=微垫片 ctron_sqlite.c 只翻 open/prepare 两
+T** 出参为返回值+rc 静态槽(pg connect 直返 fd 同形),其余全直宣 sqlite3_* 原型(bind.ct 单
+行纪律);能力 token SqliteDb/sqlite_std() 自有不 use db.ct(严格互斥树);TRANSIENT=-1 绑
+定自拷;col_text NULL 胞返空串;str_from_c 内建深拷 errmsg。家法扁平淡入偏差在册(设计 §8
+的 lib/db/sqlite/ 子目录形=解析链未验证形,MVP 不冒险)。tests/db/sqlite run.sh emit-only
+门 10/0 双跑稳定(interp 无 extern 运行时;decl smoke 入 interp 臂;sqlite3.o 一次编译
+-DSQLITE_OMIT_LOAD_EXTENSION);夹具八件=use 解析/往返/bind 复用/errmsg 负面/rowid/
+文件库持久/exec 脚本+ROLLBACK/col_type 四类。坑:垫片 NULL 须自带 stddef.h(仓库垫片不
+带标准头惯例);管道假 rc 再犯(| tail 吃 run.sh 退出码);夹具 ok 标记须与文件名 tag 对齐;
+meta_check 泳道 skip 子句随批(gotcha #17;存量 18 处红=各批在册债不动)。blob 双向/
+SQLCipher/预编译 .a/多线程连接共享挂 P2。
