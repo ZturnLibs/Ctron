@@ -1934,3 +1934,13 @@ shutdown)rc=0。
 `eval_call.ct` `call_decl_vals` 仅以形参建 nenv,未并 `statics_env(file)`;seed 经全局
 表可见。触发条件=函数体内读顶层常量(编译器源码无顶层常量故未暴露,LSP 改写前实证
 `unbound:CHR_CTL`)。
+
+**G5-W3+W4 收官(2026-10-11,W3 5b542142 + W4 a258f6cd/随批)**:W3 流式体读三件
+(client_open_tls/read_body_tls/close_tls,HttpOpen 游标结构,CL 明长 v0)——Range 206 零
+lib/http 改动(extra 头+状态判定=调用方,next_start 纯计算面承载);W4 lib/down 策略面四件
+(range_extra/next_start/retry_backoff/hash_ok;IO 循环留消费方=跨模块类型闭包债绕行,down→
+http.client fn 原型不随合并发出[在册])。tests/down e2e 3/0(本地 TLS serve 40KB×down 循环:
+落盘+抽样+长度容差);**2B 尾差在册**(40958/40960:TLS close_notify 竞态 vs 块计数,done=0
+同面,下次专场);坑:Box 形参在册不可发射(helper 抽 fn 撞墙→内联展开)、while 体 Drop 局部、
+实参位 Repeat 泛化不可达(let 绑定绕行)、夹具名避模块同名、域 STDPATH=lib/std。G5 四波全落
+(W1 sha256 流式/W2 https/W3 流式三件/W4 lib/down);秘本模型拉取全链=https+流式+哈希+续传。
