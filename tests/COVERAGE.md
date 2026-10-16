@@ -1903,3 +1903,34 @@ darwin 单遍 -arch x86_64 -arch arm64,fat 验证 lipo)——纯驱动面,发射
 4/0(真 .so 双形态+负例+cdylib 回环 777+universal fat)+suite 119/120·120/120(03m 超时=负载 flake
 复跑定谳)+gc 9/0。**P1-6 关闭**:旗标消费(G2-W3)+cdylib+universal 齐备;签名/公证不入 ctron(J8);
 根 ctron 驱动链接行同面随原生驱动器 lane(登记)。
+
+**编辑器 I/O 内建自举化(2026-10-16;`compiler/src` 九面 + `lsp/src/main.ct`)**:
+LSP/管道三内建 `read_line`/`read_bytes`/`flush_out` 从「C seed 专属」
+(`compiler-c/src/rt_eval.c`)移植进自举编译器——四处注册(`sem_calls.ct` prel /
+`sem_type.ct` prelude_ok / `parse_pkg.ct` pkg_is_prelude_sym)+沙箱与 comptime 副作用
+名单(`plugin.ct` sbx_banned_call / `sem_comptime.ct` comp_banned_call)+解释臂
+(`eval_call.ct`:read_line→`vS(read_line())`、read_bytes(n)→`vS(read_bytes(iv))`、
+flush_out→`print(out)`+`flush_out()`+清空 out)+发射臂(`trans_expr.ct`:
+`ctron_read_line()` / `ctron_read_bytes((int64_t)(…))` / `fflush(stdout)`)+型别
+(`trans_ty.ct`:read_line/read_bytes→"s"、flush_out→"v")+C 运行时模板
+(`driver_emit.ct`:两宿主原语)。顺带 parity 修正:`eval_call.ct` 的
+`byte_at`/`byte_slice`/`utf8_enc` 索引实参接受 tag 1/2/3(I32/I64/U64;旧仅 tag 1=
+自举 sem 拒 I64 索引,与 seed 分歧)。
+
+**实证**:seed 路径(cc_run.ct 解释)与自举原生(ctron-cc)双口径 `read_line`(行去
+\r\n)/`read_bytes(n)`(恰读 n 字节)/`flush_out`(即时落盘)逐字一致;`smoke.sh` 0 处
+「发射/编译失败」,trans_v0-v6 往返逐字一致,黄金对照 input_cc 1-3 逐字一致;
+std 全模块自举自测全绿(fmap 149s / crypto 222s 慢件,余秒级)。
+
+**LSP 自举化副修(`lsp/src/main.ct`)**:①顶层 `const` 改零参 fn——自举解释器未把顶层
+const/static let 曝光进函数体词法域(seed 支持、自举 gap,见下),LSP 本就以「解释器
+友好」为设计前提,函数承载常量双后端皆可见;②`p0/p1: I64` 显式标注(自举 sem 正确拒
+I32←I64,seed 过宽)。**成果**:VSCode 扩展 `ctronc` 可指向自举统一驱动
+`compiler/bin/ctron`(包装脚本 exec 真身;macOS `_NSGetExecutablePath` 不解析软链,直
+软链 rc=127),LSP initialize 0.19s、全会话(didOpen 诊断/symbol/hover/completion/
+shutdown)rc=0。
+
+**在册 gap(未治)**:自举解释器顶层 `const`/`static let` 不进入函数体词法域——
+`eval_call.ct` `call_decl_vals` 仅以形参建 nenv,未并 `statics_env(file)`;seed 经全局
+表可见。触发条件=函数体内读顶层常量(编译器源码无顶层常量故未暴露,LSP 改写前实证
+`unbound:CHR_CTL`)。

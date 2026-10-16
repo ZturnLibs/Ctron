@@ -7,7 +7,9 @@
 // v0 限制:无步数预算——comptime fn 内死循环会挂起 check(真预算留 v1);
 // 仅当其余诊断为零才试求值(先名字/类型,后求值,不级联)。
 fn comp_banned_call(nm: Str) -> Bool {
-    return or2(seq2(nm, "print"), or2(seq2(nm, "println"), or2(seq2(nm, "read_file"), seq2(nm, "read_dir"))))
+    if or2(seq2(nm, "print"), or2(seq2(nm, "println"), or2(seq2(nm, "read_file"), seq2(nm, "read_dir")))) { return true }
+    if or2(seq2(nm, "read_line"), or2(seq2(nm, "read_bytes"), seq2(nm, "flush_out"))) { return true }
+    return false
 }
 
 fn comp_banned_mem(nm: Str) -> Bool {

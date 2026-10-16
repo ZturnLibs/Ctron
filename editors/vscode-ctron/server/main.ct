@@ -18,14 +18,14 @@ fn is_ac(b: I64) -> Bool { return or2(is_al(b), is_dig(b)) }
 fn is_hexp(b: I64) -> Bool { return or2(is_dig(b), or2(b >= 97 && b <= 102, b >= 65 && b <= 70)) }
 
 // b 8..13 → 索引 b-8
-const CHR_CTL: Str = "\u{8}\t\n\u{c}\r"
+fn chr_ctl() -> Str { return "\u{8}\t\n\u{c}\r" }
 // b 32..126 → 索引 b-32(注意 \{ \} 转义)
-const CHR_ASC: Str = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz\{|}~"
-const HEXD: Str = "0123456789abcdef"
+fn chr_asc() -> Str { return " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz\{|}~" }
+fn hexd() -> Str { return "0123456789abcdef" }
 
 fn chr_ascii(b: I64) -> Str {
-    if b >= 8 && b <= 13 { return byte_slice(CHR_CTL, b - 8, b - 7) }
-    if b >= 32 && b <= 126 { return byte_slice(CHR_ASC, b - 32, b - 31) }
+    if b >= 8 && b <= 13 { return byte_slice(chr_ctl(), b - 8, b - 7) }
+    if b >= 32 && b <= 126 { return byte_slice(chr_asc(), b - 32, b - 31) }
     return ""
 }
 
@@ -245,8 +245,8 @@ fn json_escape(s: Str) -> Str {
         if or3(b == 34, b == 92, b < 32) {
             if i > seg { out = "{out}{byte_slice(s, seg, i)}" }
             if b == 34 { out = "{out}\\\"" } else { if b == 92 { out = "{out}\\\\" } else { if b == 10 { out = "{out}\\n" } else { if b == 9 { out = "{out}\\t" } else { if b == 13 { out = "{out}\\r" } else {
-                var h1 = byte_at(HEXD, b / 16)
-                var h2 = byte_at(HEXD, b - (b / 16) * 16)
+                var h1 = byte_at(hexd(), b / 16)
+                var h2 = byte_at(hexd(), b - (b / 16) * 16)
                 out = "{out}\\u00{chr_ascii(h1)}{chr_ascii(h2)}"
             } } } } }
             i += 1
@@ -678,7 +678,7 @@ fn is_top_line(text: Str, sp: Pos2) -> Bool {
     return !is_ws_b(byte_at(text, sp.a))
 }
 
-const DECL_KW: Str = "fn|struct|class|enum|trait|impl|const|static|test|use"
+fn decl_kw() -> Str { return "fn|struct|class|enum|trait|impl|const|static|test|use" }
 
 fn pipe_has(all: Str, w: Str) -> Bool {
     var n = all.len
@@ -783,7 +783,7 @@ fn scan_symbols(text: Str) -> Str {
                 if first_word(text, sp, kws) {
                     var kws2 = pos2(0, 0)
                     var kwv = eff_kw2(text, sp, kws, kws2)
-                    if pipe_has(DECL_KW, kwv) {
+                    if pipe_has(decl_kw(), kwv) {
                         var name = decl_name(text, sp, kwv, kws2)
                         if name != "" {
                             var head = ""
@@ -864,7 +864,7 @@ fn find_decl(text: Str, word: Str, hit: DeclHit) {
                 if first_word(text, sp, kws) {
                     var kws2 = pos2(0, 0)
                     var kwv = eff_kw2(text, sp, kws, kws2)
-                    var isdecl = pipe_has(DECL_KW, kwv)
+                    var isdecl = pipe_has(decl_kw(), kwv)
                     if !isdecl && kwv == "prop" { isdecl = true }
                     if isdecl {
                         var name = decl_name(text, sp, kwv, kws2)
@@ -895,9 +895,9 @@ fn find_decl(text: Str, word: Str, hit: DeclHit) {
 
 // ============ 7. 静态知识表(关键字 / 前奏 / 成员,§1.3 §3.8.2) ============
 
-const KW_ALL: Str = "fn|let|var|const|static|comptime|if|else|match|while|for|in|return|break|continue|struct|class|enum|trait|impl|own|scope|test|use|pub|extern|prop|true|false|void|self|or"
-const PT_ALL: Str = "Bool|I8|I16|I32|I64|ISize|U8|U16|U32|U64|USize|F32|F64|Str|String|Void|Option|Result|List|Box|Channel|Mutex|Atomic|Global|Arena|Task|Simd|Show|Eq|Error|Cap|Drop|AnyError"
-const MEM_ALL: Str = "len|char_len|contains|slice|to_string|iter|map|or|expect|is_some|is_none|is_ok|is_err|context|push|pop|new|with|with_mut|join|join_or|send|recv|load|store|fetch_add|splat|lane|to_array|abs|min|max|into_gc|as|message|cause|trace|show|eq|drop"
+fn kw_all() -> Str { return "fn|let|var|const|static|comptime|if|else|match|while|for|in|return|break|continue|struct|class|enum|trait|impl|own|scope|test|use|pub|extern|prop|true|false|void|self|or" }
+fn pt_all() -> Str { return "Bool|I8|I16|I32|I64|ISize|U8|U16|U32|U64|USize|F32|F64|Str|String|Void|Option|Result|List|Box|Channel|Mutex|Atomic|Global|Arena|Task|Simd|Show|Eq|Error|Cap|Drop|AnyError" }
+fn mem_all() -> Str { return "len|char_len|contains|slice|to_string|iter|map|or|expect|is_some|is_none|is_ok|is_err|context|push|pop|new|with|with_mut|join|join_or|send|recv|load|store|fetch_add|splat|lane|to_array|abs|min|max|into_gc|as|message|cause|trace|show|eq|drop" }
 
 fn ptype_hover(w: Str) -> Str {
     if w == "Option" { return "Option[T] —— 无 null;is_some/is_none(prop);map(f)/or(默认)/expect(msg)。类型糖:T?" }
@@ -1009,11 +1009,11 @@ fn hov_position(msg: Str, params_i: I64, st: Store) -> Str {
     if !msg_pos(msg, params_i, pp) { return "null" }
     var w = word_at(text, pp.a, pp.b)
     if w == "" { return "null" }
-    if pipe_has(KW_ALL, w) {
+    if pipe_has(kw_all(), w) {
         var md = "**(keyword)** `{w}`\n\n{kw_hover(w)}"
         return jobj(jkv_raw("contents", jobj(jkv_str("kind", "markdown") + "," + jkv_str("value", md))))
     }
-    if pipe_has(PT_ALL, w) {
+    if pipe_has(pt_all(), w) {
         var md = "**{w}**\n\n{ptype_hover(w)}"
         return jobj(jkv_raw("contents", jobj(jkv_str("kind", "markdown") + "," + jkv_str("value", md))))
     }
@@ -1100,7 +1100,7 @@ fn doc_decl_items(text: Str, prefix: Str) -> Str {
                 if first_word(text, sp, kws) {
                     var kws2 = pos2(0, 0)
                     var kwv = eff_kw2(text, sp, kws, kws2)
-                    if pipe_has(DECL_KW, kwv) && kwv != "use" && kwv != "impl" {
+                    if pipe_has(decl_kw(), kwv) && kwv != "use" && kwv != "impl" {
                         var name = decl_name(text, sp, kwv, kws2)
                         if name != "" && prefix_hit(name, prefix) {
                             var head = ""
@@ -1145,12 +1145,12 @@ fn complete_at(msg: Str, params_i: I64, st: Store) -> Str {
         }
     }
     if member_ctx {
-        var items = item_list(MEM_ALL, 2, "前奏成员", prefix)
+        var items = item_list(mem_all(), 2, "前奏成员", prefix)
         return jobj(jkv_raw("isIncomplete", "false") + "," + jkv_raw("items", jarr(items)))
     }
     var all = ""
-    all = join_comma(all, item_list(KW_ALL, 14, "关键字", prefix))
-    all = join_comma(all, item_list(PT_ALL, 7, "前奏类型", prefix))
+    all = join_comma(all, item_list(kw_all(), 14, "关键字", prefix))
+    all = join_comma(all, item_list(pt_all(), 7, "前奏类型", prefix))
     if idx >= 0 {
         all = join_comma(all, doc_decl_items(st_text(st, idx), prefix))
     }
@@ -1222,7 +1222,7 @@ fn valid_ident(w: Str) -> Bool {
         if !is_ac(byte_at(w, i)) { return false }
         i += 1
     }
-    if pipe_has(KW_ALL, w) { return false }
+    if pipe_has(kw_all(), w) { return false }
     return true
 }
 
@@ -1317,8 +1317,8 @@ fn sig_help(text: Str, line: I64, col: I64) -> Str {
     }
     var label = byte_slice(sig, 0, siglen)
     // 第一对配平括号内的顶层逗号分段
-    var p0 = 0 - 1
-    var p1 = 0 - 1
+    var p0: I64 = 0 - 1
+    var p1: I64 = 0 - 1
     var pd: I64 = 0
     var k: I64 = 0
     while k < siglen {
@@ -1501,7 +1501,7 @@ fn inlay_hints(text: Str) -> Str {
                 }
                 var tok = byte_slice(text, start, p.i)
                 var nextb = next_nonspace(text, p.i)
-                if nextb == 40 && !pipe_has(KW_ALL, tok) {
+                if nextb == 40 && !pipe_has(kw_all(), tok) {
                     var prev = prev_sig_char(text, start)
                     if prev != 46 {
                         if sites < 40 {
@@ -1624,8 +1624,8 @@ fn add_arg_hint(acc: OccAcc, text: Str, names: Str, pi: I64, line: I64, col: I64
 
 fn param_pipe(sig: Str) -> Str {
     var siglen = sig.len
-    var p0 = 0 - 1
-    var p1 = 0 - 1
+    var p0: I64 = 0 - 1
+    var p1: I64 = 0 - 1
     var pd: I64 = 0
     var k: I64 = 0
     while k < siglen {
@@ -1701,7 +1701,7 @@ fn pipe_nth(all: Str, idx: I64) -> Str {
 
 // ============ 8f. semantic tokens(轻启发式,单趟) ============
 // legend: 0=function 1=method 2=property 3=variable 4=class 5=type 7=macro;modifier 0=declaration
-// 启发式(不经 sem):. 成员 / 紧跟 ( 的调用 / 声明名(prev word)/ PT_ALL 类型 / PascalCase / 注解名
+// 启发式(不经 sem):. 成员 / 紧跟 ( 的调用 / 声明名(prev word)/ pt_all() 类型 / PascalCase / 注解名
 
 fn prev_word(text: Str, from: I64, out: Pos2) -> Str {
     var k = from
@@ -1744,7 +1744,7 @@ fn sem_tokens(text: Str) -> Str {
                     p.col += 1
                 }
                 var tok = byte_slice(text, start, p.i)
-                if !pipe_has(KW_ALL, tok) {
+                if !pipe_has(kw_all(), tok) {
                     var t: I64 = 3
                     var decl: I64 = 0
                     var nextb = next_nonspace(text, p.i)
@@ -1757,7 +1757,7 @@ fn sem_tokens(text: Str) -> Str {
                         if or2(prevb == 91, prevb == 64) {
                             t = 7
                         } else {
-                            if pipe_has(PT_ALL, tok) {
+                            if pipe_has(pt_all(), tok) {
                                 t = 5
                             } else {
                                 if or3(prevw == "struct", or3(prevw == "class", prevw == "enum", prevw == "trait"), prevw == "impl") {
@@ -1972,7 +1972,7 @@ fn handle(msg: Str, st: Store) -> I64 {
                     var text = st_text(st, idx)
                     var wp = pos2(0, 0)
                     var w = word_span_pos(text, pp.a, pp.b, wp)
-                    if w != "" && !pipe_has(KW_ALL, w) {
+                    if w != "" && !pipe_has(kw_all(), w) {
                         r = jobj(jkv_raw("range", mk_range(wp.a, wp.b, w.len)) + "," + jkv_str("placeholder", w))
                     }
                 }

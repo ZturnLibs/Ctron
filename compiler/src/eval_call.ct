@@ -302,6 +302,34 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
         panic("read_file args")
         return e4("a", env, vV2(), out)
     }
+    if seq2(nm, "read_line") {
+        // LSP/管道程序:stdin 读一行(去尾部 \n/\r);EOF 返回空串
+        if vals.len == 0 {
+            return e4("k", env, vS(read_line()), out)
+        }
+        panic("read_line arity")
+        return e4("a", env, vV2(), out)
+    }
+    if seq2(nm, "read_bytes") {
+        // LSP Content-Length 体:stdin 恰读 n 字节(不足返回已读部分)
+        if vals.len == 1 {
+            var rb0 = v_unbox(vals[0]).iv
+            return e4("k", env, vS(read_bytes(rb0)), out)
+        }
+        panic("read_bytes arity")
+        return e4("a", env, vV2(), out)
+    }
+    if seq2(nm, "flush_out") {
+        // 把本轮累积的 out 立即写 stdout 并清空(LSP 每帧后调用;否则长驻
+        // 程序输出永不落盘——driver 仅在程序结束时 print(out))
+        if vals.len == 0 {
+            print(out)
+            flush_out()
+            return e4("k", env, vV2(), "")
+        }
+        panic("flush_out arity")
+        return e4("a", env, vV2(), out)
+    }
     if seq2(nm, "read_dir") {
         if vals.len == 1 {
             var r1 = v_unbox(vals[0])
@@ -548,7 +576,7 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
     if seq2(nm, "utf8_enc") {
         if vals.len == 1 {
             var r8 = v_unbox(vals[0])
-            if r8.tag == 1 {
+            if or2(r8.tag == 1, or2(r8.tag == 2, r8.tag == 3)) {
                 return e4("k", env, vS(utf8_enc(dvi_str(r8.iv.as[I32]()))), out)
             }
         }
@@ -559,7 +587,7 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
         if vals.len == 2 {
             var r9 = v_unbox(vals[0])
             var r10 = v_unbox(vals[1])
-            if r9.tag == 5 && r10.tag == 1 {
+            if r9.tag == 5 && or2(r10.tag == 1, or2(r10.tag == 2, r10.tag == 3)) {
                 return e4("k", env, vI(byte_at(r9.s, r10.iv.as[I32]())), out)
             }
         }
@@ -571,7 +599,7 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
             var r11 = v_unbox(vals[0])
             var r12 = v_unbox(vals[1])
             var r13 = v_unbox(vals[2])
-            if r11.tag == 5 && r12.tag == 1 && r13.tag == 1 {
+            if r11.tag == 5 && or2(r12.tag == 1, or2(r12.tag == 2, r12.tag == 3)) && or2(r13.tag == 1, or2(r13.tag == 2, r13.tag == 3)) {
                 var a2: I32 = r12.iv.as[I32]()
                 var b2: I32 = r13.iv.as[I32]()
                 if b2 < a2 {

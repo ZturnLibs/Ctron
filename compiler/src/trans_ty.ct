@@ -1702,6 +1702,9 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if cal[1] == "dlerror_str" { return "s" }
             if cal[1] == "utf8_enc" { return "s" }
             if cal[1] == "read_file" { return "s" }
+            if cal[1] == "read_line" { return "s" }
+            if cal[1] == "read_bytes" { return "s" }
+            if cal[1] == "flush_out" { return "v" }
             if cal[1] == "ctron_exe_path" { return "s" }
             if cal[1] == "env_get" { return "s" }
             if cal[1] == "ctron_cli_flag" { return "s" }
