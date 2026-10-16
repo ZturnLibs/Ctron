@@ -818,6 +818,13 @@ pub fn client_open_tls(io: HttpNet, method: Str, host: Str, port: I64, path: Str
     return out
 }
 
+// G5-W3:HttpOpen getter 面(成员访问不出模块=getter 家法;跨模块类型闭包债)
+pub fn open_rc(var op: HttpOpen) -> I64 { return op.rc }
+pub fn open_err(var op: HttpOpen) -> I64 { return op.err }
+pub fn open_status(var op: HttpOpen) -> I64 { return op.status }
+pub fn open_body_len(var op: HttpOpen) -> I64 { return op.body_len }
+pub fn open_body_got(var op: HttpOpen) -> I64 { return op.body_got }
+
 // ② 读体下一块:tls_read 到 scr → 拷 buf[off..];返回 n(0=体完;<0 败)
 pub fn client_read_body_tls(io: HttpNet, var op: HttpOpen, var buf: U8[], off: I64, want: I64, var scr: U8[], timeout_ms: I64) -> I64 {
     if op.ctx < 0 {
