@@ -1959,3 +1959,13 @@ T** 出参为返回值+rc 静态槽(pg connect 直返 fd 同形),其余全直宣
 带标准头惯例);管道假 rc 再犯(| tail 吃 run.sh 退出码);夹具 ok 标记须与文件名 tag 对齐;
 meta_check 泳道 skip 子句随批(gotcha #17;存量 18 处红=各批在册债不动)。blob 双向/
 SQLCipher/预编译 .a/多线程连接共享挂 P2。
+
+**tests/db 存量红清偿(2026-10-17,217bac50;G6 基线复跑立案)**:G6 批复跑 tests/db 得
+43/11 两遍全同,11 红三类皆存量非 G6 扰动——①漂移守卫 ×5 恒红(比对两侧均不存在的
+lib/std/db/*.ct ↔ stdpkg 种子,布局 A' 后 db 出引导种子域;守卫环删除);②EXTRA 陈旧路径
+×5($ROOT/db/... 缺 lib/ 段,clang 必红;改 lib/db/ 后五件定点绿);③pool_core interp 三
+异常在册(E2080 let-再赋值编译拒=声明面裂缝成熟态已改 var;var 修复后 interp 4-5 分钟慢
+跑且 assert_eq 失败[emit 同件绿=pool 域 interp/emit 分叉];println 探针变体 segv 139 零
+输出)——按 x_fd_edge 先例转 x_pool_core 仅 emit 臂入计,interp 侧待查=登记债。修复后全量
+**48/0**(54 项−守卫 5−interp 重复计 1,口径自洽)。账面注:设计档记 56/56 为守卫生前期
+口径,54/48 差异=守卫消亡+夹具增减,已在案。
