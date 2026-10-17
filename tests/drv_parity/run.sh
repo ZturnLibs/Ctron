@@ -53,6 +53,7 @@ report() { # $1=label $2=sh_rc $3=nat_rc —— 已备好 $T/sh.out 与 $T/nat.o
     else
         fail=$((fail+1))
         echo "  FAIL: $1(sh_rc=$2 native_rc=$3)"
+        sed 's/^/    sh: /' "$T/sh.out" 2>/dev/null | sed -n '1,3p'
         echo "    ---- diff(sh ←→ native,首 10 行) ----"
         diff "$T/sh.out" "$T/nat.out" 2>&1 | sed 's/^/    /' | sed -n '1,10p'
     fi
