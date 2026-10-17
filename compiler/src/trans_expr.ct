@@ -1541,6 +1541,17 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if ag.len > 1 { u1 = ct_expr(ag[1], env, file) }
             return "ctron_str_byte((int)(" + u1 + "))"
         }
+        // CC3(2026-10-17):u8s_str 内建——U8 平面区间批量转 Str(O(n) 一次构造;
+        // 解释臂降级逐字节 str_byte,语义一致性能不同——大对象路径只在发射臂跑)
+        if callee == "u8s_str" {
+            var u2 = "0"
+            var u3 = "0"
+            var u4 = "0"
+            if ag.len > 1 { u2 = ct_expr(ag[1], env, file) }
+            if ag.len > 2 { u3 = ct_expr(ag[2], env, file) }
+            if ag.len > 3 { u4 = ct_expr(ag[3], env, file) }
+            return "ctron_u8s_str(" + u2 + ", (int)(" + u3 + "), (int)(" + u4 + "))"
+        }
         if callee == "panic" { return "ctron_panic(" + ct_call_args(ag, 1, env, file, "") + ")" }
         // Option/Result 构造(Phase 5):Ok/Err/Some(expr) → ct_res(载荷按型别包装)
         if cal[0] == "Ident" {

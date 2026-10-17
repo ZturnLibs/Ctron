@@ -603,6 +603,40 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
         panic("str_byte arity")
         return e4("a", env, vV2(), out)
     }
+    if seq2(nm, "u8s_str") {
+        // CC3:U8 平面区间 → Str。解释臂降级 = 逐字节 str_byte(O(n²),语义一致);
+        // 大对象路径只跑发射臂(O(n) memcpy)。数组 = tag8/A|L,元素 cx[i+1](Index 同轨)。
+        if vals.len == 3 {
+            var pa = v_unbox(vals[0])
+            var pf = v_unbox(vals[1])
+            var pl = v_unbox(vals[2])
+            if pa.tag == 8 {
+                if or2(seq2(cx_of(pa)[0], "A"), seq2(cx_of(pa)[0], "L")) {
+                    if or2(pf.tag == 1, or2(pf.tag == 2, pf.tag == 3)) {
+                        if or2(pl.tag == 1, or2(pl.tag == 2, pl.tag == 3)) {
+                            var fr = pf.iv.as[I32]()
+                            var ln = pl.iv.as[I32]()
+                            if fr < 0 || ln < 0 || fr + ln > cx_of(pa).len - 1 {
+                                panic("u8s_str: range")
+                                return e4("a", env, vV2(), out)
+                            }
+                            var out2 = ""
+                            var pi: I32 = fr
+                            let pend = fr + ln
+                            while pi < pend {
+                                var pbv = v_unbox(cx_of(pa)[pi + 1]).iv.as[I32]()
+                                out2 = out2 + ctron_str_byte_t(dvi_str(pbv))
+                                pi += 1
+                            }
+                            return e4("k", env, vS(out2), out)
+                        }
+                    }
+                }
+            }
+        }
+        panic("u8s_str arity")
+        return e4("a", env, vV2(), out)
+    }
     if seq2(nm, "byte_at") {
         if vals.len == 2 {
             var r9 = v_unbox(vals[0])

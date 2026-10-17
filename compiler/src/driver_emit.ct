@@ -612,7 +612,10 @@ println("static ct_i ct_parallel_reduceL(ctron_list* a, ct_i init, ct_fn2 f) \{ 
             println("static int64_t ctron_bytes_len(ctron_bytes* b) \{ return b ? b->n : 0; }")
             println("static int32_t ctron_bytes_at(ctron_bytes* b, int64_t i) \{ if (!b || i < 0 || i >= b->n) \{ ctron_panic(\"bytes index out of bounds\"); } return (int32_t)b->d[i]; }")
             println("static ctron_bytes* ctron_bytes_slice(ctron_bytes* b, int64_t a, int64_t n) \{ if (!b || a < 0 || n < 0 || a + n > b->n) \{ ctron_panic(\"bytes slice range\"); } ctron_bytes* r = (ctron_bytes*)ctron_amalloc(sizeof(ctron_bytes)); r->d = (unsigned char*)ctron_amalloc((size_t)(n > 0 ? n : 1)); memcpy(r->d, b->d + a, (size_t)n); r->n = n; return r; }")
-            println("static const char* ctron_bytes_to_str(ctron_bytes* b) \{ int64_t n = 0; if (b) \{ n = b->n; for (int64_t i = 0; i < n; i++) \{ if (b->d[i] == 0) \{ n = i; break; } } } char* r = (char*)ctron_amalloc((size_t)(n + 1)); memcpy(r, b ? (const void*)b->d : (const void*)r, (size_t)n); r[n] = 0; return r; }")
+                        // CC3(2026-10-17):u8s_str 内建宿主口——U8 平面区间批量转 Str(O(n) 一次构造;
+            // cas/prolly 大对象路径的 O(n²) 拼接税清偿件;置于 ctron_bytes typedef 后
+            println("static const char* ctron_u8s_str(const uint8_t* p, int from, int len) \{ if (len < 0 || from < 0) \{ ctron_panic(\"u8s_str: range\"); } char* r = (char*)ct_gc_alloc((size_t)len + 1); if (p && len > 0) \{ memcpy(r, p + from, (size_t)len); } r[len] = 0; return r; }")
+println("static const char* ctron_bytes_to_str(ctron_bytes* b) \{ int64_t n = 0; if (b) \{ n = b->n; for (int64_t i = 0; i < n; i++) \{ if (b->d[i] == 0) \{ n = i; break; } } } char* r = (char*)ctron_amalloc((size_t)(n + 1)); memcpy(r, b ? (const void*)b->d : (const void*)r, (size_t)n); r[n] = 0; return r; }")
             println("static long ctron_rbn_g = 0;")
             println("static unsigned char* ctron_rb_g = NULL;")
             println("static int64_t ctron_read_bytes_len(const char* path) \{ FILE* f = fopen(path, \"rb\"); if (!f) \{ return -1; } fseek(f, 0, SEEK_END); long sz = ftell(f); fseek(f, 0, SEEK_SET); if (ctron_rb_g) free(ctron_rb_g); ctron_rb_g = (unsigned char*)ctron_amalloc((size_t)(sz > 0 ? sz : 1)); size_t rd = sz > 0 ? fread(ctron_rb_g, 1, (size_t)sz, f) : 0; fclose(f); ctron_rbn_g = (long)rd; return (int64_t)rd; }")
