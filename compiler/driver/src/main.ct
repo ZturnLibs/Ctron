@@ -2770,6 +2770,7 @@ fn cmd_bench(rest: List[Str]) -> I32 {
         println("  http   http_parse_head vs picohttpparser(CTRON_HTTP_BENCH=1 启用)")
         println("  net    吞吐/协程切换三门禁(CTRON_NET_BENCH=1 启用)")
         println("  ffi    FFI 边界微基准四场景(报告制)")
+        println("  engine-proxy  秘本引擎代理 vs C 同构(设计 §11 RTF 线;digest pin+×3,门 ≤1.2)")
         println("用法: ctron bench <族>")
         return 0
     }
@@ -2785,8 +2786,10 @@ fn cmd_bench(rest: List[Str]) -> I32 {
         script = repo_root() + "/tests/net/bench/bench.sh"
     } else if fam == "ffi" {
         script = repo_root() + "/compiler/test/bench_ffi.sh"
+    } else if fam == "engine-proxy" {
+        script = repo_root() + "/tests/bench/engine-proxy/bench.sh"
     } else {
-        return fail2("未注册基准族: " + fam + "(注册表: lang gc http net ffi;ctron bench 看详)")
+        return fail2("未注册基准族: " + fam + "(注册表: lang gc http net ffi engine-proxy;ctron bench 看详)")
     }
     if !fs_exists(script) {
         return fail2("基准族脚本缺席: " + script + "(基准族仅 dev 布局随发;装机形态未含)")

@@ -1,0 +1,46 @@
+// soak —— 100 会话零崩 + RSS pin 门(设计 §11 内存线/零崩线 Ctron 侧;Stage 2 预埋)
+// 形:TaskPool(8) 池化有界并发 × 100 会话 × 20 段 = 2000 任务;逐任务一 I64 过通道,
+// 主端全量求和——加法可交换,digest 与到达序无关、逐字节确定(无锁确定面)。
+// rc=0 + 无 panic 文案 + max RSS < 界(run.sh;/usr/bin/time -l 口径)。
+fn seg_digest(sid: I64, seg: I64) -> I64 {
+    var acc: I64 = 0
+    var frame: I64 = 0
+    while frame < 8 {
+        let fid = ((sid * 20 + seg) * 8) + frame
+        var seed: I64 = (fid * 2654435761) + 12345
+        var j: I64 = 0
+        while j < 128 {
+            seed = (((seed % 2147483648) * 1103515245) + 12345) % 2147483648
+            acc = (acc + (seed % 4000)) % 1000003
+            j += 1
+        }
+        frame += 1
+    }
+    return acc
+}
+
+fn main() -> I32 {
+    let p = TaskPool(8)
+    let (tx, rx) = Channel[I64](64)
+    var sid: I64 = 0
+    while sid < 100 {
+        var seg: I64 = 0
+        while seg < 20 {
+            let a = sid
+            let b = seg
+            p.spawn(|| {
+                tx.send(seg_digest(a, b)).expect("send")
+            })
+            seg += 1
+        }
+        sid += 1
+    }
+    var digest: I64 = 0
+    var n: I64 = 0
+    while n < 2000 {
+        digest += rx.recv().expect("recv")
+        n += 1
+    }
+    println("soak-probe tasks 2000 digest " + digest.to_string())
+    return 0
+}

@@ -1,0 +1,43 @@
+// engine-proxy —— 秘本引擎工作负载代理基准(设计 §11 RTF 线 Ctron 侧门)
+// 形:100 会话 × 10 段 × 20 帧 × 256 样本(16kHz = 320s 音频);逐帧 LCG 样本 +
+// 定值算术核 + sv_stub_work FFI 忙循环(周期等效,真 sherpa 对拍留秘本仓)。
+// 顺序形:与 src/ref.c 同构逐字节可比(digest pin);并发面归 tests/steno/soak。
+// 全程非负整数域(% 语义两侧恒同);digest 行钉字节,rtf_ms 行只报告不入门。
+#[trusted]
+extern "c" fn sv_stub_work(iters: I64) -> I64
+
+fn main() -> I32 {
+    let t0 = mono_ns()
+    var digest: I64 = 0
+    var frames: I64 = 0
+    var sid: I64 = 0
+    while sid < 100 {
+        var seg: I64 = 0
+        while seg < 10 {
+            var frame: I64 = 0
+            while frame < 20 {
+                let fid = (sid * 100 + seg * 20) + frame
+                var seed: I64 = (fid * 2654435761) + 12345
+                var acc: I64 = 0
+                var j: I64 = 0
+                while j < 256 {
+                    seed = (((seed % 2147483648) * 1103515245) + 12345) % 2147483648
+                    let sample = seed % 4000
+                    acc = ((acc + (sample * 31)) + j) % 1000003
+                    j += 1
+                }
+                let sv = sv_stub_work(100000)
+                acc = (acc + (sv % 97)) % 1000003
+                digest += acc
+                frames += 1
+                frame += 1
+            }
+            seg += 1
+        }
+        sid += 1
+    }
+    let ms = (mono_ns() - t0) / 1000000
+    println("engine-proxy digest " + digest.to_string() + " frames " + frames.to_string())
+    println("engine-proxy rtf_ms " + ms.to_string() + " audio_s 320")
+    return 0
+}

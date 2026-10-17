@@ -409,6 +409,7 @@ cmd_bench() {
         echo "  http   http_parse_head vs picohttpparser(CTRON_HTTP_BENCH=1 启用)"
         echo "  net    吞吐/协程切换三门禁(CTRON_NET_BENCH=1 启用)"
         echo "  ffi    FFI 边界微基准四场景(报告制)"
+        echo "  engine-proxy  秘本引擎代理 vs C 同构(设计 §11 RTF 线;digest pin+×3,门 ≤1.2)"
         echo "用法: ctron bench <族>"
         exit 0
     fi
@@ -419,7 +420,8 @@ cmd_bench() {
         http) BENCH_S="$DEVROOT/tests/http/bench/bench.sh" ;;
         net) BENCH_S="$DEVROOT/tests/net/bench/bench.sh" ;;
         ffi) BENCH_S="$DEVROOT/compiler/test/bench_ffi.sh" ;;
-        *) die2 "未注册基准族: $1(注册表: lang gc http net ffi;ctron bench 看详)" ;;
+        engine-proxy) BENCH_S="$DEVROOT/tests/bench/engine-proxy/bench.sh" ;;
+        *) die2 "未注册基准族: $1(注册表: lang gc http net ffi engine-proxy;ctron bench 看详)" ;;
     esac
     [ -f "$BENCH_S" ] || die2 "基准族脚本缺席: $BENCH_S(基准族仅 dev 布局随发;装机形态未含)"
     sh "$BENCH_S"

@@ -2031,3 +2031,34 @@ sig 经 `openssl pkeyutl -rawin` 验;B:同 core 同钥必同 sig=Ed25519 确定�
 挂账:审计链流式校验(全文读入为 v0 口径)、payload 业务语义注册表、多签/链头外部 anchor、
 PEM/Base64 密钥面(全 P2,契约 §6);跨包 use 图含 selftest 未 pub 符号时 emit 静默吞全图
 (b4 现象一次,pub 化后消失,未最小化复现=观察在册)。
+
+## 2026-10-18 Stage 2 预埋:engine-proxy 基准族 + soak 门(steno 泳道;设计 §11 三线的 Ctron 侧机器)
+
+**定位**:Stage 0(steno-verify)收官后秘本泳道剩余唯一纯 Ctron 侧批——§11 验收三线的
+机器与基线预埋;Stage 2 正式 A/B(Rust steno-cli 对照)待秘本仓存在后进行,真 sherpa 对拍
+同样留秘本仓。
+
+**交付**:
+- **tests/bench/engine-proxy/**(RTF 线):100 会话 × 10 段 × 20 帧 × 256 样本(16kHz =
+  320s 音频);逐帧 LCG 样本 + 定值算术核 + `sv_stub_work` FFI 忙循环(c_src/stub.c 两侧
+  同链同 -O1,周期等效);顺序形 vs src/ref.c 同构 **digest 逐字节钉**(diff 除 rtf_ms 行)
+  + ×3 取 min + 比值门 ≤1.2;RTF 自报(mono_ns)。实测比值 **0.976–1.001**(三跑),RTF
+  0.005。`ctron bench engine-proxy` 注册表接线(根 ctron sh 文本[live 权威]+ driver
+  mirror 同步 + native.sh 重编)。
+- **tests/steno/soak/**(内存线+零崩线):TaskPool(8) 池化有界并发 × 100 会话 × 20 段 =
+  2000 任务;逐任务一 I64 过 Channel,主端全量求和(加法可交换 ⇒ digest 与到达序无关、
+  逐字节确定);三臂(默认 GC on / CTRON_GC=off / CTRON_RT=coro)各 rc=0 + digest 钉
+  306971647 三臂同值 + 无 panic 文案 + max RSS pin(/usr/bin/time -l):**实测 1.9MB
+  (三臂同档),界 64MB 只拦无界增长**——G1 任务段段回收的直观变现(2000 任务零爬升)。
+
+**并发面探针实证(增补在册)**:spawn 句柄出 scope 即断型别(`let t = scope{…s.spawn…}`
+出块 int32 化)——并发值收集的正典形 = pool/joinall 夹具同款「闭包内 Channel send + 主端
+计数 recv」;TaskPool 无 wait 面,完成 = recv 计数;闭包捕获 Channel 半端 + 标量混捕 3 枚
+可用(半端作**形参**仍是在册坑,闭包捕获面无恙)。
+
+**Ctron 宽检首秀**:engine-proxy 首版 LCG 乘法 I64 溢出,C 参照静默回绕而 Ctron 臂
+"integer overflow (*)" 硬崩——digest pin 门把两侧算术语义差当场捉出;修法 = 乘前先归约
+(seed % 2^31 再乘),两侧同步。基准对拍由此多一道「语义同律」副产品价值。
+
+挂账:真 sherpa/onnxruntime 对拍与 Rust 版 RTF 对照(秘本仓);benchmark 时值 pin(只钉
+digest,时值漂移靠 min-of-3 报告);多进程/断点续跑 soak(Stage 2 正式批面)。
