@@ -11,5 +11,6 @@ pub extern "c" fn ctron_fio_read_after_line(path: Str, var buf: U8[]) -> I64
 pub extern "c" fn ctron_fio_str_bytes(s: Str, n: I64, var out: U8[]) -> I64
 pub extern "c" fn ctron_fio_write_excl_0600(path: Str, data: Str, n: I64) -> I32
 pub extern "c" fn ctron_fio_size(path: Str) -> I64
+pub extern "c" fn ctron_fio_mtime_ms(path: Str) -> I64
 pub extern "c" fn ctron_fio_read_at(path: Str, offset: I64, var buf: U8[]) -> I64
 pub extern "c" fn ctron_fio_getcwd(var buf: U8[]) -> I64

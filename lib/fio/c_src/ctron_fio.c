@@ -81,6 +81,16 @@ int32_t ctron_fio_write_excl_0600(const char* path, const char* data, int64_t n)
 }
 
 // 文件字节数(-1 = 不存在/失败;增量索引的 size 变更检测原语)
+// v0.6 人类面(watch daemon 对账):mtime 毫秒(1970 纪元;失败 = -1)
+int64_t ctron_fio_mtime_ms(const char* path) {
+    struct stat st;
+    if (stat(path, &st) != 0) { return -1; }
+#if defined(__APPLE__)
+    return (int64_t)st.st_mtimespec.tv_sec * 1000 + st.st_mtimespec.tv_nsec / 1000000;
+#else
+    return (int64_t)st.st_mtim.tv_sec * 1000 + st.st_mtim.tv_nsec / 1000000;
+#endif
+}
 int64_t ctron_fio_size(const char* path) {
     struct stat st;
     if (stat(path, &st) != 0) { return -1; }
