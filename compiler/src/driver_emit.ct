@@ -165,6 +165,11 @@ println("static ctron_list* ctron_list_new(void) \{ ctron_list* l = (ctron_list*
             // utf8_enc 逐字节用于 ≥0x80 = 双重编码祸根,字节平面读出一律走本口)
             println("static const char* ctron_str_byte(int b) \{ char* r = (char*)ct_gc_alloc(2); r[0] = (char)(b & 0xFF); r[1] = 0; return r; }")
             println("static const char* ctron_utf8_enc(int cp) \{ static const char* rep = \"\\xEF\\xBF\\xBD\"; unsigned char b[5]; int un = 0; if (cp < 0 || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) \{ return rep; } if (cp < 0x80) \{ b[un++] = (unsigned char)cp; } else if (cp < 0x800) \{ b[un++] = (unsigned char)(0xC0 | (cp >> 6)); b[un++] = (unsigned char)(0x80 | (cp & 0x3F)); } else if (cp < 0x10000) \{ b[un++] = (unsigned char)(0xE0 | (cp >> 12)); b[un++] = (unsigned char)(0x80 | ((cp >> 6) & 0x3F)); b[un++] = (unsigned char)(0x80 | (cp & 0x3F)); } else \{ b[un++] = (unsigned char)(0xF0 | (cp >> 18)); b[un++] = (unsigned char)(0x80 | ((cp >> 12) & 0x3F)); b[un++] = (unsigned char)(0x80 | ((cp >> 6) & 0x3F)); b[un++] = (unsigned char)(0x80 | (cp & 0x3F)); } b[un] = 0; char* r = (char*)ct_gc_alloc((size_t)un + 1); memcpy(r, b, (size_t)un); r[un] = 0; return r; }")
+            // CC2 自发射口(自举固定点修,2026-10-18):eval_call.ct 经 extern 直调的
+            // _t 十进制文本面(解释臂=host_shim/cc2_str.c malloc 版;发射臂=本 GC 委派,
+            // 编译器自发射产物(cc_interp/cc_emitter)解释用户程序时同 path 可用)
+            println("static const char* ctron_str_byte_t(const char* dec) \{ return ctron_str_byte((int)strtol(dec, 0, 10)); }")
+            println("static const char* ctron_utf8_enc_t(const char* dec) \{ return ctron_utf8_enc((int)strtol(dec, 0, 10)); }")
             println("static void ctron_panic(const char* m);")
             println("static const char* ctron_byte_slice(const char* s, int a, int b) \{ int n = b - a; if (n < 0 || a < 0 || (long)a + (long)n > (long)strlen(s)) \{ ctron_panic(\"byte_slice: range out of bounds\"); } char* r = (char*)ct_gc_alloc((size_t)n + 1); memcpy(r, s + a, (size_t)n); r[n] = 0; return r; }")
             // Str 编组(§9.6 v0.6):C 侧 char* 深拷入 arena(Ctron-owned,免 free;

@@ -2062,3 +2062,34 @@ PEM/Base64 密钥面(全 P2,契约 §6);跨包 use 图含 selftest 未 pub 符�
 
 挂账:真 sherpa/onnxruntime 对拍与 Rust 版 RTF 对照(秘本仓);benchmark 时值 pin(只钉
 digest,时值漂移靠 min-of-3 报告);多进程/断点续跑 soak(Stage 2 正式批面)。
+
+## 2026-10-18 smoke 六红清偿:自发射×2 根修 + pkg verify×4 批C 落地(编译器/驱动器)
+
+**背景**:smoke 基线 1009 曾 236/0 全绿;G 批时代(1010–1017)各批只跑自家门不跑全量
+smoke,六红积压至今。本批逐枚归因清偿,**全量 smoke 237/0 首次恢复全绿**(237=夹具
+增量的新基线)。
+
+**① 自发射×2 根修(CC2 宿主口发射前言缺位)**:CC2 批(2026-10-16)给 eval_call.ct
+加了 `ctron_str_byte_t`/`ctron_utf8_enc_t` extern(解释臂宿主口,host_shim/cc2_str.c
+malloc 版,十进制文本参协议)——该 extern 只随 native.sh 链进解释器;编译器自发射
+(smoke §4 cc_run.ct→原生解释器 / §5 固定点 cc_emit.ct)产物调同名符号而发射前言无人
+定义 → 链接失败(全量仅两枚未定义符号,inventory 实证)。修 = 发射前言补 GC 委派两行
+(strtol 解十进制 → 转调既有 int 面 ctron_str_byte/ctron_utf8_enc,driver_emit.ct;
+发射臂 GC 优于 shim 的 malloc 有界泄漏)。黄金三件+负例拦截+固定点全绿。
+
+**② pkg verify×4 = 原生驱动器批C 暂缓面落地(S3-β 复放腿)**:W4 波3 批2 的
+"--deep 复放腿挂账批C;复放计数恒 0"——smoke 期望(复放 N 用例/E5056)早已按 sh 真
+行为写好,原生驱动器(Ctron 自写)却硬编码 0,四红 = deep 正例/E5056 漂移拒载/γδ/
+发布旅程同根。修 = sh :1343-1495 逐字移植进 compiler/driver/src/main.ct:traces/*.ctrt
+块游走(trace_parse_ctrt)→ fns 唯一集 → use <pkg>.<mod> 合成面走 **parse_pkg S2a
+deps/<pkg>.ctart 密封回落既有面** → trace_build_drv 码gen(WSB/MemFs/esc 谱批3 同
+机械)+ deep_run_cc(cwd=TRP,固定名净除同 trace_drv_dir 登记偏差账)逐例 ctron-cc →
+逐字比对(E5056 点名双值/计数如实;陈旧信任证据 guard;attest E5057 腿原样)。
+实测:正例"复放 2 用例"绿;漂移件 rc=1 "E5056 trace mismatch: base_mul(3, 4) 记录 12
+实际 13"。
+
+**坑位**:字面量 `.{ ` 裸花括号即插值(合成 use 行两踩,`\{` 双处);chk 对 driver
+main.ct 本就 18 枚 E2010 短字面量存量(emit 链非 chk 门,新码随文件惯例)。
+
+挂账:smoke 时点积压的制度面——G 型批次(只跑自家门)合流后应跑一次全量 smoke 再销账
+(六红潜伏 8 天的教训)。

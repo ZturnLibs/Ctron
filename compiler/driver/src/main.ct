@@ -2825,8 +2825,11 @@ fn cmd_pkg_verify(rest: List[Str]) -> I32 {
         return fail2("pkg verify: 工件目录不存在: " + dir)
     }
     if deep {
-        // --deep = L3 载体(缺件 die2 → spawn ctron-verify rc 直通非零即 1)+
-        // S4-② attest 腿(E5057)。复放腿挂账批C(见文件头批注);计数恒 0。
+        // --deep = L3 载体(缺件 die2 → spawn ctron-verify rc 直通非零即 1)
+        // + S3-β 复放腿(批C,2026-10-18 落地:sh :1343-1495 逐字移植;码gen 与
+        //   ctron-cc 逐例复放复用 pkg trace replay 批3 机械 trace_build_drv/
+        //   trace_run_drv 同族;密封回落 = parse_pkg S2a deps/<pkg>.ctart 既有面)
+        // + S4-② attest 腿(E5057)。
         var vbin = bin_dir() + "/ctron-verify"
         if !fs_exists(vbin) {
             return fail2("pkg verify --deep: 缺 ctron-verify(重装工具链;或先: compiler/native.sh)")
@@ -2839,6 +2842,149 @@ fn cmd_pkg_verify(rest: List[Str]) -> I32 {
         let vrc = blob_rc_cwd(argv, "")
         if vrc != 0 {
             return 1
+        }
+        // S3-β 复放腿:traces/*.ctrt 逐文件 → 块解析 → use <pkg>.<mod> 合成面走
+        // 密封 deps 回落 → ctron-cc 逐例 → 逐字比对(E5056 点名双值,计数如实)
+        var rn: I32 = 0
+        var rb: I32 = 0
+        if is_dir_p(vdir + "/traces") {
+            if !fs_exists(bin_dir() + "/ctron-cc") {
+                eprint("ctron pkg verify: traces 在场但缺 ctron-cc(复放腿不可跳过;重装工具链)\n")
+                return 1
+            }
+            var tnames = list(vdir + "/traces")
+            var has: Bool = false
+            var ti0: I32 = 0
+            while ti0 < tnames.len {
+                if ends_with(tnames[ti0], ".ctrt") && is_file_p(vdir + "/traces/" + tnames[ti0]) {
+                    has = true
+                }
+                ti0 += 1
+            }
+            if has {
+                var pname = meta_artifact_name(read_file(vdir + "/meta.ctcl"))
+                if pname.len == 0 {
+                    eprint("ctron pkg verify: meta artifact 块缺失(复放腿无包名)\n")
+                    return 1
+                }
+                // sh TRP 同位:固定名 + 用前净除(登记偏差账同 trace_drv_dir)
+                var trp = "/tmp/ctron_trp_drv"
+                delete_tree(trp)
+                fs_mkdir(trp)
+                fs_mkdir(trp + "/deps")
+                if cp_r(vdir, trp + "/deps/" + pname + ".ctart") == false {
+                    delete_tree(trp)
+                    eprint("ctron pkg verify: deps 复制失败\n")
+                    return 1
+                }
+                var ti: I32 = 0
+                while ti < tnames.len {
+                    var tf = tnames[ti]
+                    if ends_with(tf, ".ctrt") && is_file_p(vdir + "/traces/" + tf) {
+                        var tmod = byte_slice(tf, 0, tf.len - 5)
+                        if !is_file_p(vdir + "/impl/" + tmod + ".ast") {
+                            delete_tree(trp)
+                            eprint("ctron pkg verify: 陈旧信任证据: traces/" + tf + " 的模块 " + tmod + " 不在工件 impl/(清理或重录)\n")
+                            return 1
+                        }
+                        var blocks = trace_parse_ctrt(read_file(vdir + "/traces/" + tf))
+                        // fns 唯一集(sh awk|sort -u):块游走保序去重
+                        var fns = List[Str]()
+                        var w: I32 = 0
+                        while w < blocks.len {
+                            var wnf = trace_atoi(blocks[w + 2])
+                            var ww: I32 = 0
+                            var seen: Bool = false
+                            while ww < fns.len {
+                                if fns[ww] == blocks[w] {
+                                    seen = true
+                                }
+                                ww += 1
+                            }
+                            if seen == false {
+                                fns.push(blocks[w])
+                            }
+                            var wnww = trace_atoi(blocks[w + 3 + wnf * 2 + 1])
+                            w += 3 + wnf * 2 + 2 + wnww
+                        }
+                        var fj = ""
+                        var fi: I32 = 0
+                        while fi < fns.len {
+                            if fi > 0 {
+                                fj = fj + ","
+                            }
+                            fj = fj + fns[fi]
+                            fi += 1
+                        }
+                        var buf: U8[262144] = [0, 0, 0, 0, 0, 0, 0, 0]
+                        var bi: I32 = 0
+                        while bi < blocks.len {
+                            var tfn = blocks[bi]
+                            var targsU = trace_unesc_q(blocks[bi + 1])
+                            var nf = trace_atoi(blocks[bi + 2])
+                            var pairs = List[Str]()
+                            var z: I32 = 0
+                            while z < nf * 2 {
+                                pairs.push(blocks[bi + 3 + z])
+                                z += 1
+                            }
+                            bi += 3 + nf * 2
+                            var exp = trace_unesc_q(blocks[bi])
+                            bi += 1
+                            var nw = trace_atoi(blocks[bi])
+                            bi += 1
+                            var wls = List[Str]()
+                            z = 0
+                            while z < nw {
+                                wls.push(blocks[bi + z])
+                                z += 1
+                            }
+                            bi += nw
+                            var head = "use " + pname + "." + tmod + ".\{ " + fj + " }"
+                            if nf >= 1 {
+                                head = "use std.fs.\{ Fs, FsError }\n" + head
+                            }
+                            var drv = trace_build_drv(head, tfn, targsU, pairs)
+                            capture_zero(buf)
+                            let rc = deep_run_cc(drv, trp, buf)
+                            var out = trace_capture_out(buf)
+                            if rc != 0 {
+                                delete_tree(trp)
+                                eprint(out + "\n")
+                                return fail2("ctron pkg verify: 复放用例 " + tfn + "(" + targsU + ") 运行失败(rc=" + rc.to_string() + ")")
+                            }
+                            if nf >= 1 {
+                                var canon = exp + "\n---writes---"
+                                if wls.len > 0 {
+                                    var wj = ""
+                                    var k: I32 = 0
+                                    while k < wls.len {
+                                        wj = wj + wls[k] + "\n"
+                                        k += 1
+                                    }
+                                    canon = canon + "\n" + byte_slice(wj, 0, wj.len - 1)
+                                }
+                                if out != canon {
+                                    eprint("E5056 trace mismatch: " + tfn + "(" + targsU + ") 记录 " + exp + " 实际 " + trace_first_line(out) + "(含 wrote 面)\n")
+                                    rb += 1
+                                }
+                            } else {
+                                if out != exp {
+                                    eprint("E5056 trace mismatch: " + tfn + "(" + targsU + ") 记录 " + exp + " 实际 " + out + "\n")
+                                    rb += 1
+                                }
+                            }
+                            rn += 1
+                        }
+                    }
+                    ti += 1
+                }
+                delete_tree(trp)
+                if rb > 0 {
+                    eprint("ctron pkg verify: 复放 " + rn.to_string() + " 用例中 " + rb.to_string() + " 不符(E5056)\n")
+                    return 1
+                }
+            }
         }
         if is_file_p(vdir + "/attest.ctcl") {
             var att = read_file(vdir + "/attest.ctcl")
@@ -2858,10 +3004,10 @@ fn cmd_pkg_verify(rest: List[Str]) -> I32 {
                 eprint("E5057 attest 与工件不符: trace_count 记录 " + atc + " 实际 " + tc + "\n")
                 return 1
             }
-            println("ctron pkg verify OK: " + vdir + "(deep: 摘要自洽;复放 0 用例;attest 过验)")
+            println("ctron pkg verify OK: " + vdir + "(deep: 摘要自洽;复放 " + rn.to_string() + " 用例;attest 过验)")
             return 0
         }
-        println("ctron pkg verify OK: " + vdir + "(deep: 摘要自洽;复放 0 用例)")
+        println("ctron pkg verify OK: " + vdir + "(deep: 摘要自洽;复放 " + rn.to_string() + " 用例)")
         return 0
     }
     // ① 形态面(§3.5 后缀即契约:自称 .ctart 而缺成员 = 损坏/伪造,fail-closed)
@@ -3510,6 +3656,24 @@ fn trace_run_drv(drv: Str, var buf: U8[]) -> I32 {
         return 127
     }
     return run_argv("", blob, bn.as[I64](), buf)
+}
+
+fn deep_run_cc(drv: Str, trp: Str, var buf: U8[]) -> I32 {
+    // S3-β 复放腿逐例运行(批C):main.ct 落 trp、cwd=trp(deps/<pkg>.ctart 密封
+    // 回落按主文件目录解析,S2a 面)、ctron-cc run stdout 捕获。与 trace_run_drv
+    // 的差异 = cwd 绑定 + 固定名 main.ct(sh TRP/main.ct 同位)。
+    fs_write(trp + "/main.ct", drv)
+    env_set("CTRON_STDPATH", repo_root() + "/lib/std")
+    var argv = List[Str]()
+    argv.push(bin_dir() + "/ctron-cc")
+    argv.push("run")
+    argv.push("main.ct")
+    var blob: U8[4096] = [0, 0, 0, 0, 0, 0, 0, 0]
+    let bn = argv_to_blob(argv, blob)
+    if bn < 0 {
+        return 127
+    }
+    return run_argv(trp, blob, bn.as[I64](), buf)
 }
 
 fn trace_parse_ctrt(text: Str) -> List[Str] {
