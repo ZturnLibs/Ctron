@@ -6,10 +6,10 @@
 #   相位二:同 data 目录重启 → 再登录 → 条目与 done 态保持(持久化)
 # 口径:仅回环;TODO_APP_PORT(缺省 8092);发射臂构建;服务端串行
 # (Connection: close);探针 = 单连接单请求(printf %b 发真实 CRLF)。
-# 红账(2026-09-26):原生臂暂被编译器在册发射缺陷阻断(主分发预算家族,
-# 见 docs/c-rust-divergences.md「todo_app 复现族」节)——emit 失败即本缺陷,
-# 非应用代码;四模块 check 0E + ctron test 全绿为当前语义门,发射修复后本脚本
-# 即为完整验收门(两相位含重启持久化)。可用 CTRON_EMIT= 指向健康二进制。
+# 历史红账(2026-09-26 主分发预算家族)已治愈(2026-10-18 清偿):随批修三处——
+# Ctron.ctcl 补 caps(T11 细键晚于本夹具)/链接路径随 lib/ 库根布局正名/
+# app.ct 字节道迁移(&I64[]→&U8[],hashmap 泳道 net 面换形未达休眠夹具)。
+# 本脚本即完整验收门(两相位含重启持久化)。可用 CTRON_EMIT= 指向替代二进制。
 set -u
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(dirname "$(dirname "$DIR")")
@@ -49,7 +49,7 @@ mkdir -p "$T/data"
 if ! "$EMIT" run "$DIR/src/main.ct" > "$T/app.c" 2>"$T/emit.err"; then
     echo "todo-app-e2e: emit 失败" >&2; head -3 "$T/emit.err"; exit 1
 fi
-if ! $CC -O1 -w -pthread -I"$ROOT/lib/net/c_src" -o "$T/app.bin" "$T/app.c" "$ROOT"/net/c_src/ctron_net.c 2>"$T/cc.err"; then
+if ! $CC -O1 -w -pthread -I"$ROOT/lib/net/c_src" -o "$T/app.bin" "$T/app.c" "$ROOT"/lib/net/c_src/ctron_net.c 2>"$T/cc.err"; then
     echo "todo-app-e2e: cc 失败" >&2; head -5 "$T/cc.err"; exit 1
 fi
 

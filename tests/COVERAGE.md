@@ -2093,3 +2093,21 @@ main.ct 本就 18 枚 E2010 短字面量存量(emit 链非 chk 门,新码随文�
 
 挂账:smoke 时点积压的制度面——G 型批次(只跑自家门)合流后应跑一次全量 smoke 再销账
 (六红潜伏 8 天的教训)。
+
+## 2026-10-18 todo_app 原生 e2e 红账清偿(26/0 两相位全绿;休眠夹具三连修)
+
+**背景**:2026-09-26 红账"原生臂暂被编译器在册发射缺陷阻断(主分发预算家族)"——该
+缺陷已被近期编译器批次治愈(同源发射路径 steno/verify、engine-proxy 均在用),红账期间
+夹具休眠无人再跑,后续三笔破坏/欠账积压其上。本批逐层剥壳清偿:
+
+1. **Ctron.ctcl 缺 caps**:E4010(net.listen/net.connect 细键,T11 晚于夹具)——补
+   `caps = ["net.listen", "net.connect"]`(ctecho 同形)。
+2. **run.sh 链接路径陈旧**:`$ROOT/net/c_src/` → `$ROOT/lib/net/c_src/`(0930 库根
+   布局正名从未达此,emit 破期间 cc 步不可达)。
+3. **app.ct 字节道迁移**:hashmap 泳道(1009)net 写读面换 `ctron_view_w8u`,休眠夹具
+   仍是 I64[] 码点道——9 处迁移(7 签名 &I64[]→&U8[] + buf/scr 声明;cnt 计数器保持
+   I64;助手本为 ASCII 字节操作,语义零变)。
+
+**终态**:`sh examples/todo_app/run.sh` **26 pass / 0 fail**(相位一全链 HTTP 探针
+24 项 + 相位二重启持久化),红账注释正名为治愈登记。老"分发预算家族"判词一并销账
+(复现族若再现应指 emit 链当前回归,非旧账)。

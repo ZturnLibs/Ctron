@@ -56,7 +56,7 @@ fn r_stop() -> Res {
     return Res { code: "200 OK", ctype: "text/plain", extra: "", body: "draining", reload: 0, stop: 1 }
 }
 
-fn lane_str(buf: &I64[], a: I64, b: I64) -> Str {
+fn lane_str(buf: &U8[], a: I64, b: I64) -> Str {
     var out = ""
     var i = a
     while i < b {
@@ -70,7 +70,7 @@ fn lane_str(buf: &I64[], a: I64, b: I64) -> Str {
     return out
 }
 
-fn hfind(buf: &I64[], n: I64, needle: Str) -> I64 {
+fn hfind(buf: &U8[], n: I64, needle: Str) -> I64 {
     let nl = needle.len.as[I64]()
     var i: I64 = 0
     while i + nl <= n {
@@ -91,7 +91,7 @@ fn hfind(buf: &I64[], n: I64, needle: Str) -> I64 {
     return 0 - 1
 }
 
-fn fill(buf: &I64[], s: Str) -> I64 {
+fn fill(buf: &U8[], s: Str) -> I64 {
     var i: I32 = 0
     while i < s.len {
         buf[i] = byte_at(s, i).as[I64]()
@@ -101,7 +101,7 @@ fn fill(buf: &I64[], s: Str) -> I64 {
 }
 
 // 头区取某行头的值("Name: value" → value;未现回空)
-fn hval(buf: &I64[], n: I64, name: Str) -> Str {
+fn hval(buf: &U8[], n: I64, name: Str) -> Str {
     let tag = name + ": "
     let a = hfind(buf, n, tag)
     if a < 0 {
@@ -125,7 +125,7 @@ fn cslot(code: Str) -> I64 {
     return 6
 }
 
-fn respond_res(cnt: &I64[], net: StdNet, fd: I64, buf: &I64[], r: Res) {
+fn respond_res(cnt: &I64[], net: StdNet, fd: I64, buf: &U8[], r: Res) {
     let resp = "HTTP/1.1 " + r.code + "\r\n" + r.extra + "Content-Type: " + r.ctype + "\r\n" + "Content-Length: " + dstr(r.body.len.as[I64]()) + "\r\n" + "Connection: close\r\n" + "\r\n" + r.body
     let m = fill(buf, resp)
     net_write(net, fd, buf, m)
@@ -322,7 +322,7 @@ pub struct ReqH {
 }
 
 // 读请求(头增量解析 + CL 读体;buf/scr 经 & 数参就地写)
-fn read_req(net: StdNet, fd: I64, buf: &I64[], scr: &I64[]) -> ReqH {
+fn read_req(net: StdNet, fd: I64, buf: &U8[], scr: &U8[]) -> ReqH {
     var n: I64 = 0
     var ms: I64 = 0
     var ml: I64 = 0
@@ -393,7 +393,7 @@ pub struct Basics {
     let cookie: Str
 }
 
-fn basics(buf: &I64[], rh: ReqH) -> Basics {
+fn basics(buf: &U8[], rh: ReqH) -> Basics {
     let method = lane_str(buf, rh.ms, rh.ms + rh.ml)
     let target = lane_str(buf, rh.ts, rh.ts + rh.tl)
     let body = lane_str(buf, rh.hend, rh.n)
@@ -617,8 +617,8 @@ fn serve() {
             break
         }
         served += 1
-        var buf: I64[4096] = [0, 0, 0, 0]
-        var scr: I64[2048] = [0, 0, 0, 0]
+        var buf: U8[4096] = [0, 0, 0, 0]
+        var scr: U8[2048] = [0, 0, 0, 0]
         let rh = read_req(net, abox.v, buf, scr)
         if rh.good == 0 {
             let bad = r_text("400 Bad Request", "bad request")

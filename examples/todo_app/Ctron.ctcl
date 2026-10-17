@@ -2,4 +2,5 @@ pkg {
     manifest_version = 1
     name = "todo_app"
     version = "0.1.0"
+    caps = ["net.listen", "net.connect"]
 }
