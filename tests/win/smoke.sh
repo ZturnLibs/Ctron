@@ -83,8 +83,13 @@ case "$(uname -s)" in
 esac
 cat > "$T/fx.c" << 'EOF'
 #include <stdint.h>
-int64_t fx_add(int64_t a, int64_t b) { return a + b; }
-const char* fx_tag(void) { return "fx-g7"; }
+#if defined(_WIN32)
+#define FX_EXPORT __declspec(dllexport)
+#else
+#define FX_EXPORT
+#endif
+FX_EXPORT int64_t fx_add(int64_t a, int64_t b) { return a + b; }
+FX_EXPORT const char* fx_tag(void) { return "fx-g7"; }
 EOF
 "$CC" -O1 -w -fPIC $SOPT $PEX -o "$T/$DLL" "$T/fx.c" 2>"$T/fx.err" \
     || { echo "  FAIL B 插件构建: $(tail -1 "$T/fx.err")"; exit 1; }
@@ -132,13 +137,19 @@ fi
 # ── C 并发(scope/spawn/Channel;06 家法)──
 cat > "$T/conc.ct" << 'EOF'
 fn main() {
+    println("win-probe conc step=enter")
     let sum = scope { |s|
+        println("win-probe conc step=scope")
         let (tx, rx) = Channel[I32](8)
+        println("win-probe conc step=chan")
         s.spawn(|| {
+            println("win-probe conc step=spawned")
             for i in 0..10 {
                 tx.send(i * 7).expect("send")
             }
+            println("win-probe conc step=sent")
         })
+        println("win-probe conc step=spawn-ret")
         var acc: I32 = 0
         for k in 0..10 {
             acc += rx.recv().expect("recv")
