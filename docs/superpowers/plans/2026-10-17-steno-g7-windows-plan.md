@@ -30,9 +30,9 @@
 
 ### Wave 3: CI 真跑迭代 + 批终
 
-- [ ] push 全部待推提交 → gh run watch:windows-smoke 首跑迭代至绿(预期迭代面:msys2 路径形态/exe 栈/winpthreads/宏碰撞)
-- [ ] 验证矩阵余项核销:cdylib+DLL 搜索路径(ctron.exe 在场则入 smoke,否则登记挂账);并发排除项明示(coro 臂=CTRON_RT=coro 不入 Windows 冒烟,登记)
-- [ ] 批终登记(COVERAGE + design 勾 + memory)
+- [x] push 全部待推提交 → gh run watch:windows-smoke 首跑迭代至绿(预期迭代面:msys2 路径形态/exe 栈/winpthreads/宏碰撞)
+- [x] 验证矩阵余项核销:cdylib+DLL 搜索路径(ctron.exe 在场则入 smoke,否则登记挂账);并发排除项明示(coro 臂=CTRON_RT=coro 不入 Windows 冒烟,登记)
+- [x] 批终登记(COVERAGE + design 勾 + memory)
 
 ## 明确不做
 

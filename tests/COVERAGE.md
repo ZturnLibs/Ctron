@@ -1969,3 +1969,31 @@ lib/std/db/*.ct ↔ stdpkg 种子,布局 A' 后 db 出引导种子域;守卫环�
 输出)——按 x_fd_edge 先例转 x_pool_core 仅 emit 臂入计,interp 侧待查=登记债。修复后全量
 **48/0**(54 项−守卫 5−interp 重复计 1,口径自洽)。账面注:设计档记 56/56 为守卫生前期
 口径,54/48 差异=守卫消亡+夹具增减,已在案。
+
+**G7 收官(2026-10-17,W1 805fbf21 + 脚手架 e51563d7 + CI 迭代链;设计 §9;J9 mingw-only+x64)**:
+dlopen 桥 Windows 垫片=发射前言 `#ifdef _WIN32` 宏重定向四名(LoadLibraryW[CP_UTF8→宽字符
+=CJK 路径]/GetProcAddress[空句柄=GetModuleHandleW(NULL)≈RTLD_DEFAULT]/FreeLibrary/
+FormatMessageW→UTF8 dlerror 读即清)+RTLD 宏零值;随批补发射运行时最小 Windows 面(setenv
+→_putenv 拼装/mkdir→_mkdir;盘点=缺口仅此两件+dlopen 族,dirent/nanosleep/stat
+mingw/winpthreads 自带)。**intptr 根修**:dl* 桥 (long)→(intptr_t)(trans_expr 三处+
+from_handle thunk 一处)——Windows long=32 位,HMODULE 截半再符号扩展=GetProcAddress 必空,
+POSIX 等宽零扰动;七轮 CI 归因 B 腿始绿,dlopen 桥 Windows 全链实证(LoadLibraryW→
+GetProcAddress→调用→FreeLibrary)。ci.yml 增 winpre(ubuntu-24.04 seed+emit 四件预发射 C
+[cc/chk/emit/drv])+windows-smoke(msys2 MINGW64+gcc 四件[--stack,16777216;并链 cc2 宿主
+口] +tests/win/smoke.sh 五腿+真 ctron build 腿[best-effort]);runner 钉 24.04+门自装
+clang/lld(wasm32 门自持)。tests/win/smoke.sh 双平台同源(POSIX 本地 6/0):Windows 腿终态
+=A hello/B dlopen DLL/B dlerror 负例/D __sync 绿+C 并发/E CJK 两腿响亮在册 skip(下详)。
+**CI 迭代十四轮在册发现**:①spawn/chan 跨线程 winpthreads 段崩溃(步进定位=spawn-ret 后
+send/recv 段;本地 POSIX 绿——并发运行时 Windows 面=后续批次);②CJK 名可执行文件
+exec/loader 级失败(启动期死);③CI msys2 CJK 命名与 Windows 可见名分歧(cp exit0 而
+PowerShell Test-Path=False,LoadLibraryW 无 file 可指——垫片真文件面由 B 腿全链承载);
+④env 的 CJK 过不了 msys2→原生 exe 边界(len 51 vs 63=6 CJK 字符逐个压 1 字节;argv/文件
+通道能过);⑤PE 不自动导出 DLL 符号(插件须 __declspec(dllexport));⑥ld(collect2) 写
+CJK 输出路径脆性(编译器读 CJK 源路径无恙);⑦Windows 用户程序默认栈 2MB(PE 旗标
+--stack 平台条件化)。**wasm32 坑随批**:minilibc 声明面缺 fgetc(b95c2b16 read_line 进
+wasm 前言)/nanosleep/cond_timedwait/setenv(b95c2b16+G3 面)——bare+wasm32 双树补齐
+(审计驱动:发射前言全量进 wasm 编译面);drv_parity report() FAIL 补两臂输出(一致静默
+=真错被空 diff 吞)。**meta_check 十九处清偿**(E1002 注册+六组泳道 skip,全数=各批欠
+注册非新伤);站点参考页全量再生成(db/sqlite.md 本批欠账+对端五域存量)。挂账:lib/proc
+Windows 面(ctron.exe 腿 best-effort,对端 proc WIP 在飞);并发运行时 Windows 面;工具链
+宽字符 IO 面;RTLD_DEFAULT exe-export 须 --export-all-symbols;coro RT 不入 Windows。
