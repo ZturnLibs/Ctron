@@ -15,6 +15,9 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <poll.h>
+#include <sys/time.h>
+#include <errno.h>
 #include <sys/wait.h>
 
 typedef struct { uint8_t* d; int64_t n; } ctron_view_w8u;
@@ -123,7 +126,7 @@ typedef struct { int64_t v; } ProcBox64;
 
 // argv_p / argv_rc 共用执行核(argv 解析 + chdir + stdin dup2 + execvp + wait):
 // capture = 0 → 不建管道(stdout/stderr 继承);capture > 0 → 管道捕获至 out 容量
-static int32_t proc_exec_core(const char* cwd, ctron_view_w8u blob, int64_t n, const char* stdin_path, int64_t capture, ctron_view_w8u out, ProcBox64* out_len) {
+static int32_t proc_exec_core_to(const char* cwd, ctron_view_w8u blob, int64_t n, const char* stdin_path, int64_t capture, ctron_view_w8u out, ProcBox64* out_len, int64_t timeout_ms) {
     char* argv[33];
     int argc = 0;
     int64_t i = 0;
@@ -160,17 +163,55 @@ static int32_t proc_exec_core(const char* cwd, ctron_view_w8u blob, int64_t n, c
     }
     if (have_pipe) { close(pipefd[1]); }
     int64_t total = 0;
-    if (have_pipe) {
+    int timed_out = 0;
+    if (timeout_ms > 0) {
+        struct timeval tv0;
+        gettimeofday(&tv0, NULL);
+        int64_t deadline = (int64_t)tv0.tv_sec * 1000 + tv0.tv_usec / 1000 + timeout_ms;
+        if (have_pipe) {
+            while (total < out.n) {
+                struct pollfd pfd = { pipefd[0], POLLIN, 0 };
+                struct timeval tvn;
+                gettimeofday(&tvn, NULL);
+                int64_t now_ms = (int64_t)tvn.tv_sec * 1000 + tvn.tv_usec / 1000;
+                int64_t remain = deadline - now_ms;
+                if (remain <= 0) { timed_out = 1; break; }
+                int pr = poll(&pfd, 1, (int)(remain > 1000 ? 1000 : remain));
+                if (pr == 0) {
+                    gettimeofday(&tvn, NULL);
+                    if ((int64_t)tvn.tv_sec * 1000 + tvn.tv_usec / 1000 >= deadline) { timed_out = 1; break; }
+                    continue;
+                }
+                if (pr < 0) { if (errno == EINTR) { continue; } break; }
+                ssize_t r = read(pipefd[0], out.d + total, (size_t)(out.n - total));
+                if (r <= 0) { break; }
+                total += r;
+            }
+        } else {
+            for (;;) {
+                int stq = 0;
+                pid_t wr = waitpid(pid, &stq, WNOHANG);
+                if (wr == pid) { pid = -1; break; }
+                if (wr < 0) { pid = -1; break; }
+                struct timeval tvn;
+                gettimeofday(&tvn, NULL);
+                if ((int64_t)tvn.tv_sec * 1000 + tvn.tv_usec / 1000 >= deadline) { timed_out = 1; break; }
+                usleep(10000);
+            }
+        }
+        if (timed_out && pid > 0) { kill(pid, SIGKILL); }
+    } else if (have_pipe) {
         while (total < out.n) {
             ssize_t r = read(pipefd[0], out.d + total, (size_t)(out.n - total));
             if (r <= 0) { break; }
             total += r;
         }
-        close(pipefd[0]);
     }
+    if (have_pipe) { close(pipefd[0]); }
     int st = 0;
-    waitpid(pid, &st, 0);
+    if (pid > 0) { waitpid(pid, &st, 0); }
     if (out_len != NULL) { out_len->v = have_pipe ? total : 0; }
+    if (timed_out) { return 124; }
     return WIFEXITED(st) ? WEXITSTATUS(st) : -1;
 }
 
@@ -178,9 +219,15 @@ static int32_t proc_exec_core(const char* cwd, ctron_view_w8u blob, int64_t n, c
 // 引用形参不可发射的在册限制不触);stdout/stderr 继承,stdin 语义与 argv_p 同源
 int32_t ctron_proc_run_argv_rc(const char* cwd, ctron_view_w8u blob, int64_t n, const char* stdin_path) {
     ctron_view_w8u no_out = { NULL, 0 };
-    return proc_exec_core(cwd, blob, n, stdin_path, 0, no_out, NULL);
+    return proc_exec_core_to(cwd, blob, n, stdin_path, 0, no_out, NULL, 0);
 }
 
 int32_t ctron_proc_run_argv_p(const char* cwd, ctron_view_w8u blob, int64_t n, const char* stdin_path, int64_t capture, ctron_view_w8u out, ProcBox64* out_len) {
-    return proc_exec_core(cwd, blob, n, stdin_path, capture, out, out_len);
+    return proc_exec_core_to(cwd, blob, n, stdin_path, capture, out, out_len, 0);
+}
+
+// v0.5 安全收口:超时变体——管道 poll 截止/无管道 WNOHANG 轮询,超时 SIGKILL;
+// rc=124(gnu timeout 惯例)。timeout_ms=0 = 无限(与 argv_p 同义)
+int32_t ctron_proc_run_argv_to(const char* cwd, ctron_view_w8u blob, int64_t n, const char* stdin_path, int64_t capture, ctron_view_w8u out, ProcBox64* out_len, int64_t timeout_ms) {
+    return proc_exec_core_to(cwd, blob, n, stdin_path, capture, out, out_len, timeout_ms);
 }

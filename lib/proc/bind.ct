@@ -21,3 +21,7 @@ pub extern "c" fn ctron_proc_run_argv_p(cwd: Str, var blob: U8[], n: I64, stdin_
 // rc 型工具面(argv_p 同核,capture 恒 0):stdout/stderr 继承,stdin_path 空串 =
 // 继承;无 out_len 形参 → 无 &ProcBox64 引用形参,普通门面可发射(proc.ct 包面)
 pub extern "c" fn ctron_proc_run_argv_rc(cwd: Str, var blob: U8[], n: I64, stdin_path: Str) -> I32
+
+// v0.5 安全收口:超时变体——管道 poll 截止/无管道 WNOHANG 轮询,超时 SIGKILL;
+// rc=124(gnu timeout 惯例);timeout_ms=0 = 无限(与 argv_p 同义)。插件试装限额面。
+pub extern "c" fn ctron_proc_run_argv_to(cwd: Str, var blob: U8[], n: I64, stdin_path: Str, capture: I64, var out: U8[], out_len: &ProcBox64, timeout_ms: I64) -> I32
