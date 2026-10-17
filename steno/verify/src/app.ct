@@ -1,0 +1,529 @@
+// app.ct —— steno-verify CLI 收口:子命令分发/旗标面/退出码 0 合法 1 无效 2 用法或 IO
+// argv 经 T26 底座 extern 直调(裸执行 = argv[1..];发射臂 Env 面=解释器专臂,不走)。
+use std.str.{starts_with, split_str, trim_right}
+use std.strconv.{parse_i64, sc_get_l}
+use std.fs.{exists}
+use std.json.{str_json}
+use crypto.{ed25519_keypair_hex}
+use fio.{write_excl_0600}
+use steno_verify.util.{read_key_arg, view_to_hex, split_lines_strip_cr}
+use steno_verify.chain.{verify_chain, sign_chain}
+use steno_verify.license.{verify_license, sign_license}
+use steno_verify.selftest.{selftest_main}
+
+#[trusted]
+extern "c" fn ctron_prog_args_n() -> I64
+#[trusted]
+extern "c" fn ctron_prog_args_at(i: I64) -> Str
+
+fn usage() -> I32 {
+    eprint("steno-verify - stenolog.v1 / stenolicense.v1 independent verifier\n")
+    eprint("usage:\n")
+    eprint("  steno-verify keygen --out <priv-file>\n")
+    eprint("  steno-verify chain --pub <hex|@file> <audit.jsonl> [--json] [--quiet]\n")
+    eprint("  steno-verify sign-chain --priv <hex|@file> <in.jsonl> <out.jsonl>\n")
+    eprint("  steno-verify license --pub <hex|@file> <license.json> [--machine <hex>] [--now <ms>] [--strict] [--json]\n")
+    eprint("  steno-verify sign-license --priv <hex|@file> <in.json> <out.json>\n")
+    eprint("  steno-verify selftest\n")
+    eprint("exit codes: 0 valid, 1 invalid, 2 usage or IO error\n")
+    return 2
+}
+
+fn io_err(what: Str) -> I32 {
+    eprint("steno-verify: " + what + "\n")
+    return 2
+}
+
+// ---- keygen ----
+
+fn cmd_keygen(n: I64) -> I32 {
+    var out_path = ""
+    var i: I64 = 1
+    while i < n {
+        let a = ctron_prog_args_at(i)
+        if a == "--out" {
+            if i + 1 < n {
+                i += 1
+                out_path = ctron_prog_args_at(i)
+            } else {
+                return usage()
+            }
+        } else {
+            return usage()
+        }
+        i += 1
+    }
+    if out_path.len == 0 {
+        return usage()
+    }
+    var pv: U8[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var pb: U8[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    if ed25519_keypair_hex(pv, pb) != 1 {
+        return io_err("keygen failed")
+    }
+    let privhex = view_to_hex(pv)
+    let pubhex = view_to_hex(pb)
+    let w = write_excl_0600(out_path, privhex + "\n", (privhex.len + 1).as[I64]())
+    if w != 1 {
+        return io_err("cannot write " + out_path)
+    }
+    println(pubhex)
+    return 0
+}
+
+// ---- chain ----
+
+fn cmd_chain(n: I64) -> I32 {
+    var pub_arg = ""
+    var file = ""
+    var json_face = false
+    var quiet = false
+    var i: I64 = 1
+    while i < n {
+        let a = ctron_prog_args_at(i)
+        if a == "--pub" {
+            if i + 1 < n {
+                i += 1
+                pub_arg = ctron_prog_args_at(i)
+            } else {
+                return usage()
+            }
+        } else {
+            if a == "--json" {
+                json_face = true
+            } else {
+                if a == "--quiet" {
+                    quiet = true
+                } else {
+                    if starts_with(a, "--") {
+                        return usage()
+                    }
+                    if file.len != 0 {
+                        return usage()
+                    }
+                    file = a
+                }
+            }
+        }
+        i += 1
+    }
+    if pub_arg.len == 0 {
+        return usage()
+    }
+    if file.len == 0 {
+        return usage()
+    }
+    let pub_hex = read_key_arg(pub_arg)
+    if pub_hex.len != 64 {
+        return io_err("bad --pub (want 64 hex chars)")
+    }
+    if exists(file) == false {
+        return io_err("cannot open " + file)
+    }
+    let text = read_file(file)
+    let events = split_lines_strip_cr(text).len
+    let vr = verify_chain(pub_hex, text)
+    var head = ""
+    var reason = ""
+    match vr {
+        Err(m) => {
+            reason = m
+        }
+        Ok(_) => {
+        }
+    }
+    var ok = false
+    if reason.len != 0 {
+        ok = false
+    } else {
+        ok = true
+        head = vr.expect("chain")
+    }
+    if ok {
+        if json_face {
+            println("\{\"format\":\"stenolog.v1\",\"valid\":true,\"events\":" + events.to_string() + ",\"head\":\"" + head + "\"\}")
+        } else {
+            if quiet == false {
+                println("OK stenolog.v1: " + events.to_string() + " events, chain intact, signatures valid")
+                println("head " + head)
+            }
+        }
+        return 0
+    }
+    if json_face {
+        println("\{\"format\":\"stenolog.v1\",\"valid\":false,\"reason\":" + str_json(reason) + "\}")
+    } else {
+        println("INVALID " + reason)
+    }
+    return 1
+}
+
+// ---- sign-chain ----
+
+fn cmd_sign_chain(n: I64) -> I32 {
+    var priv_arg = ""
+    var in_path = ""
+    var out_path = ""
+    var i: I64 = 1
+    while i < n {
+        let a = ctron_prog_args_at(i)
+        if a == "--priv" {
+            if i + 1 < n {
+                i += 1
+                priv_arg = ctron_prog_args_at(i)
+            } else {
+                return usage()
+            }
+        } else {
+            if starts_with(a, "--") {
+                return usage()
+            }
+            if in_path.len == 0 {
+                in_path = a
+            } else {
+                if out_path.len == 0 {
+                    out_path = a
+                } else {
+                    return usage()
+                }
+            }
+        }
+        i += 1
+    }
+    if priv_arg.len == 0 {
+        return usage()
+    }
+    if in_path.len == 0 {
+        return usage()
+    }
+    if out_path.len == 0 {
+        return usage()
+    }
+    let priv_hex = read_key_arg(priv_arg)
+    if priv_hex.len != 64 {
+        return io_err("bad --priv (want 64 hex chars)")
+    }
+    if exists(in_path) == false {
+        return io_err("cannot open " + in_path)
+    }
+    let sr = sign_chain(priv_hex, read_file(in_path))
+    var out_text = ""
+    var reason = ""
+    match sr {
+        Err(m) => {
+            reason = m
+        }
+        Ok(_) => {
+        }
+    }
+    if reason.len != 0 {
+        println("SIGN-FAIL " + reason)
+        return 1
+    }
+    out_text = sr.expect("signed")
+    let w = write_excl_0600(out_path, out_text, out_text.len.as[I64]())
+    if w != 1 {
+        return io_err("cannot write " + out_path)
+    }
+    return 0
+}
+
+// ---- license ----
+
+fn cmd_license(n: I64) -> I32 {
+    var pub_arg = ""
+    var machine_arg = ""
+    var now_arg = ""
+    var strict = false
+    var json_face = false
+    var file = ""
+    var i: I64 = 1
+    while i < n {
+        let a = ctron_prog_args_at(i)
+        if a == "--pub" {
+            if i + 1 < n {
+                i += 1
+                pub_arg = ctron_prog_args_at(i)
+            } else {
+                return usage()
+            }
+        } else {
+            if a == "--machine" {
+                if i + 1 < n {
+                    i += 1
+                    machine_arg = ctron_prog_args_at(i)
+                } else {
+                    return usage()
+                }
+            } else {
+                if a == "--now" {
+                    if i + 1 < n {
+                        i += 1
+                        now_arg = ctron_prog_args_at(i)
+                    } else {
+                        return usage()
+                    }
+                } else {
+                    if a == "--strict" {
+                        strict = true
+                    } else {
+                        if a == "--json" {
+                            json_face = true
+                        } else {
+                            if starts_with(a, "--") {
+                                return usage()
+                            }
+                            if file.len != 0 {
+                                return usage()
+                            }
+                            file = a
+                        }
+                    }
+                }
+            }
+        }
+        i += 1
+    }
+    if pub_arg.len == 0 {
+        return usage()
+    }
+    if file.len == 0 {
+        return usage()
+    }
+    let pub_hex = read_key_arg(pub_arg)
+    if pub_hex.len != 64 {
+        return io_err("bad --pub (want 64 hex chars)")
+    }
+    var machine_hex = ""
+    if machine_arg.len != 0 {
+        machine_hex = read_key_arg(machine_arg)
+        if machine_hex.len != 64 {
+            return io_err("bad --machine (want 64 hex chars)")
+        }
+    }
+    var now_val: I64 = 0
+    var now_given = false
+    if now_arg.len != 0 {
+        let pn = parse_i64(now_arg)
+        now_val = sc_get_l(pn, 0 - 1)
+        if now_val < 0 {
+            return io_err("bad --now (want epoch millis)")
+        }
+        now_given = true
+    }
+    if exists(file) == false {
+        return io_err("cannot open " + file)
+    }
+    let vr = verify_license(pub_hex, read_file(file))
+    var fields = ""
+    var ok = false
+    var reason = ""
+    match vr {
+        Err(m) => {
+            reason = m
+        }
+        Ok(_) => {
+        }
+    }
+    if reason.len != 0 {
+        ok = false
+    } else {
+        ok = true
+        fields = vr.expect("license")
+    }
+    if ok == false {
+        if json_face {
+            println("\{\"format\":\"stenolicense.v1\",\"valid\":false,\"reason\":" + str_json(reason) + "\}")
+        } else {
+            println("INVALID " + reason)
+        }
+        return 1
+    }
+    // TSV 拆字段(product\temail\tmachine\tissued\tupdates\tnonce)
+    let parts = split_str(fields, "\t")
+    if parts.len != 6 {
+        return io_err("internal: field split mismatch")
+    }
+    let product = parts[0]
+    let email = parts[1]
+    let machine = parts[2]
+    var updates_until: I64 = sc_get_l(parse_i64(parts[4]), 0)
+    var expired = false
+    if now_given {
+        if updates_until != 0 {
+            if updates_until < now_val {
+                expired = true
+            }
+        }
+    }
+    var machine_ok = true
+    if machine_arg.len != 0 {
+        if machine != machine_hex {
+            machine_ok = false
+        }
+    }
+    var valid = true
+    if machine_ok == false {
+        valid = false
+    }
+    if strict {
+        if expired {
+            valid = false
+        }
+    }
+    if json_face {
+        var j = ""
+        if valid {
+            j = "\{\"format\":\"stenolicense.v1\",\"valid\":true"
+        } else {
+            j = "\{\"format\":\"stenolicense.v1\",\"valid\":false"
+        }
+        j = j + ",\"product\":" + str_json(product)
+        j = j + ",\"email\":" + str_json(email)
+        j = j + ",\"machine\":\"" + machine + "\""
+        j = j + ",\"updates_until\":" + updates_until.to_string()
+        if now_given {
+            if expired {
+                j = j + ",\"updates_expired\":true"
+            } else {
+                j = j + ",\"updates_expired\":false"
+            }
+        }
+        if machine_arg.len != 0 {
+            if machine_ok {
+                j = j + ",\"machine_match\":true"
+            } else {
+                j = j + ",\"machine_match\":false"
+            }
+        }
+        j = j + "\}"
+        println(j)
+    } else {
+        println("product " + product)
+        println("email " + email)
+        println("machine " + machine)
+        println("updates_until " + updates_until.to_string())
+        if now_given {
+            if expired {
+                println("updates_expired true")
+            } else {
+                println("updates_expired false")
+            }
+        }
+        if machine_arg.len != 0 {
+            if machine_ok {
+                println("machine_match true")
+            } else {
+                println("machine_match false")
+            }
+        }
+        if valid {
+            println("OK stenolicense.v1: signature valid")
+        } else {
+            println("INVALID stenolicense.v1: signature valid but checks failed")
+        }
+    }
+    if valid {
+        return 0
+    }
+    return 1
+}
+
+// ---- sign-license ----
+
+fn cmd_sign_license(n: I64) -> I32 {
+    var priv_arg = ""
+    var in_path = ""
+    var out_path = ""
+    var i: I64 = 1
+    while i < n {
+        let a = ctron_prog_args_at(i)
+        if a == "--priv" {
+            if i + 1 < n {
+                i += 1
+                priv_arg = ctron_prog_args_at(i)
+            } else {
+                return usage()
+            }
+        } else {
+            if starts_with(a, "--") {
+                return usage()
+            }
+            if in_path.len == 0 {
+                in_path = a
+            } else {
+                if out_path.len == 0 {
+                    out_path = a
+                } else {
+                    return usage()
+                }
+            }
+        }
+        i += 1
+    }
+    if priv_arg.len == 0 {
+        return usage()
+    }
+    if in_path.len == 0 {
+        return usage()
+    }
+    if out_path.len == 0 {
+        return usage()
+    }
+    let priv_hex = read_key_arg(priv_arg)
+    if priv_hex.len != 64 {
+        return io_err("bad --priv (want 64 hex chars)")
+    }
+    if exists(in_path) == false {
+        return io_err("cannot open " + in_path)
+    }
+    let sr = sign_license(priv_hex, read_file(in_path))
+    var out_text = ""
+    var reason = ""
+    match sr {
+        Err(m) => {
+            reason = m
+        }
+        Ok(_) => {
+        }
+    }
+    if reason.len != 0 {
+        println("SIGN-FAIL " + reason)
+        return 1
+    }
+    out_text = sr.expect("signed")
+    let w = write_excl_0600(out_path, out_text, out_text.len.as[I64]())
+    if w != 1 {
+        return io_err("cannot write " + out_path)
+    }
+    return 0
+}
+
+// ---- 分发 ----
+
+pub fn app_main() -> I32 {
+    let n = ctron_prog_args_n()
+    if n < 1 {
+        return usage()
+    }
+    let cmd = ctron_prog_args_at(0)
+    if cmd == "selftest" {
+        return selftest_main()
+    }
+    if cmd == "keygen" {
+        return cmd_keygen(n)
+    }
+    if cmd == "chain" {
+        return cmd_chain(n)
+    }
+    if cmd == "sign-chain" {
+        return cmd_sign_chain(n)
+    }
+    if cmd == "license" {
+        return cmd_license(n)
+    }
+    if cmd == "sign-license" {
+        return cmd_sign_license(n)
+    }
+    return usage()
+}

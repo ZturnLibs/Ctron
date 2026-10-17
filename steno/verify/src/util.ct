@@ -1,0 +1,88 @@
+// util.ct —— steno-verify 公共件:hex 校验/视图转 hex/键参读取/行切分
+// 契约:docs/superpowers/specs/2026-10-17-steno-verify-format-spec.md §3(密钥 hex 文本交换)。
+// 落盘统一 write_excl_0600(私钥面正合;数据面仅权限偏严,fixture 无碍)。
+use std.str.{repeat, trim_right, ends_with, lines}
+
+// 全小写 hex 判定(空串 = 否)
+pub fn is_lower_hex(s: Str) -> Bool {
+    if s.len == 0 {
+        return false
+    }
+    var i: I32 = 0
+    while i < s.len {
+        let c = byte_at(s, i)
+        if c >= 48 {
+            if c <= 57 {
+                i += 1
+                continue
+            }
+        }
+        if c >= 97 {
+            if c <= 102 {
+                i += 1
+                continue
+            }
+        }
+        return false
+    }
+    return true
+}
+
+// U8 视图 → hex 串(视图读带符号位矫正;tests/crypto 同款)
+pub fn view_to_hex(var v: U8[]) -> Str {
+    var out = ""
+    var i: I32 = 0
+    while i < v.len {
+        var b = v[i]
+        if b < 0 {
+            b = b + 256
+        }
+        out = out + utf8_enc(b)
+        i += 1
+    }
+    return out
+}
+
+// 键参解析:<hex> 直给或 @<path>(文件一行 hex,剥尾白);失败返 ""
+pub fn read_key_arg(arg: Str) -> Str {
+    if arg.len == 0 {
+        return ""
+    }
+    if byte_at(arg, 0) == 64 {
+        let path = byte_slice(arg, 1, arg.len)
+        let raw = read_file(path)
+        if raw.len == 0 {
+            return ""
+        }
+        let t = trim_right(raw)
+        if is_lower_hex(t) {
+            return t
+        }
+        return ""
+    }
+    if is_lower_hex(arg) {
+        return arg
+    }
+    return ""
+}
+
+// 创世 prev(64 零)
+pub fn genesis_prev() -> Str {
+    return repeat("0", 64)
+}
+
+// 文本行切分(剥行尾 \r;空尾行自然落)
+pub fn split_lines_strip_cr(text: Str) -> List[Str] {
+    var ls = lines(text)
+    var out = List[Str]()
+    var i: I32 = 0
+    while i < ls.len {
+        var l = ls[i]
+        if ends_with(l, "\r") {
+            l = byte_slice(l, 0, l.len - 1)
+        }
+        out.push(l)
+        i += 1
+    }
+    return out
+}

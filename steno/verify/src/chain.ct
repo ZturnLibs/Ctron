@@ -1,0 +1,293 @@
+// chain.ct —— stenolog.v1 审计链:core 提取/逐行验证/链环/sign-chain 生产面
+// 契约:docs/superpowers/specs/2026-10-17-steno-verify-format-spec.md §1。
+// 裁决核心:core = 行内最后一个 `,"hash":"` 之前的全部字节——hash 与 sig 覆盖
+// 生产者精确字节,验证器零再序列化;JSON 串内引号必转义 ⇒ 裸标记只可能出现在
+// 结构位,「最后一处 + count==1」即无歧义。
+use std.json.{parse, qval, qtag, jget_i64}
+use std.str.{rindex, count_sub, ends_with, trim_right}
+use crypto.{sha256_hex_fast, ed25519_verify_hex, ed25519_sign_hex}
+use steno_verify.util.{is_lower_hex, genesis_prev, split_lines_strip_cr}
+
+pub fn mk_hash_marker() -> Str {
+    return ",\"hash\":\""
+}
+
+pub fn mk_sig_marker() -> Str {
+    return ",\"sig\":\""
+}
+
+pub fn mk_prev_marker() -> Str {
+    return ",\"prev\":\""
+}
+
+// kind 字符域 [A-Za-z0-9_.-](禁 && 依赖短路,逐支显式)
+fn kind_char_ok(c: I32) -> Bool {
+    if c >= 48 {
+        if c <= 57 {
+            return true
+        }
+    }
+    if c >= 65 {
+        if c <= 90 {
+            return true
+        }
+    }
+    if c >= 97 {
+        if c <= 122 {
+            return true
+        }
+    }
+    if c == 95 {
+        return true
+    }
+    if c == 46 {
+        return true
+    }
+    if c == 45 {
+        return true
+    }
+    return false
+}
+
+fn kind_ok(k: Str) -> Bool {
+    if k.len < 1 {
+        return false
+    }
+    if k.len > 64 {
+        return false
+    }
+    var i: I32 = 0
+    while i < k.len {
+        if kind_char_ok(byte_at(k, i)) == false {
+            return false
+        }
+        i += 1
+    }
+    return true
+}
+
+fn line_msg(idx: I32, why: Str) -> Str {
+    return "line " + idx.to_string() + ": " + why
+}
+
+// 信封字段核对(签名/未签名两面共用):es 已是解析成功的条目表。
+// 返回 Err(报告) / Ok(_)。ts/seq 型与域、kind/actor/payload 存在性。
+fn check_envelope_fields(es: List[List[Str]], idx: I32) -> Result[Str, Str] {
+    let gv = jget_i64(es, "$.v")
+    match gv {
+        Ok(v) => {
+            if v != 1 {
+                return Err(line_msg(idx, "v must be 1"))
+            }
+        }
+        Err(_) => {
+            return Err(line_msg(idx, "v missing or not an integer"))
+        }
+    }
+    let gs = jget_i64(es, "$.seq")
+    match gs {
+        Ok(s) => {
+            if s != idx {
+                let want = idx
+                return Err(line_msg(idx, "seq must be " + want.to_string()))
+            }
+        }
+        Err(_) => {
+            return Err(line_msg(idx, "seq missing or not an integer"))
+        }
+    }
+    let gt = jget_i64(es, "$.ts")
+    match gt {
+        Ok(t) => {
+            if t < 0 {
+                return Err(line_msg(idx, "ts must be >= 0"))
+            }
+        }
+        Err(_) => {
+            return Err(line_msg(idx, "ts missing or not an integer"))
+        }
+    }
+    if qtag(es, "$.kind") != "s" {
+        return Err(line_msg(idx, "kind missing or not a string"))
+    }
+    if kind_ok(qval(es, "$.kind")) == false {
+        return Err(line_msg(idx, "kind must match [A-Za-z0-9_.-]{1,64}"))
+    }
+    if qtag(es, "$.actor") != "s" {
+        return Err(line_msg(idx, "actor missing or not a string"))
+    }
+    if qtag(es, "$.payload") == "" {
+        return Err(line_msg(idx, "payload missing"))
+    }
+    return Ok("ok")
+}
+
+// 逐行验证:返回 Ok(本行 hash) / Err(报告)
+fn verify_line(pub_hex: Str, line: Str, idx: I32, prev_expect: Str) -> Result[Str, Str] {
+    if line.len == 0 {
+        return Err(line_msg(idx, "empty line"))
+    }
+    let hm_count = count_sub(line, mk_hash_marker())
+    if hm_count != 1 {
+        return Err(line_msg(idx, "hash marker must occur exactly once"))
+    }
+    let sm_count = count_sub(line, mk_sig_marker())
+    if sm_count != 1 {
+        return Err(line_msg(idx, "sig marker must occur exactly once"))
+    }
+    if ends_with(line, "\"}") == false {
+        return Err(line_msg(idx, "line must end with sig closing quote+brace"))
+    }
+    let hm = rindex(line, mk_hash_marker())
+    let sm = rindex(line, mk_sig_marker())
+    // hash 域恰 64 字节 + 收引号一位,紧邻 sig 域
+    if sm != hm + 9 + 64 + 1 {
+        return Err(line_msg(idx, "hash field must be exactly 64 chars before sig marker"))
+    }
+    let sig_len = line.len - 2 - (sm + 8)
+    if sig_len != 128 {
+        return Err(line_msg(idx, "sig field must be exactly 128 chars"))
+    }
+    let core = byte_slice(line, 0, hm)
+    let hash_hex = byte_slice(line, hm + 9, hm + 9 + 64)
+    let sig_hex = byte_slice(line, sm + 8, line.len - 2)
+    if is_lower_hex(hash_hex) == false {
+        return Err(line_msg(idx, "hash must be 64 lowercase hex chars"))
+    }
+    if is_lower_hex(sig_hex) == false {
+        return Err(line_msg(idx, "sig must be 128 lowercase hex chars"))
+    }
+    // prev 提取:core 以 ,"prev":"<64hex>" 收尾
+    if ends_with(core, "\"") == false {
+        return Err(line_msg(idx, "core must end with prev closing quote"))
+    }
+    let pm_count = count_sub(core, mk_prev_marker())
+    if pm_count != 1 {
+        return Err(line_msg(idx, "prev marker must occur exactly once"))
+    }
+    let pm = rindex(core, mk_prev_marker())
+    let prev_len = core.len - 1 - (pm + 9)
+    if prev_len != 64 {
+        return Err(line_msg(idx, "prev must be exactly 64 chars"))
+    }
+    let prev_hex = byte_slice(core, pm + 9, core.len - 1)
+    if is_lower_hex(prev_hex) == false {
+        return Err(line_msg(idx, "prev must be 64 lowercase hex chars"))
+    }
+    // JSON 结构面
+    let pr = parse(line)
+    if pr.is_ok() == false {
+        return Err(line_msg(idx, "invalid JSON"))
+    }
+    let es = pr.expect("parse")
+    let ef = check_envelope_fields(es, idx)
+    match ef {
+        Err(m) => {
+            return Err(m)
+        }
+        Ok(_) => {
+        }
+    }
+    // 链环
+    if prev_hex != prev_expect {
+        return Err(line_msg(idx, "chain break: prev does not match previous hash"))
+    }
+    // 完整性:SHA-256(core)
+    let h = sha256_hex_fast(core)
+    if h != hash_hex {
+        return Err(line_msg(idx, "hash mismatch"))
+    }
+    // 真伪:Ed25519(pub, core)
+    let vv = ed25519_verify_hex(pub_hex, core, sig_hex)
+    if vv != 1 {
+        return Err(line_msg(idx, "signature invalid"))
+    }
+    return Ok(hash_hex)
+}
+
+// 全链验证:Ok(链头 hash) / Err(首败报告)。空文本 = 合法空链(Ok(""))。
+pub fn verify_chain(pub_hex: Str, text: Str) -> Result[Str, Str] {
+    if pub_hex.len != 64 {
+        return Err("config: pub key must be 64 hex chars")
+    }
+    if is_lower_hex(pub_hex) == false {
+        return Err("config: pub key must be lowercase hex")
+    }
+    let ls = split_lines_strip_cr(text)
+    var prev_expect = genesis_prev()
+    var i: I32 = 0
+    while i < ls.len {
+        let vr = verify_line(pub_hex, ls[i], i, prev_expect)
+        var bad = ""
+        match vr {
+            Err(m) => {
+                bad = m
+            }
+            Ok(_) => {
+            }
+        }
+        if bad.len != 0 {
+            return Err(bad)
+        }
+        prev_expect = vr.expect("line")
+        i += 1
+    }
+    return Ok(prev_expect)
+}
+
+// 未签名行字段核对(生产面):标记必须缺席 + 信封字段齐全
+fn check_unsigned_line(line: Str, idx: I32) -> Result[Str, Str] {
+    if count_sub(line, mk_hash_marker()) != 0 {
+        return Err(line_msg(idx, "input already carries a hash field"))
+    }
+    if count_sub(line, mk_sig_marker()) != 0 {
+        return Err(line_msg(idx, "input already carries a sig field"))
+    }
+    if ends_with(line, "}") == false {
+        return Err(line_msg(idx, "input line must end with }"))
+    }
+    let pr = parse(line)
+    if pr.is_ok() == false {
+        return Err(line_msg(idx, "invalid JSON"))
+    }
+    let es = pr.expect("parse")
+    return check_envelope_fields(es, idx)
+}
+
+// sign-chain:未签名事件行流 → 补链环与签名的完整行流(Ok = 全部输出文本)
+pub fn sign_chain(priv_hex: Str, in_text: Str) -> Result[Str, Str] {
+    if priv_hex.len != 64 {
+        return Err("config: priv key must be 64 hex chars")
+    }
+    if is_lower_hex(priv_hex) == false {
+        return Err("config: priv key must be lowercase hex")
+    }
+    let ls = split_lines_strip_cr(in_text)
+    var prev = genesis_prev()
+    var out = ""
+    var i: I32 = 0
+    while i < ls.len {
+        let line = trim_right(ls[i])
+        if line.len == 0 {
+            return Err(line_msg(i, "empty line"))
+        }
+        let uv = check_unsigned_line(line, i)
+        match uv {
+            Err(m) => {
+                return Err(m)
+            }
+            Ok(_) => {
+            }
+        }
+        let core = byte_slice(line, 0, line.len - 1) + ",\"prev\":\"" + prev + "\""
+        let h = sha256_hex_fast(core)
+        let sg = ed25519_sign_hex(priv_hex, core)
+        if sg.len != 128 {
+            return Err(line_msg(i, "sign failed"))
+        }
+        out = out + core + ",\"hash\":\"" + h + "\",\"sig\":\"" + sg + "\"}" + "\n"
+        prev = h
+        i += 1
+    }
+    return Ok(out)
+}

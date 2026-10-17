@@ -1,0 +1,189 @@
+// selftest.ct —— 进程内自检:RFC 向量 + 真密钥全链自签自验 + 篡改负例矩阵
+// 口径:零文件零网络(与 tests/crypto 回环纪律一致);失败即 println 原因 + rc 1。
+use std.str.{replace, contains}
+use crypto.{sha256_hex_fast, ed25519_keypair_hex}
+use steno_verify.util.{is_lower_hex, view_to_hex, genesis_prev}
+use steno_verify.chain.{verify_chain, sign_chain}
+
+// 三枚 RFC 6234 SHA-256 向量(tests/crypto 同源)
+pub fn selftest_sha256() -> Str {
+    if sha256_hex_fast("abc") != "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" {
+        return "sha256 vector abc"
+    }
+    if sha256_hex_fast("") != "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" {
+        return "sha256 vector empty"
+    }
+    if sha256_hex_fast("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq") != "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1" {
+        return "sha256 vector 448"
+    }
+    return ""
+}
+
+// hex 助手与创世面
+pub fn selftest_util() -> Str {
+    if is_lower_hex("0123456789abcdef") == false {
+        return "is_lower_hex should accept"
+    }
+    if is_lower_hex("ABCDEF") {
+        return "is_lower_hex should reject upper"
+    }
+    if is_lower_hex("") {
+        return "is_lower_hex should reject empty"
+    }
+    if genesis_prev().len != 64 {
+        return "genesis prev must be 64 chars"
+    }
+    return ""
+}
+
+// 三事件未签名流(覆盖 actor 空/payload 嵌套/对抗内容三面)
+fn fixture_unsigned() -> Str {
+    var out = ""
+    out = out + "\{\"v\":1,\"seq\":0,\"ts\":1730000000000,\"kind\":\"import\",\"actor\":\"steno-cli/1.0\",\"payload\":\{\"file\":\"a.wav\",\"bytes\":48000\}\}" + "\n"
+    out = out + "\{\"v\":1,\"seq\":1,\"ts\":1730000001000,\"kind\":\"transcribe\",\"actor\":\"\",\"payload\":\{\"segments\":42,\"nested\":\{\"lang\":\"zh\"\}\}\}" + "\n"
+    out = out + "\{\"v\":1,\"seq\":2,\"ts\":1730000002000,\"kind\":\"export\",\"actor\":\"steno-cli/1.0\",\"payload\":\{\"note\":\"adversarial ,\\\"hash:\\\" and ,\\\"sig:\\\" bytes inside\"\}\}" + "\n"
+    return out
+}
+
+// 真密钥全链:签 → 验 → 空链 → 五负例
+pub fn selftest_chain_roundtrip() -> Str {
+    var pv: U8[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var pb: U8[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    if ed25519_keypair_hex(pv, pb) != 1 {
+        return "keygen failed"
+    }
+    let privhex = view_to_hex(pv)
+    let pubhex = view_to_hex(pb)
+    if privhex.len != 64 {
+        return "priv hex must be 64 chars"
+    }
+    // 签
+    let sr = sign_chain(privhex, fixture_unsigned())
+    var signed = ""
+    var sign_bad = ""
+    match sr {
+        Err(m) => {
+            sign_bad = m
+        }
+        Ok(_) => {
+        }
+    }
+    if sign_bad.len != 0 {
+        return "sign failed: " + sign_bad
+    }
+    signed = sr.expect("signed")
+    // 验
+    let vr = verify_chain(pubhex, signed)
+    var verify_bad = ""
+    match vr {
+        Err(m) => {
+            verify_bad = m
+        }
+        Ok(_) => {
+        }
+    }
+    if verify_bad.len != 0 {
+        return "verify failed on own signed chain: " + verify_bad
+    }
+    // 空链合法
+    let er = verify_chain(pubhex, "")
+    match er {
+        Err(_) => {
+            return "empty chain must be valid"
+        }
+        Ok(_) => {
+        }
+    }
+    // 负例一:payload 篡改(hash 必失)
+    let t1 = replace(signed, "\"a.wav\"", "\"b.wav\"")
+    if contains(t1, "\"b.wav\"") == false {
+        return "tamper fixture did not apply"
+    }
+    let r1 = verify_chain(pubhex, t1)
+    match r1 {
+        Err(_) => {
+        }
+        Ok(_) => {
+            return "payload tamper must be rejected"
+        }
+    }
+    // 负例二:签名篡改
+    let t2 = replace(signed, "\"kind\":\"export\"", "\"kind\":\"EXPORT\"")
+    let r2 = verify_chain(pubhex, t2)
+    match r2 {
+        Err(_) => {
+        }
+        Ok(_) => {
+            return "sig-field tamper must be rejected"
+        }
+    }
+    // 负例三:链头截断(seq 跳号面——去掉首行后行下标错位)
+    var rest = ""
+    var found = false
+    var i: I32 = 0
+    while i < signed.len {
+        if byte_at(signed, i) == 10 {
+            if found == false {
+                rest = byte_slice(signed, i + 1, signed.len)
+                found = true
+            }
+        }
+        i += 1
+    }
+    if found == false {
+        return "fixture must contain newline"
+    }
+    let r3 = verify_chain(pubhex, rest)
+    match r3 {
+        Err(_) => {
+        }
+        Ok(_) => {
+            return "dropped first line must break seq/genesis"
+        }
+    }
+    // 负例四:错公钥
+    var pv2: U8[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var pb2: U8[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    if ed25519_keypair_hex(pv2, pb2) != 1 {
+        return "keygen2 failed"
+    }
+    let r4 = verify_chain(view_to_hex(pb2), signed)
+    match r4 {
+        Err(_) => {
+        }
+        Ok(_) => {
+            return "wrong pubkey must be rejected"
+        }
+    }
+    // 负例五:seq 跳号(未签名流里改 seq)
+    let bad_input = replace(fixture_unsigned(), "\"seq\":1", "\"seq\":7")
+    let sr5 = sign_chain(privhex, bad_input)
+    match sr5 {
+        Err(_) => {
+        }
+        Ok(_) => {
+            return "seq gap in unsigned input must be rejected"
+        }
+    }
+    return ""
+}
+
+pub fn selftest_main() -> I32 {
+    let r1 = selftest_sha256()
+    if r1.len != 0 {
+        println("selftest FAIL: " + r1)
+        return 1
+    }
+    let r2 = selftest_util()
+    if r2.len != 0 {
+        println("selftest FAIL: " + r2)
+        return 1
+    }
+    let r3 = selftest_chain_roundtrip()
+    if r3.len != 0 {
+        println("selftest FAIL: " + r3)
+        return 1
+    }
+    println("selftest OK: sha256 vectors, hex utils, chain roundtrip, 5 negatives")
+    return 0
+}

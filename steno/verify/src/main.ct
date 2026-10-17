@@ -1,0 +1,6 @@
+// main.ct —— 入口薄壳(todo_app 同款:逻辑全下沉依赖模块,主文件直发不触 20480B 家族)
+use steno_verify.app.{ app_main }
+
+fn main() -> I32 {
+    return app_main()
+}

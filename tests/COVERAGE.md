@@ -1997,3 +1997,37 @@ wasm 前言)/nanosleep/cond_timedwait/setenv(b95c2b16+G3 面)——bare+wasm32 �
 注册非新伤);站点参考页全量再生成(db/sqlite.md 本批欠账+对端五域存量)。挂账:lib/proc
 Windows 面(ctron.exe 腿 best-effort,对端 proc WIP 在飞);并发运行时 Windows 面;工具链
 宽字符 IO 面;RTLD_DEFAULT exe-export 须 --export-all-symbols;coro RT 不入 Windows。
+
+## 2026-10-17 Stage 0:steno-verify 秘本审计链独立验证器(steno 泳道 G 批收官后第一棒)
+
+**定位**:采纳路径 Stage 0(steno-verify 纯计算 dogfood,gap-fill 设计 §11;G1–G7 全落库后
+唯一未动项)。前置「秘本侧计划可见」以规格落库自就:`docs/superpowers/specs/2026-10-17-steno-verify-format-spec.md`
+(stenolog.v1 审计链 + stenolicense.v1 license 双契约:固定字段序紧凑 JSON、core=最后一个
+`,"hash":"`/`,"sig":"` 标记前全字节、hash=SHA-256(core)、sig=Ed25519(core)、创世 prev=64 零、
+验证器零再序列化逐字复算;独立对拍协议=openssl 双向)。
+
+**交付**:`steno/verify/`(steno-verify 单二进制:main 薄壳 + app/chain/license/selftest/util 五模块,
+`use steno_verify.<mod>` 依赖路径发射,todo_app 同款 20480B 家族绕行)+ `tests/steno/run.sh`
+验收门 **24/24**:selftest(SHA-256 RFC 6234 三向量+真密钥全链自签自验+五负例)、keygen
+(0600 落盘+pub hex)、sign-chain/chain 三事件全环、负例七枚(payload/签域篡改/sig 翻字符/
+首行截断 seq 跳号/错公钥/非法 JSON/空链合法+缺文件 rc2)、license 四态(真伪/机器绑定合与
+不合/过期 strict rc1+只报告 rc0)、**openssl 双向对拍**(A:openssl 私钥签链我方验+我方
+sig 经 `openssl pkeyutl -rawin` 验;B:同 core 同钥必同 sig=Ed25519 确定性)。
+
+**随批根修 lib/std/str.ct**:`trim_left`/`trim_right` 双重步进 bug(if 分支内 `+=/-= 1` 后分支
+尾又步进一次)——每枚尾部空白多吃一邻近字符(`"abc\n"`→`"ab"`);奇数空白串才显形,存量
+测试全偶数串侥幸绿。修复+奇数串回归钉五枚,`ctron test lib/std/str.ct` 绿;零其他消费方
+(修复前 grep 全仓=0 调用点),smoke --full/suite 无涟漪(suite 119/120,唯一红
+07a_cap_fs_inject E4010 与 HEAD 版 str.ct 同红=共享树存量在册非本批)。
+
+**发射臂形状纪律(本批实证增补,编译器在册缺口的窄化记录)**:①命名空间 Member 调
+泛型 Result 返回 fn(`json.parse(...)`)发射生成坏 C(t_json/t_parse 未声明)——一律
+`use std.json.{...}` 裸名;②容器载荷 Result 的 match 绑定臂 Ok(es) 运行时段错误(标量载荷
+绑定可用)——判别走 `is_ok()`+`let es = pr.expect(...)` 先绑后用;③expect 严禁内联进调用
+实参(实参错位可打出 expect 消息本身);④`#[trusted] extern "c" ctron_prog_args_n/at`
+直调=裸执行 argv 唯一发射面(Env.system()=解释器专臂);⑤write_excl_0600 返回 1=新建
+(非 0)。
+
+挂账:审计链流式校验(全文读入为 v0 口径)、payload 业务语义注册表、多签/链头外部 anchor、
+PEM/Base64 密钥面(全 P2,契约 §6);跨包 use 图含 selftest 未 pub 符号时 emit 静默吞全图
+(b4 现象一次,pub 化后消失,未最小化复现=观察在册)。

@@ -1,0 +1,5 @@
+pkg {
+    manifest_version = 1
+    name = "steno_verify"
+    version = "0.1.0"
+}
