@@ -69,5 +69,5 @@ Server-Sent Events(P4-C):事件流写面 + 客户端读侧
 | `sret_data(r: SseRet)` | `Str` | — |
 | `sret_id(r: SseRet)` | `Str` | — |
 | `sret_st(r: SseRet)` | `SseSt` | — |
-| `sse_step(src: &[I64], n: I64, pos: I64, st: SseSt)` | `SseRet` | 一步:自 pos 扫描;完整行即时处理(行内循环),空行派发(data 非空)或<br>吞弃;输入尽则 rc=0(回卷至未竟行起点)。行值段出 Str;域外字节 → -1。 |
+| `sse_step(src: &[U8], n: I64, pos: I64, st: SseSt)` | `SseRet` | 一步:自 pos 扫描;完整行即时处理(行内循环),空行派发(data 非空)或<br>吞弃;输入尽则 rc=0(回卷至未竟行起点)。行值段出 Str;域外字节 → -1。 |
 

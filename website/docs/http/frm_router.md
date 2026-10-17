@@ -109,18 +109,18 @@ frm_slice_str 并集注记(Task 3):非 printable/越域字节 → ""(空串),
 | `frm_rc_match()` | `I64` | 匹配结果 rc 码(1 = 命中 / 0 = 405 面 / -1 = 404 面) |
 | `frm_rc_method()` | `I64` | — |
 | `frm_rc_miss()` | `I64` | — |
-| `frm_mcode_buf(buf: &[I64], s: I64, l: I64)` | `I64` | 请求侧方法码(lane 切片;parse.ct method 槽直喂;全 token 比较,同上) |
+| `frm_mcode_buf(buf: &[U8], s: I64, l: I64)` | `I64` | 请求侧方法码(lane 切片;parse.ct method 槽直喂;全 token 比较,同上) |
 | `fr_rc(m: FrmRoute)` | `I64` | — |
 | `fr_id(m: FrmRoute)` | `I64` | — |
 | `fr_np(m: FrmRoute)` | `I64` | — |
 | `fr_ps(m: FrmRoute, k: I64)` | `I64` | — |
 | `fr_pl(m: FrmRoute, k: I64)` | `I64` | — |
-| `frm_match(spec: Str, meth: I64, buf: &[I64], ts: I64, tl: I64)` | `FrmRoute` | 路由匹配:spec(消费方 comptime const 表)× 方法码 × 请求目标 buf 切片<br>(parse.ct target 槽直喂;query/fragment 零拷贝缩界)。语义见头注。 |
-| `frm_slice_str(src: &[I64], a: I64, b: I64)` | `Str` | lane 字节域 → Str(printable ASCII 门,client.ct cx_slice_str 同款已证形;<br>123 '{' 词法域拒;越域 → "") |
-| `frm_param(buf: &[I64], m: FrmRoute, k: I64)` | `Str` | 第 k 参数原始切片(未解码;k 越界/无捕获 → "";offsets 绝对指向 buf) |
-| `frm_param_dec(buf: &[I64], m: FrmRoute, k: I64, bad: Str)` | `Str` | 第 k 参数 percent 解码(经 std/enc;非法 → bad 哨兵 —— Option 中间值<br>不落 let 绑定,emit 缺口绕行见头注) |
-| `frm_param_dec_ok(buf: &[I64], m: FrmRoute, k: I64)` | `I64` | 第 k 参数 percent 解码可解判(1 = 可解 / 0 = 不可解;谓词出口) |
+| `frm_match(spec: Str, meth: I64, buf: &[U8], ts: I64, tl: I64)` | `FrmRoute` | 路由匹配:spec(消费方 comptime const 表)× 方法码 × 请求目标 buf 切片<br>(parse.ct target 槽直喂;query/fragment 零拷贝缩界)。语义见头注。 |
+| `frm_slice_str(src: &[U8], a: I64, b: I64)` | `Str` | lane 字节域 → Str(printable ASCII 门,client.ct cx_slice_str 同款已证形;<br>123 '{' 词法域拒;越域 → "") |
+| `frm_param(buf: &[U8], m: FrmRoute, k: I64)` | `Str` | 第 k 参数原始切片(未解码;k 越界/无捕获 → "";offsets 绝对指向 buf) |
+| `frm_param_dec(buf: &[U8], m: FrmRoute, k: I64, bad: Str)` | `Str` | 第 k 参数 percent 解码(经 std/enc;非法 → bad 哨兵 —— Option 中间值<br>不落 let 绑定,emit 缺口绕行见头注) |
+| `frm_param_dec_ok(buf: &[U8], m: FrmRoute, k: I64)` | `I64` | 第 k 参数 percent 解码可解判(1 = 可解 / 0 = 不可解;谓词出口) |
 | `fi_rc(x: FrmI64)` | `I64` | — |
 | `fi_v(x: FrmI64)` | `I64` | — |
-| `frm_param_i64(buf: &[I64], m: FrmRoute, k: I64)` | `FrmI64` | 第 k 参数 → I64(严格 1*DIGIT,无符号;非数字/空/溢出拒 —— parse.ct<br>hs_parse_dec 界门同款 + C10 宽域惯用法((i) 乘法定宽)。评审修正:阈值<br>精确命中亦裁 —— acc == 922337203685477580 且位 &gt; 7 时 acc*10+d 越域<br>即双臂确定性 panic(如 9223372036854775808;仅查 &gt; 的窗在请求路径可达,<br>P4 先例 = 可达实例就地修) |
+| `frm_param_i64(buf: &[U8], m: FrmRoute, k: I64)` | `FrmI64` | 第 k 参数 → I64(严格 1*DIGIT,无符号;非数字/空/溢出拒 —— parse.ct<br>hs_parse_dec 界门同款 + C10 宽域惯用法((i) 乘法定宽)。评审修正:阈值<br>精确命中亦裁 —— acc == 922337203685477580 且位 &gt; 7 时 acc*10+d 越域<br>即双臂确定性 panic(如 9223372036854775808;仅查 &gt; 的窗在请求路径可达,<br>P4 先例 = 可达实例就地修) |
 

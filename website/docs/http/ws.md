@@ -83,8 +83,8 @@ WebSocket(P4-C):upgrade 握手面 + RFC 6455 §5 帧编解码
 |---|---|---|
 | `ws_guid()` | `Str` | — |
 | `ws_accept_key(key: Str)` | `Str` | Sec-WebSocket-Accept = b64(SHA1(key + GUID))(§4.2.2 步骤 4;Str 面) |
-| `ws_accept_key_lane(key: &[I64], off: I64, n: I64)` | `Str` | lane 面(消费方自报文 lane 切片直取,零 Str 转换) |
-| `ws_upgrade_ok(upg: &[I64], us: I64, ul: I64, conn: &[I64], cs: I64, cl: I64, key: &[I64], ks: I64, kl: I64, ver: &[I64], vs: I64, vl: I64)` | `I64` | 升级判(§4.2.1 从严子集):1 = 可升级;0 = 拒(消费方应 400)。<br>upgrade 值 CI "websocket" / connection 逗号表 CI 含 "upgrade" / key 恰 24<br>字节 / version 值恰 "13"(§4.2.1.6 MUST 验版,非 13 → fail)。 |
+| `ws_accept_key_lane(key: &[U8], off: I64, n: I64)` | `Str` | lane 面(消费方自报文 lane 切片直取,零 Str 转换) |
+| `ws_upgrade_ok(upg: &[U8], us: I64, ul: I64, conn: &[U8], cs: I64, cl: I64, key: &[U8], ks: I64, kl: I64, ver: &[U8], vs: I64, vl: I64)` | `I64` | 升级判(§4.2.1 从严子集):1 = 可升级;0 = 拒(消费方应 400)。<br>upgrade 值 CI "websocket" / connection 逗号表 CI 含 "upgrade" / key 恰 24<br>字节 / version 值恰 "13"(§4.2.1.6 MUST 验版,非 13 → fail)。 |
 | `ws_op_cont()` | `I64` | — |
 | `ws_op_text()` | `I64` | — |
 | `ws_op_binary()` | `I64` | — |
@@ -104,10 +104,10 @@ WebSocket(P4-C):upgrade 握手面 + RFC 6455 §5 帧编解码
 | `ws_close_no_extension()` | `I64` | — |
 | `ws_close_unexpected()` | `I64` | — |
 | `ws_close_code_ok(code: I64)` | `I64` | 可上线关闭码白名单(1000..1003 / 1007..1011 / 3000..4999;1004/1005/1006<br>/1012..1014/1015 与 &lt;1000 不得发 —— RFC 6455 §7.4) |
-| `ws_close_payload(code: I64, out: &[I64])` | `I64` | close 帧载荷(2 字节 BE 码);返回 2 |
-| `ws_frame_head(out: &[I64], out_off: I64, cap: I64, opcode: I64, fin: I64, plen: I64, masked: I64, mkey: I64)` | `I64` | 编码帧头(FIN/opcode/len 7/16/64/[掩码键]);返回头长。<br>-1 容量不足;-3 控制帧载荷 &gt;125(§5.5)。masked=1 时 mkey = 32 位掩码键。<br>len64 档(&gt;65535)10 字节头在此单点,黄金向量测试锚。 |
-| `ws_frame_encode(out: &[I64], out_off: I64, cap: I64, opcode: I64, fin: I64, payload: &[I64], off: I64, plen: I64, masked: I64, mkey: I64)` | `I64` | 编码一帧 = 帧头 + 载荷(掩码内联);返回总长。 |
-| `ws_utf8_valid(src: &[I64], off: I64, n: I64)` | `I64` | 校验 src[off..off+n) 为良构 UTF-8:1 = 全良构 / 0 = 有违(游离续项、<br>C0 C1 过长、E0 ED F0 F4 边界外、代理区 ED A0..BF、&gt; U+10FFFF、F5..FF)。 |
+| `ws_close_payload(code: I64, out: &[U8])` | `I64` | close 帧载荷(2 字节 BE 码);返回 2 |
+| `ws_frame_head(out: &[U8], out_off: I64, cap: I64, opcode: I64, fin: I64, plen: I64, masked: I64, mkey: I64)` | `I64` | 编码帧头(FIN/opcode/len 7/16/64/[掩码键]);返回头长。<br>-1 容量不足;-3 控制帧载荷 &gt;125(§5.5)。masked=1 时 mkey = 32 位掩码键。<br>len64 档(&gt;65535)10 字节头在此单点,黄金向量测试锚。 |
+| `ws_frame_encode(out: &[U8], out_off: I64, cap: I64, opcode: I64, fin: I64, payload: &[U8], off: I64, plen: I64, masked: I64, mkey: I64)` | `I64` | 编码一帧 = 帧头 + 载荷(掩码内联);返回总长。 |
+| `ws_utf8_valid(src: &[U8], off: I64, n: I64)` | `I64` | 校验 src[off..off+n) 为良构 UTF-8:1 = 全良构 / 0 = 有违(游离续项、<br>C0 C1 过长、E0 ED F0 F4 边界外、代理区 ED A0..BF、&gt; U+10FFFF、F5..FF)。 |
 | `ws_st_new(expect: I64)` | `WsSt` | — |
 | `wst_phase(st: WsSt)` | `I64` | — |
 | `wst_opcode(st: WsSt)` | `I64` | — |
@@ -122,7 +122,7 @@ WebSocket(P4-C):upgrade 握手面 + RFC 6455 §5 帧编解码
 | `wr_fin(r: WsRet)` | `I64` | — |
 | `wr_opcode(r: WsRet)` | `I64` | — |
 | `wr_st(r: WsRet)` | `WsSt` | — |
-| `ws_step(src: &[I64], n: I64, pos: I64, st: WsSt, dst: &[I64], dfill: I64, dcap: I64)` | `WsRet` | 一步:src[pos..n) → dst[dfill..dcap)。协议错 err 码见头注⑤。 |
+| `ws_step(src: &[U8], n: I64, pos: I64, st: WsSt, dst: &[U8], dfill: I64, dcap: I64)` | `WsRet` | 一步:src[pos..n) → dst[dfill..dcap)。协议错 err 码见头注⑤。 |
 | `sha256_hex(msg: Str)` | `Str` | — |
 | `sha1_hex(msg: Str)` | `Str` | — |
 | `sha256_bytes(msg: List[I32])` | `List[I32]` | — |

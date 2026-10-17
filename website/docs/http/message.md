@@ -63,5 +63,5 @@ HTTP/1.1 报文构造与分框编解码(P4-A 协议半层)
 | `cr_produced(r: ChunkRet)` | `I64` | — |
 | `cr_phase(r: ChunkRet)` | `I64` | — |
 | `cr_remain(r: ChunkRet)` | `I64` | — |
-| `chunk_step(src: &[I64], n: I64, pos: I64, st: ChunkSt, dst: &[I64], dfill: I64, dcap: I64)` | `ChunkRet` | 解码一步:src[pos..n) → dst[dfill..dcap)(dfill = dst 已存量,跨调用由<br>调用方累进;写位 = dfill + 本次 produced)。size 行回卷重扫(无半行状态),<br>行界:size 行 2112 字节、trailer 行 4096 字节;chunk 计数 16 hex 上限、<br>乘前 2^59-1 界门(防 I64 溢出 panic/回绕——FFFFFFFFFFFFFFFE 远程 DoS<br>收口,2026-09-21 终审)+ CR 处 1e18 界门(负值防御冗余档)。<br>回卷提交界 = 未竟行起点(③ 契约)。 |
+| `chunk_step(src: &[U8], n: I64, pos: I64, st: ChunkSt, dst: &[U8], dfill: I64, dcap: I64)` | `ChunkRet` | 解码一步:src[pos..n) → dst[dfill..dcap)(dfill = dst 已存量,跨调用由<br>调用方累进;写位 = dfill + 本次 produced)。size 行回卷重扫(无半行状态),<br>行界:size 行 2112 字节、trailer 行 4096 字节;chunk 计数 16 hex 上限、<br>乘前 2^59-1 界门(防 I64 溢出 panic/回绕——FFFFFFFFFFFFFFFE 远程 DoS<br>收口,2026-09-21 终审)+ CR 处 1e18 界门(负值防御冗余档)。<br>回卷提交界 = 未竟行起点(③ 契约)。 |
 

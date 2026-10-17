@@ -31,4 +31,6 @@ fn exists(self, path: Str) -> Bool
 |---|---|---|
 | `read_or(path: Str, dft: Str)` | `Str` | 读文件;不存在或不可读返回 dft<br>口径:read_file 终局语义为 Str(缺失 → 空串,SL-0.6 ⑯ 裁决),故先以<br>fs_exists 守卫再直读,不做 Option 匹配(自举解释口径 match Some/None 会落空) |
 | `exists(path: Str)` | `Bool` | 文件是否存在(语义化别名,转发内建) |
+| `walk(root: Str)` | `List[Str]` | 递归遍历:返回 root 前缀路径表(确定性:每层字节序+DFS 前序);<br>root 存在即含自身(文件根 = 单元素),缺失 = 空表;空目录根 = 单元素 |
+| `list(dir: Str)` | `List[Str]` | 条目名表(非递归顶层;字节序)= walk_entries 的 pub 化薄壳:与 walk 的递归面<br>互补(walk = 全树前缀路径,list = 单层裸名);与 sh `find &lt;dir&gt; -maxdepth 1` 同义<br>(W4 驱动器 fmt/lint 目录展开底座:排序口径同 LC_ALL=C,同名表字节序全序确定) |
 

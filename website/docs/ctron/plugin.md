@@ -22,6 +22,7 @@ docs/superpowers/specs/2026-10-03-t52-plugin-sandbox.md)。
 | `name` | `Str` |
 | `ty` | `Str` |
 | `mutable` | `Bool` |
+| `ty_full` | `Str` |
 
 **struct DeriveInput**
 

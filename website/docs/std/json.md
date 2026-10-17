@@ -22,7 +22,7 @@ JSON parsing per RFC 8259: `parse` flattens a document into `[path, tag, value]`
 | Signature | Returns | Description |
 |---|---|---|
 | `esc(s: Str)` | `Str` | Str → JSON 字符串字面量(含引号;控制字符转义;UTF-8 透传) |
-| `junesc(s: Str)` | `Str` | JSON 字符串转义还原(\u 仅解码表内字符;其余原样保留,v0 口径) |
+| `junesc(s: Str)` | `Str` | JSON 字符串转义还原(\u 仅解码表内字符;其余原样保留,v0 口径)<br>修(2026-10-10):已知转义分支原不推进 i → \t/\n/\r/\"/\\// 无限循环 OOM<br>(SIGKILL 137;json_fidelity 无已知转义直测面故存量绿)——两字符消耗归一。 |
 | `parse(s: Str)` | `Result[List[List[Str]], Str]` | 解析 JSON 文本 → 展平条目表([路径, 标签, 值] 的列表);<br>解析失败 → Err(消息)。查询用 qtag/qval。 |
 | `qtag(entries: List[List[Str]], path: Str)` | `Str` | 查询:路径对应的标签(空串 = 不存在) |
 | `qval(entries: List[List[Str]], path: Str)` | `Str` | 查询:路径对应的值(标量原文;容器为空串;不存在为空串) |

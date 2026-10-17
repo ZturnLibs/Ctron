@@ -37,7 +37,7 @@ nibble ≥ 8 即溢 I64 符号位;Str 相等比较须用长度感知 eqs,构造�
 | `tp_rc_absent()` | `I64` | — |
 | `tp_rc_bad()` | `I64` | — |
 | `tp_parse_s(s: Str)` | `TrCtx` | Str 解析(测试/客户端便利面;与 lane 形同口径) |
-| `tp_ser(buf: &[I64], cap: I64, pos: I64, t: TrCtx)` | `I64` | 序列化 55 字节直填(返回新 pos;越界 -1)。tid/sid 须为合法 hex 串<br>(本模块产出的 TrCtx 恒满足;外部拼串的校验 = 逐字节 hex 查表失败即 -1)。 |
+| `tp_ser(buf: &[U8], cap: I64, pos: I64, t: TrCtx)` | `I64` | 序列化 55 字节直填(返回新 pos;越界 -1)。tid/sid 须为合法 hex 串<br>(本模块产出的 TrCtx 恒满足;外部拼串的校验 = 逐字节 hex 查表失败即 -1)。 |
 | `tp_ser_len()` | `I64` | 序列化定长(55) |
-| `tp_from_req(buf: &[I64], n: I64)` | `TrCtx` | 请求头提取:行首锚精确小写 "traceparent:"(12 字节)→ 值区经 tp_parse_l。<br>无头 = absent;有头坏值 = bad。n = 头区总长(含 CRLF)。 |
+| `tp_from_req(buf: &[U8], n: I64)` | `TrCtx` | 请求头提取:行首锚精确小写 "traceparent:"(12 字节)→ 值区经 tp_parse_l。<br>无头 = absent;有头坏值 = bad。n = 头区总长(含 CRLF)。 |
 

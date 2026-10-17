@@ -45,10 +45,12 @@ impl Drop for TlsConn
 | `tls_last_error()` | `TlsError` | 最后一次垫片错误的详情(TLS 槽;0 = 无错可读)。mbedTLS rc 为负值<br>(如 -0x2700),mbedtls_strerror 出文本。str_from_c 为语言内建(深拷<br>C-owned 串,§9.6;发射 ctron_str_from_c,无需模块导入)。 |
 | `tls_client(net: StdNet, fd: I64, ca: Str)` | `I64` | 客户端句柄:建 ctx 并装入信任锚,返回 ctx 句柄(&gt;0;失败 &lt;0,tls_last_error<br>可读)。ca 为空串 → 系统默认路径探测(darwin/主流 linux 布局,ctron_tls.c<br>ct_ca_probe);探测失败 &lt;0(ENOENT)。继以 tls_set_alpn(可选)+ tls_handshake。 |
 | `tls_server(net: StdNet, fd: I64, cert: Str, key: Str)` | `I64` | 服务端句柄:建 ctx 并装入证书链 + 私钥(PEM 文件路径),返回同上。 |
-| `tls_set_alpn(net: StdNet, conn: TlsConn, protos: Str)` | `I64` | 设本端 ALPN 提供表("h2,http/1.1" 逗号串;mbedTLS 服务端按【服务端】偏好<br>序选定)。必须在 tls_handshake 前调用;传空串 = 清除。 |
+| `tls_conn_ctx(net: StdNet, conn: TlsConn)` | `I64` | 设本端 ALPN 提供表("h2,http/1.1" 逗号串;mbedTLS 服务端按【服务端】偏好<br>序选定)。必须在 tls_handshake 前调用;传空串 = 清除。<br>G5-W2:ctx getter(成员访问不出模块=getter 面;跨模块 TlsConn 字段读取<br>撞发射器类型闭包在册债,client.ct 头注⑥同款绕行) |
+| `tls_set_alpn(net: StdNet, conn: TlsConn, protos: Str)` | `I64` | — |
 | `tls_set_hostname(net: StdNet, conn: TlsConn, host: Str)` | `I64` | 设服务器名(SNI + 名字匹配)。增补面(冻结面无 host 参):不调用时 client<br>握手默认 set_hostname(NULL) opt-out —— 链验证 REQUIRED 保留,仅名字匹配<br>跳过(ctron_tls.c 文件头"主机名口径");传空串 = 回到 opt-out 态。 |
+| `tls_set_verify_peer(net: StdNet, conn: TlsConn, mode: I64)` | `I64` | 对端证书验证模式(M3C6 批1 mTLS 增补面):0 NONE(缺省)/1 REQUIRED/2 OPTIONAL。<br>须在 tls_handshake 前调;服务端索客户端证书须先 tls 侧装入 CA 信任锚<br>(ctron_tls_use_ca_bundle,冻结面直通;门面不包)。返回 0 成 / &lt;0 败。 |
 | `tls_handshake(net: StdNet, conn: TlsConn, fd: I64)` | `I64` | 握手(阻塞式;fd = net 层已 connect/accept 的 socket,即后续 BIO 传输体)。<br>0 成 / &lt;0 败(证书验证失败、协议失败等,mbedtls_strerror 可读)。<br>形参含 fd:冻结 C 面 ctron_tls_handshake(ctx, fd) 于握手时把 fd 注入垫片<br>(此后的 read/write/close 只凭 ctx);TlsConn 保持冻结单字段 { ctx: I64 }。 |
-| `tls_read(net: StdNet, conn: TlsConn, buf: &[I64], cap: I64, timeout_ms: I64)` | `I64` | 带超时读:timeout_ms &lt;= 0 永久阻塞;&gt;0 到时返 -1(槽 = SSL_TIMEOUT)。<br>&gt;0 n / 0 eof / &lt;0 err;单次调用至多搬运 4096 字节(头注⑤)。 |
+| `tls_read(net: StdNet, conn: TlsConn, buf: &[U8], cap: I64, timeout_ms: I64)` | `I64` | 带超时读:timeout_ms &lt;= 0 永久阻塞;&gt;0 到时返 -1(槽 = SSL_TIMEOUT)。<br>&gt;0 n / 0 eof / &lt;0 err;单次调用至多搬运 4096 字节(头注⑤)。 |
 | `tls_write_str(net: StdNet, conn: TlsConn, s: Str)` | `I64` | 写(Str 零拷贝直通);全量发完语义(send-all),返回 n / &lt;0 err。 |
 | `tls_close(net: StdNet, conn: TlsConn)` | `I64` | 显式释放(close_notify 尽力发;不关 fd —— fd 归 net 层)。调用后必须<br>conn.ctx = -1(var 字段),否则作用域出口 Drop 二次释放。 |
 | `tls_alpn(net: StdNet, conn: TlsConn)` | `Str` | 协商结果(握手后);无 ALPN/未协商 → ""。 |

@@ -56,12 +56,12 @@ IO 粘合(读道/写道经 net 门面)归框架波次;本文件为纯编解码�
 | `http_err_cl()` | `I64` | — |
 | `http_err_te()` | `I64` | — |
 | `http_err_bodycap()` | `I64` | — |
-| `http_parse_head(buf: &[I64], n: I64, lim: HttpLimits)` | `HttpHead` | 解析头部块(buf[0..n) 已收字节;增量口径:rc=0 时追加字节后整体重调 ——<br>纯重扫无隐藏状态,可任意次重入直至 rc != 0)。响应/请求自适应:缓冲以<br>"HTTP/" 起头按状态行解析,否则按请求行。 |
-| `http_header_at(buf: &[I64], h: HttpHead, idx: I64)` | `HttpSlice` | 第 idx 条头(idx 自 0;rc = -1 越界)。name/value 切片零拷贝,value 已去 OWS。 |
-| `http_header_find(buf: &[I64], h: HttpHead, name: Str)` | `I64` | 首条名匹配头(大小写不敏感)→ 下标;无 → -1 |
-| `http_header_value(buf: &[I64], h: HttpHead, name: Str)` | `HttpSlice` | 首条名匹配头的 value 切片(rc = -1 未找到) |
-| `http_keep_alive(buf: &[I64], h: HttpHead)` | `I64` | keep-alive 判:1.1 缺省开,1.0 缺省关;Connection 头 token 表显式翻面。 |
-| `http_is_expect_100(buf: &[I64], h: HttpHead)` | `I64` | Expect: 100-continue 检出(大小写不敏感;他值按 RFC 必须忽略 → 0) |
+| `http_parse_head(buf: &[U8], n: I64, lim: HttpLimits)` | `HttpHead` | 解析头部块(buf[0..n) 已收字节;增量口径:rc=0 时追加字节后整体重调 ——<br>纯重扫无隐藏状态,可任意次重入直至 rc != 0)。响应/请求自适应:缓冲以<br>"HTTP/" 起头按状态行解析,否则按请求行。 |
+| `http_header_at(buf: &[U8], h: HttpHead, idx: I64)` | `HttpSlice` | 第 idx 条头(idx 自 0;rc = -1 越界)。name/value 切片零拷贝,value 已去 OWS。 |
+| `http_header_find(buf: &[U8], h: HttpHead, name: Str)` | `I64` | 首条名匹配头(大小写不敏感)→ 下标;无 → -1 |
+| `http_header_value(buf: &[U8], h: HttpHead, name: Str)` | `HttpSlice` | 首条名匹配头的 value 切片(rc = -1 未找到) |
+| `http_keep_alive(buf: &[U8], h: HttpHead)` | `I64` | keep-alive 判:1.1 缺省开,1.0 缺省关;Connection 头 token 表显式翻面。 |
+| `http_is_expect_100(buf: &[U8], h: HttpHead)` | `I64` | Expect: 100-continue 检出(大小写不敏感;他值按 RFC 必须忽略 → 0) |
 | `http_rc(h: HttpHead)` | `I64` | — |
 | `http_err_of(h: HttpHead)` | `I64` | — |
 | `http_is_resp(h: HttpHead)` | `I64` | — |

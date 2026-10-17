@@ -107,6 +107,7 @@ impl Drop for UnixStream
 | `net_tcp_listen(net: StdNet, host: Str, port: I64, out_fd: Box[Box64])` | `I64` | 监听;SO_REUSEADDR 于垫片内开启;port 传 0 由内核分配,实际端口经<br>net_tcp_sockname 回读。成功后可构造 TcpListener { fd: out_fd.v, port: &lt;回读&gt; }。<br>P0-B:bind 出参已迁 &amp;Box64(E4046 收口),门面签名保持 Box[Box64] 不变,<br>堆胞中间层经本地 cell 落 &amp; 后回拷(调用点实参写变量名,发射面自动取址)。 |
 | `net_tcp_sockname(net: StdNet, fd: I64, out_port: Box[Box64])` | `I64` | 回读监听/绑定实际端口(:0 分配结果) |
 | `net_tcp_accept(net: StdNet, lfd: I64, out_fd: Box[Box64])` | `I64` | 接受连接;垫片在出口开 NODELAY+KEEPALIVE(§11.3)。构造 TcpStream { fd: out_fd.v }。 |
+| `net_tcp_accept_t(net: StdNet, lfd: I64, timeout_ms: I64, out_fd: Box[Box64])` | `I64` | 带超时 accept(内化批4;daemon 服务臂拍醒语义):rc 0 = 受理(fd 经 out_fd);<br>-2 = 超时无连接/被信号打断(与 loom 传承 accept_wait 同值域);-1 = 失败。 |
 | `net_tcp_connect(net: StdNet, host: Str, port: I64, out_fd: Box[Box64])` | `I64` | 连接;NODELAY+KEEPALIVE 默认开(§11.3)。 |
 | `net_read_t(net: StdNet, fd: I64, var buf: [U8], cap: I64, timeout_ms: I64)` | `I64` | 带超时读:timeout_ms &lt;= 0 永久阻塞;&gt;0 到时置 ETIMEDOUT 返 -1。<br>&gt;0 n / 0 eof / &lt;0 err;字节直入视图(无单次上限,头注⑤)。 |
 | `net_write(net: StdNet, fd: I64, var buf: [U8], n: I64)` | `I64` | — |

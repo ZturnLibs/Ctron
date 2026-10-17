@@ -23,6 +23,27 @@ use 面(P1b):http.client 显式请求。
 | Field | Type |
 |---|---|
 
+**struct KeepMap**
+
+| Field | Type |
+|---|---|
+| `var slots` | `List[I32]` |
+| `var keys` | `List[Str]` |
+| `var vals` | `List[I64]` |
+
+**struct KeepCell**
+
+| Field | Type |
+|---|---|
+| `var v` | `I64` |
+
+**struct HttpKeep**
+
+| Field | Type |
+|---|---|
+| `var cache` | `Box[KeepMap]` |
+| `var bru` | `Box[KeepCell]` |
+
 **struct HttpSock**
 
 | Field | Type |
@@ -52,6 +73,7 @@ use 面(P1b):http.client 显式请求。
 | `var head_end` | `I64` |
 | `var body_off` | `I64` |
 | `var body_len` | `I64` |
+| `var fd` | `I64` |
 
 **struct Box64**
 
@@ -72,11 +94,13 @@ impl Drop for HttpSock
 |---|---|---|
 | `connect_path(service: Str, method: Str)` | `Str` | 请求路径:/&lt;service&gt;/&lt;method&gt; |
 | `connect_headers()` | `Str` | 协议头(两行,自含 CRLF) |
-| `connect_unary(net: HttpNet, host: Str, port: I64, service: Str, method: Str, req: &[I64], rlen: I64, resp: &[I64], rcap: I64, scr: &[I64], timeout_ms: I64, bfd: Box[Box64], bhh: Box[Box64], bpt: Box[Box64], bru: Box[Box64])` | `HttpResp` | unary 调用:返回 HttpResp(透传 client_request;消费方 rr_status/rr_body_*<br>读取,体 = 响应 protobuf 原文)。bfd/bhh/bpt/bru = client 连接状态四盒<br>(透传,复用与重连语义随 http.client)。 |
+| `connect_unary(net: HttpNet, host: Str, port: I64, service: Str, method: Str, var req: [U8], rlen: I64, var resp: [U8], rcap: I64, var scr: [U8], timeout_ms: I64, kp: HttpKeep)` | `HttpResp` | unary 调用:返回 HttpResp(透传 client_request;消费方 rr_status/rr_body_*<br>读取,体 = 响应 protobuf 原文)。kp = client keep-alive 多槽缓存态(HttpKeep)<br>(透传,复用与重连语义随 http.client)。 |
 | `connect_classify(r: HttpResp)` | `I64` | 状态分类:0 = 传输 IO 错;1 = HTTP 200(应用成功,proto 体);2 = 非 200<br>(HTTP 状态即错误面;JSON connect-error 帧解析列志向) |
 | `connect_code_str(code: I64)` | `Str` | connect/gRPC 状态码表(数字 → 规范名;HTTP 状态映射用) |
 | `connect_code_from_http(status: I64)` | `I64` | HTTP 状态 → connect 码(grpc 映射子集;未表项 = 2 unknown) |
 | `http_net()` | `HttpNet` | — |
+| `http_keep_new()` | `HttpKeep` | — |
+| `http_keep_drain(kp: HttpKeep)` | `` | — |
 | `client_hash_host(host: Str)` | `I64` | — |
 | `loc_ok(l: HttpLoc)` | `I64` | — |
 | `loc_host(l: HttpLoc)` | `Str` | — |
@@ -85,7 +109,7 @@ impl Drop for HttpSock
 | `client_loc_resolve(loc: Str, base_host: Str, base_port: I64)` | `HttpLoc` | — |
 | `rr_rc(r: HttpResp)` | `I64` | — |
 | `rr_status(r: HttpResp)` | `I64` | — |
-| `client_request(io: HttpNet, method: Str, host: Str, port: I64, path: Str, extra: Str, body: &[I64], blen: I64, buf: &[I64], cap: I64, scr: &[I64], timeout_ms: I64, bfd: Box[Box64], bhh: Box[Box64], bpt: Box[Box64], bru: Box[Box64])` | `HttpResp` | — |
+| `client_request(io: HttpNet, method: Str, host: Str, port: I64, path: Str, extra: Str, var body: [U8], blen: I64, var buf: [U8], cap: I64, var scr: [U8], timeout_ms: I64, kp: HttpKeep)` | `HttpResp` | — |
 | `http_limits_default()` | `HttpLimits` | — |
 | `http_err_line()` | `I64` | — |
 | `http_err_line_long()` | `I64` | — |
@@ -101,11 +125,11 @@ impl Drop for HttpSock
 | `http_err_cl()` | `I64` | — |
 | `http_err_te()` | `I64` | — |
 | `http_err_bodycap()` | `I64` | — |
-| `http_parse_head(buf: &[I64], n: I64, lim: HttpLimits)` | `HttpHead` | — |
-| `http_header_at(buf: &[I64], h: HttpHead, idx: I64)` | `HttpSlice` | — |
-| `http_header_find(buf: &[I64], h: HttpHead, name: Str)` | `I64` | — |
-| `http_header_value(buf: &[I64], h: HttpHead, name: Str)` | `HttpSlice` | — |
-| `http_keep_alive(buf: &[I64], h: HttpHead)` | `I64` | — |
+| `http_parse_head(buf: &[U8], n: I64, lim: HttpLimits)` | `HttpHead` | — |
+| `http_header_at(buf: &[U8], h: HttpHead, idx: I64)` | `HttpSlice` | — |
+| `http_header_find(buf: &[U8], h: HttpHead, name: Str)` | `I64` | — |
+| `http_header_value(buf: &[U8], h: HttpHead, name: Str)` | `HttpSlice` | — |
+| `http_keep_alive(buf: &[U8], h: HttpHead)` | `I64` | — |
 | `http_rc(h: HttpHead)` | `I64` | — |
 | `http_err_of(h: HttpHead)` | `I64` | — |
 | `http_is_resp(h: HttpHead)` | `I64` | — |
@@ -142,5 +166,5 @@ impl Drop for HttpSock
 | `cr_produced(r: ChunkRet)` | `I64` | — |
 | `cr_phase(r: ChunkRet)` | `I64` | — |
 | `cr_remain(r: ChunkRet)` | `I64` | — |
-| `chunk_step(src: &[I64], n: I64, pos: I64, st: ChunkSt, dst: &[I64], dfill: I64, dcap: I64)` | `ChunkRet` | — |
+| `chunk_step(src: &[U8], n: I64, pos: I64, st: ChunkSt, dst: &[U8], dfill: I64, dcap: I64)` | `ChunkRet` | — |
 

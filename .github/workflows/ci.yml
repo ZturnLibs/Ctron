@@ -49,13 +49,14 @@ jobs:
         with: { msystem: MINGW64, update: false, install: 'mingw-w64-x86_64-gcc make git diffutils' }
       - uses: actions/download-artifact@v4
         with: { name: prebuilt-ci, path: prebuilt }
-      - name: 构建四件(cc/emit/chk/drv;16MB 栈,drv 并链 proc 垫片)
+      - name: 构建四件(cc/emit/chk/drv;16MB 栈;并链 cc2 宿主口,drv 并链 proc 垫片)
         run: |
           mkdir -p compiler/bin
-          gcc -O2 -w -pthread -Wno-error=incompatible-pointer-types -Wl,--stack,16777216 -o compiler/bin/ctron-cc.exe   prebuilt/ctron-cc.c
-          gcc -O2 -w -pthread -Wno-error=incompatible-pointer-types -Wl,--stack,16777216 -o compiler/bin/ctron-emit.exe prebuilt/ctron-emit.c
-          gcc -O2 -w -pthread -Wno-error=incompatible-pointer-types -Wl,--stack,16777216 -o compiler/bin/ctron-chk.exe  prebuilt/ctron-chk.c
-          gcc -O2 -w -pthread -Wno-error=incompatible-pointer-types -Wl,--stack,16777216 -o compiler/bin/ctron.exe prebuilt/ctron-drv.c lib/proc/c_src/ctron_proc.c
+          gcc -O2 -w -c compiler/host_shim/cc2_str.c -o cc2_str.o
+          gcc -O2 -w -pthread -Wno-error=incompatible-pointer-types -Wl,--stack,16777216 -o compiler/bin/ctron-cc.exe   prebuilt/ctron-cc.c cc2_str.o
+          gcc -O2 -w -pthread -Wno-error=incompatible-pointer-types -Wl,--stack,16777216 -o compiler/bin/ctron-emit.exe prebuilt/ctron-emit.c cc2_str.o
+          gcc -O2 -w -pthread -Wno-error=incompatible-pointer-types -Wl,--stack,16777216 -o compiler/bin/ctron-chk.exe  prebuilt/ctron-chk.c cc2_str.o
+          gcc -O2 -w -pthread -Wno-error=incompatible-pointer-types -Wl,--stack,16777216 -o compiler/bin/ctron.exe prebuilt/ctron-drv.c cc2_str.o lib/proc/c_src/ctron_proc.c
       - name: G7 冒烟道(hello/dlopen DLL/并发/__sync/CJK)
         run: sh tests/win/smoke.sh
       - name: ctron build 真驱动一例

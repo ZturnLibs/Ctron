@@ -85,7 +85,7 @@ use 面(加载器严格树 E5020 形态登记):本模块 = 框架面唯一入口
 | `frm_ctx_pl(c: FrmCtx, k: I64)` | `I64` | — |
 | `frm_ctx_d0(c: FrmCtx)` | `I64` | — |
 | `frm_ctx_d1(c: FrmCtx)` | `I64` | — |
-| `frm_ctx_param(buf: &[I64], c: FrmCtx, k: I64)` | `Str` | 参数槽 → 原始切片 Str(终端 handler 侧便捷面;组合层持 buf 时常用) |
+| `frm_ctx_param(buf: &[U8], c: FrmCtx, k: I64)` | `Str` | 参数槽 → 原始切片 Str(终端 handler 侧便捷面;组合层持 buf 时常用) |
 | `frm_resp(status: I64, reason: Str, body: Str)` | `Str` | 最小响应:状态行 + Content-Length + 体(HTTP/1.1;连接管理归框架 IO 波) |
 | `frm_resp_text(body: Str)` | `Str` | — |
 | `frm_resp_404()` | `Str` | — |
@@ -101,18 +101,18 @@ use 面(加载器严格树 E5020 形态登记):本模块 = 框架面唯一入口
 | `frm_rc_match()` | `I64` | — |
 | `frm_rc_method()` | `I64` | — |
 | `frm_rc_miss()` | `I64` | — |
-| `frm_mcode_buf(buf: &[I64], s: I64, l: I64)` | `I64` | — |
+| `frm_mcode_buf(buf: &[U8], s: I64, l: I64)` | `I64` | — |
 | `fr_rc(m: FrmRoute)` | `I64` | — |
 | `fr_id(m: FrmRoute)` | `I64` | — |
 | `fr_np(m: FrmRoute)` | `I64` | — |
 | `fr_ps(m: FrmRoute, k: I64)` | `I64` | — |
 | `fr_pl(m: FrmRoute, k: I64)` | `I64` | — |
-| `frm_match(spec: Str, meth: I64, buf: &[I64], ts: I64, tl: I64)` | `FrmRoute` | — |
-| `frm_slice_str(src: &[I64], a: I64, b: I64)` | `Str` | — |
-| `frm_param(buf: &[I64], m: FrmRoute, k: I64)` | `Str` | — |
-| `frm_param_dec(buf: &[I64], m: FrmRoute, k: I64, bad: Str)` | `Str` | — |
-| `frm_param_dec_ok(buf: &[I64], m: FrmRoute, k: I64)` | `I64` | — |
+| `frm_match(spec: Str, meth: I64, buf: &[U8], ts: I64, tl: I64)` | `FrmRoute` | — |
+| `frm_slice_str(src: &[U8], a: I64, b: I64)` | `Str` | — |
+| `frm_param(buf: &[U8], m: FrmRoute, k: I64)` | `Str` | — |
+| `frm_param_dec(buf: &[U8], m: FrmRoute, k: I64, bad: Str)` | `Str` | — |
+| `frm_param_dec_ok(buf: &[U8], m: FrmRoute, k: I64)` | `I64` | — |
 | `fi_rc(x: FrmI64)` | `I64` | — |
 | `fi_v(x: FrmI64)` | `I64` | — |
-| `frm_param_i64(buf: &[I64], m: FrmRoute, k: I64)` | `FrmI64` | — |
+| `frm_param_i64(buf: &[U8], m: FrmRoute, k: I64)` | `FrmI64` | — |
 

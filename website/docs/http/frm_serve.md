@@ -66,6 +66,27 @@ keep-alive 挂 L6/L7 并发波。真并发服务(sc.spawn × sv_serve)= e2e 双 
 | `clen` | `I64` |
 | `bkind` | `I64` |
 
+**struct KeepMap**
+
+| Field | Type |
+|---|---|
+| `var slots` | `List[I32]` |
+| `var keys` | `List[Str]` |
+| `var vals` | `List[I64]` |
+
+**struct KeepCell**
+
+| Field | Type |
+|---|---|
+| `var v` | `I64` |
+
+**struct HttpKeep**
+
+| Field | Type |
+|---|---|
+| `var cache` | `Box[KeepMap]` |
+| `var bru` | `Box[KeepCell]` |
+
 **struct HttpSock**
 
 | Field | Type |
@@ -108,10 +129,10 @@ impl Drop for HttpSock
 | `sv_hend(r: SvRead)` | `I64` | — |
 | `sv_clen(r: SvRead)` | `I64` | — |
 | `sv_bkind(r: SvRead)` | `I64` | — |
-| `sv_read_req(fd: I64, buf: &[I64], cap: I64, scr: &[I64], scap: I64, tmo_ms: I64)` | `SvRead` | 增量头读(parse 每读一块重扫;cx_read_resp 同构,请求面):<br>头完 rc=1;畸形 rc=-1(err);超缓冲 rc=-4;对端 IO 败 rc=-2;净 eof rc=-3。 |
-| `sv_read_body_cl(fd: I64, buf: &[I64], n0: I64, hend: I64, clen: I64, cap: I64, scr: &[I64], scap: I64, tmo_ms: I64)` | `I64` | CL 体读齐(头后追加; lane 无偏移读面,scratch 转运)。败 -1。 |
-| `sv_body_bytes(buf: &[I64], a: I64, n: I64)` | `List[I32]` | 体/段 lane → List[I32] 字节道(二进制安全全 0..255;mp_parse 入口载体) |
-| `sv_str_range(src: &[I64], a: I64, b: I64)` | `Str` | lane 段 → Str(印刷域全有全无:任一非 0x20..0x7E 字节 → "";frm_slice_str<br>域一致;二进制面走 sv_body_bytes —— 文本面与字节面的分界即此) |
+| `sv_read_req(fd: I64, var buf: [U8], cap: I64, var scr: [U8], scap: I64, tmo_ms: I64)` | `SvRead` | 增量头读(parse 每读一块重扫;cx_read_resp 同构,请求面):<br>头完 rc=1;畸形 rc=-1(err);超缓冲 rc=-4;对端 IO 败 rc=-2;净 eof rc=-3。 |
+| `sv_read_body_cl(fd: I64, var buf: [U8], n0: I64, hend: I64, clen: I64, cap: I64, var scr: [U8], scap: I64, tmo_ms: I64)` | `I64` | CL 体读齐(头后追加; lane 无偏移读面,scratch 转运)。败 -1。 |
+| `sv_body_bytes(buf: &[U8], a: I64, n: I64)` | `List[I32]` | 体/段 lane → List[I32] 字节道(二进制安全全 0..255;mp_parse 入口载体) |
+| `sv_str_range(src: &[U8], a: I64, b: I64)` | `Str` | lane 段 → Str(印刷域全有全无:任一非 0x20..0x7E 字节 → "";frm_slice_str<br>域一致;二进制面走 sv_body_bytes —— 文本面与字节面的分界即此) |
 | `sv_reason(n: I64)` | `Str` | — |
 | `sv_resp(status: I64, body: Str)` | `Str` | — |
 | `sv_resp_ct(status: I64, ctype: Str, body: Str)` | `Str` | — |
@@ -119,9 +140,11 @@ impl Drop for HttpSock
 | `sv_serve_fd(lfd: I64, h: fn(Str, Str, Str) -> Str, body_limit: I64, nmax: I32, tmo_ms: I64)` | `I32` | 外置监听面:调用方自持 listen fd(client_listen :0 → client_sockname 回读<br>实际端口后交入;spawn 闭包捕获只剩标量 fd —— e2e 双 RT 矩阵即此形)。<br>本面不关监听(调用方所有权);缓冲内置 8KB/2KB。返码同 sv_serve_n。 |
 | `sv_serve_n(host: Str, port: I64, h: fn(Str, Str, Str) -> Str, body_limit: I64, nmax: I32, tmo_ms: I64)` | `I32` | 有界服务:恰 nmax 个连接(败连接不计)后返 0;shutdown 提前返 2。<br>测试面(e2e 单进程确定性)+ 自定义循环积木。 |
 | `sv_serve(host: Str, port: I64, h: fn(Str, Str, Str) -> Str, body_limit: I64, tmo_ms: I64)` | `I32` | 常驻服务:服务至 shutdown(返 2)或 accept 败(返 3);监听败返 1。 |
+| `http_keep_new()` | `HttpKeep` | — |
+| `http_keep_drain(kp: HttpKeep)` | `` | — |
 | `client_listen(host: Str, port: I64, out_fd: Box[Box64])` | `I64` | — |
 | `client_accept(lfd: I64, out_fd: Box[Box64])` | `I64` | — |
-| `client_read_t(fd: I64, buf: &[I64], cap: I64, timeout_ms: I64)` | `I64` | — |
+| `client_read_t(fd: I64, var buf: [U8], cap: I64, timeout_ms: I64)` | `I64` | — |
 | `client_write_str(fd: I64, s: Str)` | `I64` | — |
 | `client_close(fd: I64)` | `I64` | — |
 | `client_hash_host(host: Str)` | `I64` | — |
@@ -145,11 +168,11 @@ impl Drop for HttpSock
 | `http_err_cl()` | `I64` | — |
 | `http_err_te()` | `I64` | — |
 | `http_err_bodycap()` | `I64` | — |
-| `http_parse_head(buf: &[I64], n: I64, lim: HttpLimits)` | `HttpHead` | — |
-| `http_header_at(buf: &[I64], h: HttpHead, idx: I64)` | `HttpSlice` | — |
-| `http_header_find(buf: &[I64], h: HttpHead, name: Str)` | `I64` | — |
-| `http_header_value(buf: &[I64], h: HttpHead, name: Str)` | `HttpSlice` | — |
-| `http_keep_alive(buf: &[I64], h: HttpHead)` | `I64` | — |
+| `http_parse_head(buf: &[U8], n: I64, lim: HttpLimits)` | `HttpHead` | — |
+| `http_header_at(buf: &[U8], h: HttpHead, idx: I64)` | `HttpSlice` | — |
+| `http_header_find(buf: &[U8], h: HttpHead, name: Str)` | `I64` | — |
+| `http_header_value(buf: &[U8], h: HttpHead, name: Str)` | `HttpSlice` | — |
+| `http_keep_alive(buf: &[U8], h: HttpHead)` | `I64` | — |
 | `http_rc(h: HttpHead)` | `I64` | — |
 | `http_err_of(h: HttpHead)` | `I64` | — |
 | `http_is_resp(h: HttpHead)` | `I64` | — |
@@ -188,5 +211,5 @@ impl Drop for HttpSock
 | `cr_produced(r: ChunkRet)` | `I64` | — |
 | `cr_phase(r: ChunkRet)` | `I64` | — |
 | `cr_remain(r: ChunkRet)` | `I64` | — |
-| `chunk_step(src: &[I64], n: I64, pos: I64, st: ChunkSt, dst: &[I64], dfill: I64, dcap: I64)` | `ChunkRet` | — |
+| `chunk_step(src: &[U8], n: I64, pos: I64, st: ChunkSt, dst: &[U8], dfill: I64, dcap: I64)` | `ChunkRet` | — |
 

@@ -46,6 +46,29 @@ bind.ct 汇合即 E5020)。StdNet 面未用:本文件自出 HttpNet 空 struct �
 | Field | Type |
 |---|---|
 
+**struct KeepMap**
+
+| Field | Type |
+|---|---|
+| `var slots` | `List[I32]` |
+| `var keys` | `List[Str]` |
+| `var vals` | `List[I64]` |
+
+**struct KeepCell**
+
+| Field | Type |
+|---|---|
+| `var v` | `I64` |
+
+**struct HttpKeep**
+
+keep-alive 多槽缓存态(调用方持有;T2 显式状态门面豁免面,宪章 8 有界)。<br>cache = "host:port" → 连接 fd(容量 8,FIFO 逐出);bru = 复用计数。
+
+| Field | Type |
+|---|---|
+| `var cache` | `Box[KeepMap]` |
+| `var bru` | `Box[KeepCell]` |
+
 **struct HttpSock**
 
 RAII 句柄:作用域出口关 fd(显式 client_close 后须 sock.fd = -1)。
@@ -77,6 +100,22 @@ RAII 句柄:作用域出口关 fd(显式 client_close 后须 sock.fd = -1)。
 | `var head_end` | `I64` |
 | `var body_off` | `I64` |
 | `var body_len` | `I64` |
+| `var fd` | `I64` |
+
+**struct HttpOpen**
+
+请求执行(重定向跟随 + 多槽 keep-alive 缓存 + 复用失败重试一次)。<br>err 码:1 连接败 / 2 发送败 / 3 接收败(干净)/ 4 接收败(有字节或帧坏)/<br>5 解析 / 6 Location 坏 / 7 重定向超限。重试一次仅限【复用连接】上的发送<br>败或零字节读败(对端已关语义);有部分响应字节绝不重发。<br>G5-W3:流式体读三件(Open/ReadBody/Close)——响应头读入即返回,体经<br>ReadBody 逐块消费(边收边落盘/边哈希);v0 口径:CL 明长响应(chunked/EOF<br>终结挂账)、无 keep 复用、无重定向跟随;err=5 TLS 握手败。<br>HttpOpen.body_got = 已消费体字节游标(调用方持结构续传给 ReadBody)。
+
+| Field | Type |
+|---|---|
+| `var rc` | `I64` |
+| `var err` | `I64` |
+| `var status` | `I64` |
+| `var body_len` | `I64` |
+| `var body_got` | `I64` |
+| `var buf_n` | `I64` |
+| `var fd` | `I64` |
+| `var ctx` | `I64` |
 
 **struct Box64**
 
@@ -96,12 +135,14 @@ impl Drop for HttpSock
 | Signature | Returns | Description |
 |---|---|---|
 | `http_net()` | `HttpNet` | — |
+| `http_keep_new()` | `HttpKeep` | — |
+| `http_keep_drain(kp: HttpKeep)` | `` | 关闭并清空缓存全部连接(调用方收尾卫生;bru 计数不动) |
 | `client_listen(host: Str, port: I64, out_fd: Box[Box64])` | `I64` | — |
 | `client_sockname(fd: I64, out_port: Box[Box64])` | `I64` | — |
 | `client_accept(lfd: I64, out_fd: Box[Box64])` | `I64` | — |
 | `client_connect(host: Str, port: I64, out_fd: Box[Box64])` | `I64` | — |
-| `client_read_t(fd: I64, buf: &[I64], cap: I64, timeout_ms: I64)` | `I64` | 读:&gt;0 n / 0 eof / &lt;0 败(超时亦 &lt;0);单次至多搬运 min(cap, 4096)。 |
-| `client_write(fd: I64, buf: &[I64], n: I64)` | `I64` | — |
+| `client_read_t(fd: I64, var buf: [U8], cap: I64, timeout_ms: I64)` | `I64` | 读:&gt;0 n / 0 eof / &lt;0 败(超时亦 &lt;0);单次至多搬运 min(cap, 4096)。 |
+| `client_write(fd: I64, var buf: [U8], n: I64)` | `I64` | — |
 | `client_write_str(fd: I64, s: Str)` | `I64` | — |
 | `client_close(fd: I64)` | `I64` | — |
 | `client_sleep_ms(ms: I64)` | `I64` | 时钟/睡眠透传(夹具服务端节奏控制与耗时测量;std.net 不可入的 use 图约束下<br>的同口径面) |
@@ -122,7 +163,17 @@ impl Drop for HttpSock
 | `rr_head_end(r: HttpResp)` | `I64` | — |
 | `rr_body_off(r: HttpResp)` | `I64` | — |
 | `rr_body_len(r: HttpResp)` | `I64` | — |
-| `client_request(io: HttpNet, method: Str, host: Str, port: I64, path: Str, extra: Str, body: &[I64], blen: I64, buf: &[I64], cap: I64, scr: &[I64], timeout_ms: I64, bfd: Box[Box64], bhh: Box[Box64], bpt: Box[Box64], bru: Box[Box64])` | `HttpResp` | 请求执行(重定向跟随 + 单槽 keep-alive 缓存 + 复用失败重试一次)。<br>err 码:1 连接败 / 2 发送败 / 3 接收败(干净)/ 4 接收败(有字节或帧坏)/<br>5 解析 / 6 Location 坏 / 7 重定向超限。重试一次仅限【复用连接】上的发送<br>败或零字节读败(对端已关语义);有部分响应字节绝不重发。 |
+| `rr_fd(r: HttpResp)` | `I64` | — |
+| `client_open_tls(io: HttpNet, method: Str, host: Str, port: I64, path: Str, extra: Str, var body: [U8], blen: I64, var buf: [U8], cap: I64, var scr: [U8], timeout_ms: I64, deadline_ms: I64, ca: Str)` | `HttpOpen` | ① 打开:连接+握手+发请求+读头;体前缀移 buf[0];返回游标结构 |
+| `open_rc(var op: HttpOpen)` | `I64` | G5-W3:HttpOpen getter 面(成员访问不出模块=getter 家法;跨模块类型闭包债) |
+| `open_err(var op: HttpOpen)` | `I64` | — |
+| `open_status(var op: HttpOpen)` | `I64` | — |
+| `open_body_len(var op: HttpOpen)` | `I64` | — |
+| `open_body_got(var op: HttpOpen)` | `I64` | — |
+| `client_read_body_tls(io: HttpNet, var op: HttpOpen, var buf: [U8], off: I64, want: I64, var scr: [U8], timeout_ms: I64)` | `I64` | ② 读体下一块:tls_read 到 scr → 拷 buf[off..];返回 n(0=体完;&lt;0 败) |
+| `client_close_tls(io: HttpNet, var op: HttpOpen)` | `` | ③ 关闭(TLS close_notify + fd 关闭;句柄槽置 -1 防误用) |
+| `client_request_tls(io: HttpNet, method: Str, host: Str, port: I64, path: Str, extra: Str, var body: [U8], blen: I64, var buf: [U8], cap: I64, var scr: [U8], timeout_ms: I64, deadline_ms: I64, ca: Str)` | `HttpResp` | G5-W2:HTTPS 客户端面——明文 TCP connect → TLS 握手(ctx:ca 锚+SNI=host)<br>→ 帧读写全走 TLS 垫片。v0 口径:无 keep-alive 复用(每请求新连,响亮关闭);<br>无重定向跟随(响应原样返回,跟随=调用方);deadline_ms=整请求预算(内部<br>换算每读截止=max(1, 剩余));err=5 TLS 握手败/err=6 TLS 写败。 |
+| `client_request(io: HttpNet, method: Str, host: Str, port: I64, path: Str, extra: Str, var body: [U8], blen: I64, var buf: [U8], cap: I64, var scr: [U8], timeout_ms: I64, kp: HttpKeep)` | `HttpResp` | — |
 | `http_limits_default()` | `HttpLimits` | — |
 | `http_err_line()` | `I64` | — |
 | `http_err_line_long()` | `I64` | — |
@@ -138,11 +189,11 @@ impl Drop for HttpSock
 | `http_err_cl()` | `I64` | — |
 | `http_err_te()` | `I64` | — |
 | `http_err_bodycap()` | `I64` | — |
-| `http_parse_head(buf: &[I64], n: I64, lim: HttpLimits)` | `HttpHead` | — |
-| `http_header_at(buf: &[I64], h: HttpHead, idx: I64)` | `HttpSlice` | — |
-| `http_header_find(buf: &[I64], h: HttpHead, name: Str)` | `I64` | — |
-| `http_header_value(buf: &[I64], h: HttpHead, name: Str)` | `HttpSlice` | — |
-| `http_keep_alive(buf: &[I64], h: HttpHead)` | `I64` | — |
+| `http_parse_head(buf: &[U8], n: I64, lim: HttpLimits)` | `HttpHead` | — |
+| `http_header_at(buf: &[U8], h: HttpHead, idx: I64)` | `HttpSlice` | — |
+| `http_header_find(buf: &[U8], h: HttpHead, name: Str)` | `I64` | — |
+| `http_header_value(buf: &[U8], h: HttpHead, name: Str)` | `HttpSlice` | — |
+| `http_keep_alive(buf: &[U8], h: HttpHead)` | `I64` | — |
 | `http_rc(h: HttpHead)` | `I64` | — |
 | `http_err_of(h: HttpHead)` | `I64` | — |
 | `http_is_resp(h: HttpHead)` | `I64` | — |
@@ -179,5 +230,5 @@ impl Drop for HttpSock
 | `cr_produced(r: ChunkRet)` | `I64` | — |
 | `cr_phase(r: ChunkRet)` | `I64` | — |
 | `cr_remain(r: ChunkRet)` | `I64` | — |
-| `chunk_step(src: &[I64], n: I64, pos: I64, st: ChunkSt, dst: &[I64], dfill: I64, dcap: I64)` | `ChunkRet` | — |
+| `chunk_step(src: &[U8], n: I64, pos: I64, st: ChunkSt, dst: &[U8], dfill: I64, dcap: I64)` | `ChunkRet` | — |
 
