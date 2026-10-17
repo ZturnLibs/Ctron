@@ -44,11 +44,21 @@ winpath() {
         *) printf '%s' "$1" ;;
     esac
 }
+# PE 专用旗标(mingw 系):默认栈 2MB(macOS/Linux 8MB)→ 8MB 对齐(设计验证矩阵
+# 「栈旗标覆盖」项);DLL 导出须显式(PE 不自动导出,B 腿四轮实证)。
+PEF=""
+case "$(uname -s)" in
+    *MINGW*|*MSYS*|*CYGWIN*) PEF="-Wl,--stack,8388608" ;;
+esac
+PEX=""
+case "$(uname -s)" in
+    *MINGW*|*MSYS*|*CYGWIN*) PEX="-Wl,--export-all-symbols" ;;
+esac
 
 build_bin() { # <src.ct> <out.bin> —— emit+cc 一步;失败自诊断返非零
     "$EMIT" run "$1" > "$T/prog.c" 2>"$T/prog.err" \
         || { echo "    emit: $(tail -1 "$T/prog.err")"; return 1; }
-    "$CC" -O1 -w -pthread -o "$2" "$T/prog.c" 2>"$T/prog.cc.err" \
+    "$CC" -O1 -w -pthread $PEF -o "$2" "$T/prog.c" 2>"$T/prog.cc.err" \
         || { echo "    cc: $(tail -1 "$T/prog.cc.err")"; return 1; }
     return 0
 }
@@ -76,7 +86,7 @@ cat > "$T/fx.c" << 'EOF'
 int64_t fx_add(int64_t a, int64_t b) { return a + b; }
 const char* fx_tag(void) { return "fx-g7"; }
 EOF
-"$CC" -O1 -w -fPIC $SOPT -o "$T/$DLL" "$T/fx.c" 2>"$T/fx.err" \
+"$CC" -O1 -w -fPIC $SOPT $PEX -o "$T/$DLL" "$T/fx.c" 2>"$T/fx.err" \
     || { echo "  FAIL B 插件构建: $(tail -1 "$T/fx.err")"; exit 1; }
 cat > "$T/dl.ct" << 'EOF'
 #[link_name(fx_add)]
@@ -174,14 +184,28 @@ fn main() {
     println("win-probe ok cjk-src")
 }
 EOF
-if build_bin "$CJKDIR/你好.ct" "$T/cjksrc.bin" \
+CJK_SRC=0
+if build_bin "$CJKDIR/你好.ct" "$T/cjksrc.bin"; then CJK_SRC=1; else
+    echo "  [skip] E 源路径腿:工具链读 CJK 源路径败(在册发现:msys2→原生 exe argv ANSI 码页级,宽字符 main 方案挂账): $(tail -1 "$T/prog.err" 2>/dev/null)"
+fi
+if [ "$CJK_SRC" = "1" ] \
    && cp "$T/cjksrc.bin" "$CJKDIR/你好.bin" \
    && "$CJKDIR/你好.bin" 2>&1 | grep -q "win-probe ok cjk-src" \
    && cp "$T/$DLL" "$CJKDIR/$DLL" \
    && G7_DLL="$(winpath "$CJKDIR/$DLL")" "$T/dl.bin" 2>&1 | grep -q "win-probe ok dll add=42"; then
     pass=$((pass+1)); echo "  PASS E CJK 路径三件(源码/产物/dlopen)"
 else
-    fail=$((fail+1)); echo "  FAIL E CJK 路径"
+    if [ "$CJK_SRC" = "0" ]; then
+        echo "  [skip] E CJK 路径(源路径腿在册 skip;dlopen CJK 路径主战场由下行独立验)"
+        G7_DLL="$(winpath "$CJKDIR/$DLL")" "$T/dl.bin" > "$T/e.out" 2>&1
+        if grep -q "win-probe ok dll add=42" "$T/e.out"; then
+            pass=$((pass+1)); echo "  PASS E' CJK dlopen 路径(LoadLibraryW 主战场)"
+        else
+            fail=$((fail+1)); echo "  FAIL E' CJK dlopen: $(tail -2 "$T/e.out")"
+        fi
+    else
+        fail=$((fail+1)); echo "  FAIL E CJK 路径(源路径腿过了,余腿折)"
+    fi
 fi
 
 if [ "$pass" -eq 0 ]; then

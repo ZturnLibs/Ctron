@@ -264,6 +264,7 @@ pj_case() { # $1=label $2=形态(out|tree) $3=prep(空串跳过) $4=二进制名
     else
         fail=$((fail+1))
         echo "  FAIL: $label(sh_rc=$r1 native_rc=$r2)"
+        sed 's/^/    sh: /' "$T/sh.out" 2>/dev/null | sed -n '1,3p'
         diff "$T/sh.out" "$T/nat.out" 2>&1 | sed 's/^/    /' | sed -n '1,10p'
         sed 's/^/    tree: /' "$T/tree.diff" 2>/dev/null | sed -n '1,10p'
     fi
