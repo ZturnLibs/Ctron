@@ -1514,14 +1514,14 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         // 动态链接面(§9.6 v0.7):句柄为 ct_i 载荷;dlopen 固定 RTLD_NOW
         if callee == "dlopen" {
             var dp = ct_expr(ag[1], env, file)
-            return "(ct_i)(long)dlopen(" + dp + ", RTLD_NOW)"
+            return "(ct_i)(intptr_t)dlopen(" + dp + ", RTLD_NOW)"
         }
-        if callee == "dlclose" { return "(int32_t)dlclose((void*)(long)(" + ct_expr(ag[1], env, file) + "))" }
+        if callee == "dlclose" { return "(int32_t)dlclose((void*)(intptr_t)(" + ct_expr(ag[1], env, file) + "))" }
         // G2-W1:dlopen_global——RTLD_NOW|RTLD_GLOBAL(dlopen 库符号进全局域,
         // #[dlsym] RTLD_DEFAULT thunk 从此可达;独立内建=无位运算血律)
         if callee == "dlopen_global" {
             var dpg = ct_expr(ag[1], env, file)
-            return "(ct_i)(long)dlopen(" + dpg + ", RTLD_NOW | RTLD_GLOBAL)"
+            return "(ct_i)(intptr_t)dlopen(" + dpg + ", RTLD_NOW | RTLD_GLOBAL)"
         }
         // G2-W1:dlerror_str——错误面(非空 arena 拷贝;空→空串;失败后即时调用)
         if callee == "dlerror_str" { return "ctron_dlerror_str()" }

@@ -124,6 +124,7 @@ if build_bin "$T/dl.ct" "$T/dl.bin"; then
         pass=$((pass+1)); echo "  PASS B dlopen DLL"
     else
         fail=$((fail+1)); echo "  FAIL B dlopen DLL: $(tail -2 "$T/dl.out")"
+        objdump -p "$T/$DLL" 2>/dev/null | grep -A6 "Export Address Table" | head -8 | sed 's/^/    /'
     fi
     if G7_DLL="$(winpath "$T/no_such_g7.dll")" "$T/dl.bin" 2>&1 | grep -q "win-probe dl-err=.."; then
         pass=$((pass+1)); echo "  PASS B dlerror 负例"
@@ -138,18 +139,23 @@ fi
 cat > "$T/conc.ct" << 'EOF'
 fn main() {
     println("win-probe conc step=enter")
+    flush_out()
     let sum = scope { |s|
         println("win-probe conc step=scope")
+        flush_out()
         let (tx, rx) = Channel[I32](8)
         println("win-probe conc step=chan")
+        flush_out()
         s.spawn(|| {
             println("win-probe conc step=spawned")
+            flush_out()
             for i in 0..10 {
                 tx.send(i * 7).expect("send")
             }
             println("win-probe conc step=sent")
         })
         println("win-probe conc step=spawn-ret")
+        flush_out()
         var acc: I32 = 0
         for k in 0..10 {
             acc += rx.recv().expect("recv")
