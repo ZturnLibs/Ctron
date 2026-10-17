@@ -15,6 +15,7 @@ import ctcl_check  # noqa: E402  (CTCL 清单 schema 校验,规范 config-langua
 # 与 README §4 同步的错误码注册表
 ERROR_CODES = {
     "E1001": "解析错误(通用语法违规;含比较不可链)",
+    "E1002": "模块级 let/var 不是受支持的声明(F-内化批4;声明面=fn/test/struct/enum/impl/trait/use/const/static)",
     "E2010": "类型不匹配",
     "E2050": "bound 不满足(泛型实参不满足型参 bound)",
     "E2020": "未解析的名称",
@@ -160,6 +161,19 @@ def check_file(path: Path) -> list[str]:
         # db/sqlite:G6 门面夹具(探针 main 自断言,tests/db/sqlite/run.sh
         # emit-only 门自驱 + grep "sqlite-probe ok";非 test 块语义,
         # net/src 泳道先例)。
+        return errors
+    for lane_dir in ("down", "https", "thread", "win"):
+        if relparts0 and relparts0[0] == lane_dir and "src" in relparts0:
+            # G5 down/https + G3 thread + G7 win:e2e 探针 main 程序族
+            # (各 run.sh 自驱断言;非 test 块语义,net/src 泳道先例)。
+            return errors
+    if relparts0 and relparts0[0] == "ffi" and relparts0[1] == "dyn_so":
+        # G4 dyn_so 专道:run.sh 直驱双形态探针(run.sh 内联生成程序,
+        # src/main.ct 为手写直跑件;非 test 块语义,同上先例)。
+        return errors
+    if relparts0 and relparts0[0] == "drv_parity" and "fixtures" in relparts0:
+        # 构建驱动器 parity 语料(drv_parity/run.sh 黄金对照驱动;
+        # 非 test 块语义,dist/ 泳道先例)。
         return errors
     kind = kind_of(path)
     if kind is None:
