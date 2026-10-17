@@ -18,15 +18,15 @@
 
 ### Wave 1: dlopen 桥 Windows 垫片(编译器面)
 
-- [ ] driver_emit.ct:84-90 include 块扩展:`#define NOMINMAX` 前置;Win 臂加 RTLD_NOW/RTLD_GLOBAL/RTLD_DEFAULT 宏 + ctron_w_dlopen(UTF8→wchar LoadLibraryW)/ctron_w_dlsym(空句柄→GetModuleHandleW(NULL))/ctron_w_dlclose(FreeLibrary)/ctron_w_dlerror(GetLastError→FormatMessageW→UTF8,读即清)+ dlopen/dlsym/dlclose/dlerror 四重定向宏;POSIX 臂维持 dlfcn.h+errno.h 原文
-- [ ] 重建三连 + 发射探针验证:①POSIX:探针程序(#[dlsym] from_handle + dlopen_global + dlerror_str + dlclose)emit→cc→run 绿;②mingw 交叉:同探针 x86_64-w64-mingw32-gcc 编链过(运行归 CI);③smoke --full 全绿
-- [ ] Commit
+- [x] driver_emit.ct:84-90 include 块扩展:`#define NOMINMAX` 前置;Win 臂加 RTLD_NOW/RTLD_GLOBAL/RTLD_DEFAULT 宏 + ctron_w_dlopen(UTF8→wchar LoadLibraryW)/ctron_w_dlsym(空句柄→GetModuleHandleW(NULL))/ctron_w_dlclose(FreeLibrary)/ctron_w_dlerror(GetLastError→FormatMessageW→UTF8,读即清)+ dlopen/dlsym/dlclose/dlerror 四重定向宏;POSIX 臂维持 dlfcn.h+errno.h 原文
+- [x] 重建三连 + 发射探针验证:①POSIX:探针程序(#[dlsym] from_handle + dlopen_global + dlerror_str + dlclose)emit→cc→run 绿;②mingw 交叉:同探针 x86_64-w64-mingw32-gcc 编链过(运行归 CI);③smoke --full 全绿
+- [x] Commit
 
 ### Wave 2: tests/win 冒烟道 + ci.yml windows-smoke job
 
-- [ ] tests/win/smoke.sh:双平台脚本(msys2 bash/ubuntu)——hello emit+cc+run/并发自检(spawn/join/chan)/__sync Atomic 钉/dlopen DLL 探针(gcc -shared 夹具 + from_handle 主道;RTLD_DEFAULT exe-export 需 -Wl,--export-all-symbols 登记在册)/CJK 路径三件(源码路径/产物路径/dlopen 路径);本地 POSIX 腿真跑绿
-- [ ] ci.yml:winpre job(ubuntu:make compiler-c+build.sh+ctc.sh emit 四件预发射 C[cc/chk/emit/drv]+artifact)+ windows-smoke job(needs winpre:setup-msys2 MINGW64→gcc 三件+ctron.exe[--stack,16777216;drv 并链 lib/proc/c_src/ctron_proc.c]→真 ctron build 一例→sh tests/win/smoke.sh)
-- [ ] Commit
+- [x] tests/win/smoke.sh:双平台脚本(msys2 bash/ubuntu)——hello emit+cc+run/并发自检(spawn/join/chan)/__sync Atomic 钉/dlopen DLL 探针(gcc -shared 夹具 + from_handle 主道;RTLD_DEFAULT exe-export 需 -Wl,--export-all-symbols 登记在册)/CJK 路径三件(源码路径/产物路径/dlopen 路径);本地 POSIX 腿真跑绿
+- [x] ci.yml:winpre job(ubuntu:make compiler-c+build.sh+ctc.sh emit 四件预发射 C[cc/chk/emit/drv]+artifact)+ windows-smoke job(needs winpre:setup-msys2 MINGW64→gcc 三件+ctron.exe[--stack,16777216;drv 并链 lib/proc/c_src/ctron_proc.c]→真 ctron build 一例→sh tests/win/smoke.sh)
+- [x] Commit
 
 ### Wave 3: CI 真跑迭代 + 批终
 

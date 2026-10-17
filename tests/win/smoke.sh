@@ -10,7 +10,9 @@
 #   C 并发       scope/spawn/Channel(06 家法核心;winpthreads 承载)
 #   D __sync 钉  Atomic fetch_add/load/store(发射 __sync 内建 mingw 可用性)
 #   E CJK 路径   CJK 目录下源码 emit + 产物落位 + DLL dlopen(三路径全链;
-#                Windows = CP_UTF8→LoadLibraryW 转换真验证)
+#                Windows = CP_UTF8→LoadLibraryW 转换真验证;链接产物落
+#                ASCII 路径再 cp——ld(collect2) 写 CJK 输出路径脆性=首轮
+#                CI 实证发现,编译器读 CJK 源码路径则无恙)
 # 挂账(在册):RTLD_DEFAULT exe-export 符号面须 -Wl,--export-all-symbols;
 # cdylib+DLL 搜索路径(Darwin 门控先例 tests/ffi/dyn_so;Windows 入册待驱动器
 # cdylib 面首证);coro RT 不入 Windows 冒烟(排除项)。
@@ -102,10 +104,11 @@ fn main() {
 }
 EOF
 if build_bin "$T/dl.ct" "$T/dl.bin"; then
-    if G7_DLL="$(winpath "$T/$DLL")" "$T/dl.bin" 2>&1 | grep -q "win-probe ok dll add=42"; then
+    G7_DLL="$(winpath "$T/$DLL")" "$T/dl.bin" > "$T/dl.out" 2>&1
+    if grep -q "win-probe ok dll add=42" "$T/dl.out"; then
         pass=$((pass+1)); echo "  PASS B dlopen DLL"
     else
-        fail=$((fail+1)); echo "  FAIL B dlopen DLL"
+        fail=$((fail+1)); echo "  FAIL B dlopen DLL: $(tail -2 "$T/dl.out")"
     fi
     if G7_DLL="$(winpath "$T/no_such_g7.dll")" "$T/dl.bin" 2>&1 | grep -q "win-probe dl-err=.."; then
         pass=$((pass+1)); echo "  PASS B dlerror 负例"
@@ -139,10 +142,10 @@ fn main() {
     }
 }
 EOF
-if build_bin "$T/conc.ct" "$T/conc.bin" && "$T/conc.bin" 2>&1 | grep -q "win-probe ok conc"; then
+if build_bin "$T/conc.ct" "$T/conc.bin" && "$T/conc.bin" > "$T/conc.out" 2>&1 && grep -q "win-probe ok conc" "$T/conc.out"; then
     pass=$((pass+1)); echo "  PASS C 并发"
 else
-    fail=$((fail+1)); echo "  FAIL C 并发"
+    fail=$((fail+1)); echo "  FAIL C 并发: $(tail -2 "$T/conc.out" 2>/dev/null)"
 fi
 
 # ── D __sync 钉(Atomic 发射 __sync 内建;mingw 可用性钉形)──
@@ -171,7 +174,8 @@ fn main() {
     println("win-probe ok cjk-src")
 }
 EOF
-if build_bin "$CJKDIR/你好.ct" "$CJKDIR/你好.bin" \
+if build_bin "$CJKDIR/你好.ct" "$T/cjksrc.bin" \
+   && cp "$T/cjksrc.bin" "$CJKDIR/你好.bin" \
    && "$CJKDIR/你好.bin" 2>&1 | grep -q "win-probe ok cjk-src" \
    && cp "$T/$DLL" "$CJKDIR/$DLL" \
    && G7_DLL="$(winpath "$CJKDIR/$DLL")" "$T/dl.bin" 2>&1 | grep -q "win-probe ok dll add=42"; then

@@ -2,11 +2,11 @@ name: ci
 on: [push, pull_request]
 jobs:
   gate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: 工具链(gcc/python3)
-        run: sudo apt-get update && sudo apt-get install -y gcc python3
+      - name: 工具链(gcc/python3/clang+lld[wasm32 门自持,不赖 runner 镜像预装])
+        run: sudo apt-get update && sudo apt-get install -y gcc python3 clang lld
       - name: 宿主 seed(首次引导)
         run: make -C compiler-c
       - name: std 参考页漂移门(std_doc --check,镜像 pages.yml spec 漂移门)
@@ -18,7 +18,7 @@ jobs:
   # 配方 = release.yml windows stage 同款(msys2 MINGW64 + 预发射 C + gcc --stack);
   # 加 driver 件(ctron-drv.c 并链 ctron_proc.c)让真 `ctron build` 入冒烟。
   winpre:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: 工具链(gcc/python3)
