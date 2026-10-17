@@ -106,7 +106,7 @@ fn main() {
     let lib: Str = env_get("G7_DLL")
     let h: I64 = dlopen_global(lib)
     if h == 0 {
-        println("win-probe dl-err=" + dlerror_str())
+        println("win-probe dl-err len=" + lib.len.to_string() + " msg=" + dlerror_str())
         return
     }
     let s = fx_add_h(h, 40, 2)
@@ -126,7 +126,7 @@ if build_bin "$T/dl.ct" "$T/dl.bin"; then
         fail=$((fail+1)); echo "  FAIL B dlopen DLL: $(tail -2 "$T/dl.out")"
         objdump -p "$T/$DLL" 2>/dev/null | grep -A6 "Export Address Table" | head -8 | sed 's/^/    /'
     fi
-    if G7_DLL="$(winpath "$T/no_such_g7.dll")" "$T/dl.bin" 2>&1 | grep -q "win-probe dl-err=.."; then
+    if G7_DLL="$(winpath "$T/no_such_g7.dll")" "$T/dl.bin" 2>&1 | grep -q "win-probe dl-err len="; then
         pass=$((pass+1)); echo "  PASS B dlerror 负例"
     else
         fail=$((fail+1)); echo "  FAIL B dlerror 负例(须非空)"
@@ -230,6 +230,7 @@ else
         pass=$((pass+1)); echo "  PASS E' CJK dlopen 路径(LoadLibraryW 主战场:CJK 目录 DLL 真 load)"
     else
         fail=$((fail+1)); echo "  FAIL E' CJK dlopen: $(tail -2 "$T/e.out")"
+        echo "    期望路径字节数(UTF-8): $(printf '%s' "$(winpath "$CJKDIR/$DLL")" | wc -c)"
     fi
 fi
 
