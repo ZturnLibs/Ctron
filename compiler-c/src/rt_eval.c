@@ -1160,7 +1160,7 @@ val eval_expr(rt* R, cexpr* e) {
                 long long ms = (long long)ts.tv_sec * 1000LL + ts.tv_nsec / 1000000LL;
                 char buf[32];
                 snprintf(buf, sizeof(buf), "%lld", ms);
-                return v_str_own(R, ctron_arena_strndup(R, buf, strlen(buf)));
+                return v_str_own(R, buf);
             }
             if (!strcmp(nm, "now_ms")) {
                 struct timespec ts;
@@ -1198,7 +1198,7 @@ val eval_expr(rt* R, cexpr* e) {
                 long long ns = (long long)ts.tv_sec * 1000000000LL + ts.tv_nsec;
                 char buf[32];
                 snprintf(buf, sizeof(buf), "%lld", ns);
-                return v_str_own(R, ctron_arena_strndup(R, buf, strlen(buf)));
+                return v_str_own(R, buf);
             }
             if (!strcmp(nm, "mono_ns")) {
                 struct timespec ts;
@@ -1216,7 +1216,7 @@ val eval_expr(rt* R, cexpr* e) {
                 long long ns = (long long)ts.tv_sec * 1000000000LL + ts.tv_nsec;
                 char buf[32];
                 snprintf(buf, sizeof(buf), "%lld", ns);
-                return v_str_own(R, ctron_arena_strndup(R, buf, strlen(buf)));
+                return v_str_own(R, buf);
             }
             if (!strcmp(nm, "wall_ns")) {
                 struct timespec ts;

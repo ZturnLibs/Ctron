@@ -19,6 +19,7 @@
 # (whole-archive + rdynamic)——解释口径 extern 直调桥的 dlsym 符号源(§11.5);
 # vendored 库缺席时降级为纯解释器(extern 调用运行期报"符号未找到")。
 set -eu
+WERR=""
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(dirname "$DIR")
 BIN="$DIR/bin"
@@ -29,7 +30,7 @@ trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$BIN"
 
 # CC2(2026-10-16):str_byte/utf8_enc 解释臂宿主口(eval_call extern 直调桥符号源)
-cc -O2 -w -c "$DIR/host_shim/cc2_str.c" -o "$TMP/cc2_str.o"
+cc -O2 -w -c "$DIR/host_shim/cc2_str.c" -o "$TMP/cc2_str.o" $WERR
 SHIM_O="$TMP/cc2_str.o"
 
 "$DIR/ctc.sh" emit "$DIR/build/cc_run.ct"  "$TMP/ctron_cc.c"   > /dev/null
@@ -45,6 +46,12 @@ case "$(uname)" in
     Darwin) FW="-framework Cocoa -framework OpenGL -framework IOKit -framework CoreFoundation -framework CoreVideo" ;;
     Linux)  FW="-ldl -lX11 -lGL -lm -lpthread -ldl" ;;
     *) FW="" ;;
+esac
+
+# v0.10 Linux: gcc 14+ 默认把不兼容指针族升 error(clang 仅警告;发射产物存量松散)——降回警告
+case "$(uname)" in
+    Linux) WERR="-Wno-error=incompatible-pointer-types -Wno-error=int-conversion -Wno-error=implicit-function-declaration -Wno-error=return-type " ;;
+    *) WERR="" ;;
 esac
 
 # W4 E1:ctron-cc 的 extern 符号源(域库 shim + raylib;缺席则纯解释器降级)
@@ -71,28 +78,28 @@ if [ -f "$ROOT/vendor/gui/build/libraylib.a" ]; then
     echo "native: ctron-cc 附带解释口径 extern 符号源(域库 shim + raylib)"
 fi
 
-cc -O2 -w -o "$BIN/ctron-cc" "$TMP/ctron_cc.c" $SHIM_O $GUI_O $GUI_F
+cc -O2 -w -o "$BIN/ctron-cc" "$TMP/ctron_cc.c" $SHIM_O $GUI_O $GUI_F $WERR
 echo "native: bin/ctron-cc(运行驱动)← $(wc -l < "$TMP/ctron_cc.c") 行 C"
 
-cc -O2 -w -o "$BIN/ctron-emit" "$TMP/ctron_emit.c" $SHIM_O
+cc -O2 -w -o "$BIN/ctron-emit" "$TMP/ctron_emit.c" $SHIM_O $WERR
 echo "native: bin/ctron-emit(发射驱动)← $(wc -l < "$TMP/ctron_emit.c") 行 C"
 
-cc -O2 -w -o "$BIN/ctron-chk" "$TMP/ctron_chk.c" $SHIM_O
+cc -O2 -w -o "$BIN/ctron-chk" "$TMP/ctron_chk.c" $SHIM_O $WERR
 echo "native: bin/ctron-chk(检查驱动)← $(wc -l < "$TMP/ctron_chk.c") 行 C"
 
-cc -O2 -w -o "$BIN/ctron-fmt" "$TMP/ctron_fmt.c" $SHIM_O
+cc -O2 -w -o "$BIN/ctron-fmt" "$TMP/ctron_fmt.c" $SHIM_O $WERR
 echo "native: bin/ctron-fmt(格式化驱动)← $(wc -l < "$TMP/ctron_fmt.c") 行 C"
 
-cc -O2 -w -o "$BIN/ctron-doc" "$TMP/ctron_doc.c" $SHIM_O
+cc -O2 -w -o "$BIN/ctron-doc" "$TMP/ctron_doc.c" $SHIM_O $WERR
 echo "native: bin/ctron-doc(iface 投影驱动)← $(wc -l < "$TMP/ctron_doc.c") 行 C"
 
-cc -O2 -w -o "$BIN/ctron-dep" "$TMP/ctron_dep.c" $SHIM_O
+cc -O2 -w -o "$BIN/ctron-dep" "$TMP/ctron_dep.c" $SHIM_O $WERR
 echo "native: bin/ctron-dep(依赖解析驱动,T49)← $(wc -l < "$TMP/ctron_dep.c") 行 C"
 
-cc -O2 -w -o "$BIN/ctron-verify" "$TMP/ctron_verify.c" $SHIM_O
+cc -O2 -w -o "$BIN/ctron-verify" "$TMP/ctron_verify.c" $SHIM_O $WERR
 echo "native: bin/ctron-verify(工件深验驱动,T50/L3 载体)← $(wc -l < "$TMP/ctron_verify.c") 行 C"
 
-cc -O2 -w -o "$BIN/ctron-ast" "$TMP/ctron_ast.c" $SHIM_O
+cc -O2 -w -o "$BIN/ctron-ast" "$TMP/ctron_ast.c" $SHIM_O $WERR
 echo "native: bin/ctron-ast(封印/序列化驱动,T50/S4-④)← $(wc -l < "$TMP/ctron_ast.c") 行 C"
 
 # W4 波1:用户驱动器 bin/ctron(Ctron 自写,compiler/driver/src/main.ct 单文件;
@@ -117,6 +124,6 @@ if [ -f "$DIR/driver/src/main.ct" ]; then
     sed -e "s|$DRV_SED_A||" -e "s|$DRV_SED_B||" "$DRV_C" > "$DRV_C.s"
     mv "$DRV_C.s" "$DRV_C"
     # W4 波1 批2:委派族 use proc → 垫片同链(纯 emit 单文件缺 ctron_proc_run_argv_rc 符号)
-    cc -O2 -w -o "$BIN/ctron" "$DRV_C" "$ROOT/lib/proc/c_src/ctron_proc.c"
+    cc -O2 -w -o "$BIN/ctron" "$DRV_C" "$ROOT/lib/proc/c_src/ctron_proc.c" $WERR
     echo "native: bin/ctron(用户驱动器,W4 波1)← $(wc -l < "$DIR/driver/src/main.ct") 行 Ctron"
 fi

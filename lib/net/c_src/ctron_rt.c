@@ -1679,7 +1679,10 @@ void ctron_rt_init(int workers)
     g_nworkers = workers;
     for (i = 0; i < workers; i++) {
         g_workers[i].idx = i;                        /* T34:steal 轮转起点(init 写定,worker 未见) */
-        if (pthread_create(&g_workers[i].th, NULL, worker_main, &g_workers[i]) != 0)
+        pthread_attr_t wattr;
+        pthread_attr_init(&wattr);
+        pthread_attr_setstacksize(&wattr, 8u << 20); /* v0.10: musl 缺省 128KB — loom 大平面爆栈(SIGSEGV@verify);对齐 glibc/macOS 量级 */
+        if (pthread_create(&g_workers[i].th, &wattr, worker_main, &g_workers[i]) != 0)
             abort();
     }
     g_inited = 1;

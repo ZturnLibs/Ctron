@@ -405,7 +405,13 @@ case $mode in
         OUTC=${1:-$(basename "${IN%.ct}").c}
         # T20 内容寻址缓存:源文件哈希命中 → 复用发射产物(同输入同产物)
         CACHE_DIR="$ROOT/.cache/emit"
-        IN_HASH=$(shasum "$IN" | cut -d' ' -f1)_$(shasum "$DIR/build/cc_emit.ct" | cut -d' ' -f1 | cut -c1-12)
+        # v0.10 可移植:shasum 缺席(Linux 常态)回退 sha256sum;两者皆无 = 缓存禁用
+        HB=$(command -v shasum 2>/dev/null || command -v sha256sum 2>/dev/null || true)
+        if [ -n "$HB" ]; then
+            IN_HASH=$("$HB" "$IN" | cut -d' ' -f1)_$("$HB" "$DIR/build/cc_emit.ct" | cut -d' ' -f1 | cut -c1-12)
+        else
+            IN_HASH=nocache$$
+        fi
         CACHED="$CACHE_DIR/$IN_HASH.c"
         if [ -f "$CACHED" ]; then
             cp "$CACHED" "$OUTC"
