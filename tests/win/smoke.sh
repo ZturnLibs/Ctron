@@ -103,7 +103,15 @@ extern "c" fn fx_add_h(h: I64, a: I64, b: I64) -> I64
 extern "c" fn fx_tag_h(h: I64) -> Str
 
 fn main() {
-    let lib: Str = env_get("G7_DLL")
+    var lib: Str = env_get("G7_DLL")
+    let pf: Str = env_get("G7_DLL_FILE")
+    if pf.len > 0 {
+        lib = read_file(pf)
+        let n = lib.len
+        if n > 0 && byte_at(lib, n - 1) == 10 {
+            lib = byte_slice(lib, 0, n - 1)
+        }
+    }
     let h: I64 = dlopen_global(lib)
     if h == 0 {
         println("win-probe dl-err len=" + lib.len.to_string() + " msg=" + dlerror_str())
@@ -225,7 +233,8 @@ if [ "$E_EXE" = "1" ]; then
     fi
 else
     echo "  [skip] E CJK-exe 腿(在册深发现:CJK 名可执行文件 exec/loader 级失败,e1/e2 双空=启动期死;八轮 CI 实证——工具链 Windows IO 宽字符面=后续批次)"
-    G7_DLL="$(winpath "$CJKDIR/$DLL")" "$T/dl.bin" > "$T/e.out" 2>&1
+    printf '%s' "$(winpath "$CJKDIR/$DLL")" > "$T/dllpath.txt"
+    G7_DLL_FILE="$(winpath "$T/dllpath.txt")" "$T/dl.bin" > "$T/e.out" 2>&1
     if grep -q "win-probe ok dll add=42" "$T/e.out"; then
         pass=$((pass+1)); echo "  PASS E' CJK dlopen 路径(LoadLibraryW 主战场:CJK 目录 DLL 真 load)"
     else
