@@ -20,6 +20,7 @@ int pthread_mutex_lock(pthread_mutex_t* m);
 int pthread_mutex_unlock(pthread_mutex_t* m);
 int pthread_cond_init(pthread_cond_t* c, const void* a);
 int pthread_cond_wait(pthread_cond_t* c, pthread_mutex_t* m);
+int pthread_cond_timedwait(pthread_cond_t* c, pthread_mutex_t* m, const struct timespec* t);
 int pthread_cond_broadcast(pthread_cond_t* c);
 
 #endif
