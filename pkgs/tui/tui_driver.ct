@@ -111,3 +111,18 @@ fn tt_frame[M](tt: Box[TuiTest[M]]) {
 fn tt_frame[M](tt: Box[TuiTest[M]]) {
     tt.v.frames = tt.v.frames + 1
 }
+
+pub struct TuiTest[M] {
+    var buf: TuiBuf
+    var frames: I32
+    var w: I32
+    var h: I32
+    var vf: fn(M) -> TuiTree
+    var uf: fn(M, Event)
+    var m: M
+    var th: Theme
+}
+
+fn tt_frame[M](tt: Box[TuiTest[M]]) {
+    tt.v.frames = tt.v.frames + 1
+}
