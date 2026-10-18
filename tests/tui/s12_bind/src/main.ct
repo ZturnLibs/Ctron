@@ -1,0 +1,60 @@
+// s12 —— {expr} 槽/bind 活问门(W5a 后续):ctml 含 \{key} 槽(源串 \{ 转义——
+// { 插值与 ctml 槽语法撞车,插值常量折叠期即解析)→ bound() 克隆解析 →
+// 渲染断言(实值落格/未识键原样保留/混合文本多槽)。
+use tui.{ theme_default, render, tui_parse, bound, buf_at }
+
+fn main() -> I32 {
+    var doc = ""
+    doc = doc + "<vbox>\n"
+    doc = doc + "  <bar>\{user} 的会话</bar>\n"
+    doc = doc + "  <text>count: \{count}</text>\n"
+    doc = doc + "  <text>keep \{unknown} as-is</text>\n"
+    doc = doc + "</vbox>\n"
+    let pr = tui_parse(doc)
+    var emsg = ""
+    match pr {
+        Err(m) => {
+            emsg = m
+        }
+        Ok(_) => {
+        }
+    }
+    if emsg.len != 0 {
+        panic("s12: parse failed: " + emsg)
+    }
+    let raw = pr.expect("tree")
+    var keys = List[Str]()
+    keys.push("count")
+    keys.push("user")
+    var vals = List[Str]()
+    vals.push("42")
+    vals.push("alice")
+    let tree = bound(raw, keys, vals)
+    let rr = render(tree, 24, 6, theme_default())
+    var remsg = ""
+    match rr {
+        Err(m2) => {
+            remsg = m2
+        }
+        Ok(_) => {
+        }
+    }
+    if remsg.len != 0 {
+        panic("s12: render failed: " + remsg)
+    }
+    let b = rr.expect("buf")
+    // bar:alice 的会话(y=0,"a" 在 x0)
+    if buf_at(b, 0, 0) != "a" {
+        panic("s12: bind user missing")
+    }
+    // text:count: 42("4" 在 x7)
+    if buf_at(b, 7, 1) != "4" {
+        panic("s12: bind count missing")
+    }
+    // 未识键原样:keep \\{unknown\\} as-is("k" 在 x0)
+    if buf_at(b, 0, 2) != "k" {
+        panic("s12: mixed text missing")
+    }
+    println("s12_bind-probe ok")
+    return 0
+}

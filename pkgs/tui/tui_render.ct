@@ -761,3 +761,56 @@ pub fn render(tree: TuiTree, w: I32, h: I32, th: Theme) -> Result[TuiBuf, Str] {
     }
     return Ok(b)
 }
+
+// ---- {expr} 槽/bind 活问(W5a 后续;设计 §3.2 双形态同汇)----
+// ctml 文本内容含 {key} 槽;bound() 克隆树并把槽经 bind 活问解析为实值。
+// bind = 应用提供的键→值应答(gui test() 的 bind 参数形态先例);未识键 → 原样保留。
+
+// 单键解析:"{key}" → 绑表查值;未识键原样保留
+// (绑表 = keys/vals 平行 List 数据驱动——fn 值回调的编组白名单缺口(标量族限)
+// 批C 邻案,数据面零缺口;应用每帧重建绑表,模型在手零成本)
+fn slot_resolve(txt: Str, keys: List[Str], vals: List[Str]) -> Str {
+    var out = ""
+    var i: I32 = 0
+    while i < txt.len {
+        let rest = byte_slice(txt, i, txt.len)
+        let close = index_of(rest, "}")
+        if close > 0 {
+            let key = byte_slice(txt, i + 1, i + close)
+            if key.len > 0 {
+                var k: I32 = 0
+                while k < keys.len {
+                    if keys[k] == key {
+                        out = out + vals[k]
+                        break
+                    }
+                    k += 1
+                }
+            }
+        }
+        out = out + byte_slice(txt, i, i + 1)
+        i += 1
+    }
+    return out
+}
+
+pub fn bound(tree: TuiTree, keys: List[Str], vals: List[Str]) -> TuiTree {
+    var t = tree_new()
+    var i: I32 = 0
+    while i < tree.tag.len {
+        t.tag.push(tree.tag[i])
+        t.txt.push(slot_resolve(tree.txt[i], keys, vals))
+        t.cls.push(tree.cls[i])
+        t.wmode.push(tree.wmode[i])
+        t.wval.push(tree.wval[i])
+        t.hmode.push(tree.hmode[i])
+        t.hval.push(tree.hval[i])
+        t.al.push(slot_resolve(tree.al[i], keys, vals))
+        // 1:1 全量拷贝:索引恒等,结构索引原样(与 tree_append 的偏移面不同)
+        t.nfc.push(tree.nfc[i])
+        t.ns.push(tree.ns[i])
+        t.aid.push(tree.aid[i])
+        i += 1
+    }
+    return t
+}

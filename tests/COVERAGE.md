@@ -2318,3 +2318,21 @@ struct + fn 字段含跨模块类型)。合并期 **类型名泄漏为顶层 dec
 = tui_driver.ct 增量三步(struct TuiTest[M] → test[M] → fn tt_frame[M](tt:
 Box[TuiTest[M]]),facade chk 即 E5030 随参名);zzprobe 三变体包法仍可作归因起点,
 但归因须在 tui-driver 真 context 进行(批C)。
+
+## 2026-10-18 {expr} 槽/bind 活问落地(数据驱动绑表;W5a 后续小批)
+
+**交付**:tui_render +slot_resolve("{key}" 槽扫描→绑表查值;未识键原样保留)+
+bound()(树 1:1 克隆,txt/al 两面走槽解析;结构索引原样——与 tree_append 的偏移
+面不同,克隆全量拷贝索引恒等)。**绑表 = keys/vals 平行 List 数据驱动**,应用每帧
+重建(模型在手零成本)。门 s12:bar/text 混合文本/未识键三断言。**13/13 双跑绿**。
+
+**新发现两枚(编译器批C 邻案)**:
+1. **编译器本体 OOB**:emit 期 byte_slice: range out of bounds——触发 =
+   `index_of(byte_slice(x, a, b), s)` **调用结果内联作首参**(let 绑定替身即愈);
+   编译器自身 byte_slice 在处理该 AST 形状时越界(批C 邻案;let 绑定规避纪律在册)。
+2. **List[Str] 参过泛型 fn 值 trampoline = int32 编组错**(Str 返回同族)——fn 值
+   回调编组白名单=标量族限;bind 形态改数据驱动绑表零缺口(gui bnd Void+List 面
+   实际同坑,gui 未直呼故未显形)。
+
+**撞车坑位**:ctml {key} 槽与 Ctron 字符串插值 {var} 语法撞车——源串须 \\{ 转义
+(插值常量折叠期即解析,{var} 未声明 → CC 期 t_var 未定义错)。
