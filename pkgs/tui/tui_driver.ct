@@ -93,36 +93,9 @@ pub fn run_app[M](view: fn(M) -> TuiTree, update: fn(M, Event), m: M, theme: The
     return 0
 }
 
-// ---- headless 测试驱动(§9;不进 raw/alt,虚拟 buffer 直断言)----
-
-
-// test/d_* 家族持出(批C 病灶再精化,2026-10-18 增量二分):fn 形参型引用**同包
-// 跨文件泛型 struct**(fn f[M](x: Box[TuiTest[M]]),TuiTest 声明于他文件)→ 合并期
-// **类型名泄漏为顶层 decl**(E5030 撞名;struct 同文件共置时泄漏名=参数名 tt/t;
-// 独立单文件无恙;struct 本体声明与 fn-type 内嵌 fn(Box[TuiTest[M]]) 反通过)。
-// AST 本身完好(ctc.sh ast dump:Fn/Param/Named Box→TuiTest→M 全对)= 合并期 decl
-// 名槽对比的泄漏,非 parse。归编译器批C(parse_pkg 合并名槽/sem 泛型实例化 decl
-// 泄漏路径)。
-
-fn tt_frame[M](tt: Box[TuiTest[M]]) {
-    tt.v.frames = tt.v.frames + 1
-}
-
-fn tt_frame[M](tt: Box[TuiTest[M]]) {
-    tt.v.frames = tt.v.frames + 1
-}
-
-pub struct TuiTest[M] {
-    var buf: TuiBuf
-    var frames: I32
-    var w: I32
-    var h: I32
-    var vf: fn(M) -> TuiTree
-    var uf: fn(M, Event)
-    var m: M
-    var th: Theme
-}
-
-fn tt_frame[M](tt: Box[TuiTest[M]]) {
-    tt.v.frames = tt.v.frames + 1
-}
+// ---- headless 测试驱动(§9)持出(批C 病灶三次精化 2026-10-18)----
+// test/d_* 家族(TuiTest[M] 泛化稿)持出:fn 形参型引用**同包跨文件泛型 struct**
+// (fn f[M](x: Box[TuiTest[M]]),TuiTest 声明于他文件)→ 合并期**类型名泄漏为顶层
+// decl**(E5030 撞名);struct 同文件共置时泄漏名=参数名;独立单文件无恙;AST 完好
+// (ctc.sh ast dump 逐槽全对)= 合并期 decl 名槽对比泄漏,非 parse。归编译器批C
+// (parse_pkg 合并名槽/sem 泛型实例化 decl 泄漏路径)。修复后本节原稿直接回填。
