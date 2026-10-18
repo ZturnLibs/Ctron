@@ -2234,3 +2234,28 @@ List[I32] 有 cast 正常)——属性槽 0/1 整形替身(登记债:发射器 B
 **挂账**:W4 批2(input 字素编辑/dialog 模态/todo-tui 验收应用+s8 全量);test/d_* 家族
 回填(批C);scroll 任意子树视口原语(list 虚拟化已覆盖主需求);input 光标请求槽
 (TuiTree cx/cy,现版反色块替身)。
+
+## 2026-10-18 pkgs/tui W4 批2(input/dialog/todo-tui 验收应用;W4 组件库收官)
+
+**交付**:
+- **input 纯函数助手族**(键翻译驻宿主,组件只出 helpers+render):input_insert(码点
+  插入,字素下标切分)/input_backspace/input_left/right(域钳)/input_clear/input_render
+  (文本+光标反色块——§13 光标请求槽 v0 替身,登记偏差)。cur=字素下标(cp_at 起始判定
+  + 三字节步进)。
+- **dialog builder**:round 盒+标题+lines+钮行(焦点钮反色/余 muted);v0 树内居中盒
+  (mask 暗化/overlay 栈登记债)。
+- **examples/todo-tui 验收应用**(§10 旗舰):list+input+statusbar 全组件消费;键位
+  ↑↓/k j 移动·a 新增·打字+Enter 提交·Esc 取消·d 删除·q 退出;NDJSON 式行文件持久化
+  (先删后建 0600)。**TODO_TUI_DEMO 演示模式**(设计外增量,CI 确定性):tick 150ms 逐
+  枚注入脚本键(TODO_TUI_DEMO="a|s:buy milk|RET|q";macOS script 不转发管道 stdin 在
+  册——s6_panic 当时靠 tick 路径侥幸)。
+- **e2e 门**(examples/todo-tui/run.sh,script pty 供真 tty):**4/4 双跑绿**——新增落盘/
+  退出还原(1006l 锚)/重启回载持久化/删除幸存。tui 门 11/11 同步维持。
+
+**坑位**:①List 无 remove 面——删除=重建过滤列表(值语义重赋);②门面命名惯例
+  <域>/<域>.ct 硬约束(widgets.ct 不解析,tui_widgets.ct 即愈);③naked 包组件的依赖
+  面 = 消费方 use 面全盖(「use 面缺什么,发射面就缺什么」双向);④index_of 两参形
+  (三参 from 形非 pub 面)。
+
+挂账:input 真 LED 光标(§13 cx/cy 槽)、dialog overlay 层与 mask、textareas(二期)、
+test/d_* 家族回填(批C)、mouse motion。

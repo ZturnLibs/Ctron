@@ -108,3 +108,145 @@ pub fn progress(ratio: I32, label: Str, bar_w: I32) -> TuiTree {
     }
     return text(s + " " + label).with_cls("accent")
 }
+
+// ---- input(§14 批2)----
+// 事件头名:input_change:<实例>(载荷 "s:" 新值)/ input_submit:<实例>(Enter)。
+// 键翻译驻宿主(update 调下方纯函数助手改模型);cur = 字素下标(非字节)。
+// 渲染:单行文本 + 光标反色块(§13 光标请求槽的 v0 替身,登记偏差);
+// focused 边框 accent/非焦 muted 由 box 外皮消费方组合。
+
+// 字素切分:值按字素下标切三段(head/cur 字素/tail)
+fn inp_split(value: Str, cur: I32) -> List[Str] {
+    var parts = List[Str]()
+    var bytei: I32 = 0
+    var gi: I32 = 0
+    var cut1: I32 = 0 - 1
+    var cut2: I32 = 0 - 1
+    while bytei < value.len {
+        if gi == cur {
+            if cut1 < 0 {
+                cut1 = bytei
+            }
+        }
+        if gi == cur + 1 {
+            if cut2 < 0 {
+                cut2 = bytei
+            }
+        }
+        let cp = cp_at(value, bytei)
+        if cp < 0 {
+            bytei += 1
+            continue
+        }
+        if cp >= 0x800 {
+            bytei += 3
+        } else {
+            if cp >= 0x80 {
+                bytei += 2
+            } else {
+                bytei += 1
+            }
+        }
+        gi += 1
+    }
+    if cut1 < 0 {
+        cut1 = value.len
+    }
+    if cut2 < 0 {
+        cut2 = value.len
+    }
+    parts.push(byte_slice(value, 0, cut1))
+    parts.push(byte_slice(value, cut1, cut2))
+    parts.push(byte_slice(value, cut2, value.len))
+    return parts
+}
+
+// 可打印字符插入(码点;宿主自 ev_char 调)
+pub fn input_insert(value: Str, cur: I32, cp: I32) -> Str {
+    if cp < 32 {
+        return value
+    }
+    var parts = inp_split(value, cur)
+    return parts[0] + utf8_enc(cp) + parts[2]
+}
+
+// 删光标前一字素(Backspace)
+pub fn input_backspace(value: Str, cur: I32) -> Str {
+    if cur < 1 {
+        return value
+    }
+    var parts = inp_split(value, cur - 1)
+    return parts[0] + parts[2]
+}
+
+// 光标移(←/→;域钳 [0, 字素数])
+pub fn input_left(cur: I32) -> I32 {
+    if cur < 1 {
+        return 0
+    }
+    return cur - 1
+}
+
+pub fn input_right(value: Str, cur: I32) -> I32 {
+    let n = cp_count(value)
+    if cur >= n {
+        return n
+    }
+    return cur + 1
+}
+
+// Ctrl+U 清行
+pub fn input_clear() -> Str {
+    return ""
+}
+
+// 渲染:文本 + 光标反色块(反色块=光标位字素 rev;空位/行尾 = rev 空格)
+pub fn input_render(value: Str, cur: I32, focused: Bool) -> TuiTree {
+    var parts = inp_split(value, cur)
+    var kids = List[TuiTree]()
+    if parts[0].len > 0 {
+        kids.push(text(parts[0]))
+    }
+    var atcur = parts[1]
+    if atcur.len == 0 {
+        atcur = " "
+    }
+    if focused {
+        kids.push(text(atcur).with_cls("rev"))
+    } else {
+        kids.push(text(atcur))
+    }
+    if parts[2].len > 0 {
+        kids.push(text(parts[2]))
+    }
+    return hbox(kids)
+}
+
+// ---- dialog(§14 批2)----
+// 事件头名:dialog_pick:<实例>(载荷 "i:" 钮下标;Enter)/ dialog_close:<实例>(Esc)。
+// 键翻译驻宿主(←/→/Tab 换钮)。v0 渲染 = 树内居中盒(mask 暗化/overlay 栈登记债)。
+pub fn dialog(title: Str, lines: List[Str], opts: List[Str], focus: I32, w: I32) -> TuiTree {
+    var kids = List[TuiTree]()
+    var li: I32 = 0
+    while li < lines.len {
+        kids.push(text(lines[li]))
+        li += 1
+    }
+    kids.push(text(""))
+    // 钮行:反色=焦点钮,muted=余钮,gap 分隔
+    var oi: I32 = 0
+    var first: Bool = true
+    while oi < opts.len {
+        if first == false {
+            kids.push(text("  "))
+        }
+        if oi == focus {
+            kids.push(text(opts[oi]).with_cls("rev"))
+        } else {
+            kids.push(text(opts[oi]).with_cls("muted"))
+        }
+        first = false
+        oi += 1
+    }
+    return box(kids, "round").with_title(title).with_w(w)
+}

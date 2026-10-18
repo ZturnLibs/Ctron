@@ -1,0 +1,304 @@
+// todo-tui —— TUI 验收应用(W4;设计 §10):list+input+statusbar 全组件消费。
+// 键位:↑/↓ 或 k/j 移动 · a 进入新增 · 新增态打字+Enter 提交 · Esc 取消 ·
+//       d 删除选中 · q 退出。持久化 = 数据文件一行一条(TODO_TUI_DATA,缺省
+//       ./todo-tui.data;写=先删后建 0600)。
+use tui.{ Theme, TuiTree, Event, run_app, quit, vbox, hbox, text, with_cls, theme_default, ev_key, ev_char, k_up, k_down, k_enter, k_esc, k_backspace }
+use std.str.{ index_of }
+use std.unicode.{ cp_count }
+use fio.{ write_excl_0600 }
+use tui_widgets.{ list, list_scroll, statusbar, input_render, input_insert, input_backspace, input_clear }
+
+struct M0 {
+    var items: List[Str]
+    var sel: List[I32]
+    var top: List[I32]
+    var mode: List[I32]      // 0 浏览 / 1 新增
+    var buf: List[Str]
+    var cur: List[I32]
+    var data: List[Str]
+    var demo_k: List[I32]
+    var demo_v: List[I32]
+    var di: List[I32]
+}
+
+fn kids2(a: TuiTree, b: TuiTree) -> List[TuiTree] {
+    var l = List[TuiTree]()
+    l.push(a)
+    l.push(b)
+    return l
+}
+
+fn kids3(a: TuiTree, b: TuiTree, c: TuiTree) -> List[TuiTree] {
+    var l = List[TuiTree]()
+    l.push(a)
+    l.push(b)
+    l.push(c)
+    return l
+}
+
+fn load_items(path: Str) -> List[Str] {
+    var out = List[Str]()
+    let text = read_file(path)
+    if text.len == 0 {
+        return out
+    }
+    var start: I32 = 0
+    var j: I32 = 0
+    while j <= text.len {
+        if j == text.len {
+            if j > start {
+                out.push(byte_slice(text, start, j))
+            }
+            break
+        }
+        if byte_at(text, j) == 10 {
+            if j > start {
+                out.push(byte_slice(text, start, j))
+            }
+            start = j + 1
+        }
+        j += 1
+    }
+    return out
+}
+
+fn save_items(path: Str, items: List[Str]) {
+    var body = ""
+    var i: I32 = 0
+    while i < items.len {
+        body = body + items[i] + "\n"
+        i += 1
+    }
+    fs_delete(path)
+    write_excl_0600(path, body, body.len.as[I64]())
+}
+
+fn view(m: M0) -> TuiTree {
+    var hints = List[Str]()
+    if m.mode[0] == 0 {
+        hints.push("a")
+        hints.push("add")
+        hints.push("d")
+        hints.push("del")
+        hints.push("q")
+        hints.push("quit")
+    } else {
+        hints.push("type")
+        hints.push("text")
+        hints.push("Enter")
+        hints.push("submit")
+        hints.push("Esc")
+        hints.push("cancel")
+    }
+    let content = list(m.items, m.sel[0], m.top[0], 6, "todos")
+    if m.mode[0] == 1 {
+        let inp = hbox(kids2(text("add> "), input_render(m.buf[0], m.cur[0], true)))
+        return vbox(kids3(content, inp, statusbar(hints)))
+    }
+    return vbox(kids3(content, text(""), statusbar(hints)))
+}
+
+fn demo_feed(m: M0) {
+    // 演示模式:tick 逐枚注入脚本键(TODO_TUI_DEMO="a|s:text|RET|ESC|UP|DOWN|DEL|q")
+    if m.di[0] >= m.demo_k.len {
+        return
+    }
+    let kind = m.demo_k[m.di[0]]
+    let val = m.demo_v[m.di[0]]
+    m.di[0] = m.di[0] + 1
+    if kind == 2 {
+        var e = Event { kind: ev_char(), code: 0, ch: val, shift: false, ctrl: false, alt: false, mx: 0, my: 0, w: 0, h: 0, name: "", args: List[Str]() }
+        update(m, e)
+        return
+    }
+    if kind == 1 {
+        var e = Event { kind: ev_key(), code: val, ch: 0, shift: false, ctrl: false, alt: false, mx: 0, my: 0, w: 0, h: 0, name: "", args: List[Str]() }
+        update(m, e)
+        return
+    }
+}
+
+fn update(m: M0, e: Event) {
+    if e.kind == 6 {
+        if m.demo_k.len > 0 {
+            demo_feed(m)
+        }
+        return
+    }
+    if e.kind == ev_char() {
+        if m.mode[0] == 1 {
+            m.buf[0] = input_insert(m.buf[0], m.cur[0], e.ch)
+            m.cur[0] = m.cur[0] + 1
+            return
+        }
+        // 浏览态单字命令
+        if e.ch == 97 {
+            m.mode[0] = 1
+            m.buf[0] = input_clear()
+            m.cur[0] = 0
+            return
+        }
+        if e.ch == 100 {
+            if m.items.len > 0 {
+                var remain = List[Str]()
+                var i: I32 = 0
+                while i < m.items.len {
+                    if i != m.sel[0] {
+                        remain.push(m.items[i])
+                    }
+                    i += 1
+                }
+                m.items = remain
+                if m.sel[0] >= m.items.len {
+                    if m.sel[0] > 0 {
+                        m.sel[0] = m.sel[0] - 1
+                    }
+                }
+                m.top[0] = list_scroll(m.top[0], m.sel[0], 6)
+                save_items(m.data[0], m.items)
+            }
+            return
+        }
+        if e.ch == 113 {
+            quit()
+            return
+        }
+        return
+    }
+    if e.kind != ev_key() {
+        return
+    }
+    if m.mode[0] == 0 {
+        if e.code == k_up() {
+            if m.sel[0] > 0 {
+                m.sel[0] = m.sel[0] - 1
+            }
+            m.top[0] = list_scroll(m.top[0], m.sel[0], 6)
+            return
+        }
+        if e.code == k_down() {
+            if m.sel[0] < m.items.len - 1 {
+                m.sel[0] = m.sel[0] + 1
+            }
+            m.top[0] = list_scroll(m.top[0], m.sel[0], 6)
+            return
+        }
+        return
+    }
+    // 新增态键
+    if e.code == k_enter() {
+        if m.buf[0].len > 0 {
+            m.items.push(m.buf[0])
+            m.sel[0] = m.items.len - 1
+            m.top[0] = list_scroll(m.top[0], m.sel[0], 6)
+            save_items(m.data[0], m.items)
+        }
+        m.mode[0] = 0
+        m.buf[0] = input_clear()
+        m.cur[0] = 0
+        return
+    }
+    if e.code == k_esc() {
+        m.mode[0] = 0
+        m.buf[0] = input_clear()
+        m.cur[0] = 0
+        return
+    }
+    if e.code == k_backspace() {
+        m.buf[0] = input_backspace(m.buf[0], m.cur[0])
+        if m.cur[0] > 0 {
+            m.cur[0] = m.cur[0] - 1
+        }
+        return
+    }
+}
+
+fn mk_model(path: Str) -> M0 {
+    var items = load_items(path)
+    var sel = List[I32]()
+    sel.push(0)
+    var top = List[I32]()
+    top.push(0)
+    var mode = List[I32]()
+    mode.push(0)
+    var buf = List[Str]()
+    buf.push("")
+    var cur = List[I32]()
+    cur.push(0)
+    var data = List[Str]()
+    data.push(path)
+    var demo_k = List[I32]()
+    var demo_v = List[I32]()
+    var di = List[I32]()
+    di.push(0)
+    return M0 { items: items, sel: sel, top: top, mode: mode, buf: buf, cur: cur, data: data, demo_k: demo_k, demo_v: demo_v, di: di }
+}
+
+fn main() -> I32 {
+    let path = "./todo-tui.data"
+    let demo = env_get("TODO_TUI_DEMO")
+    let m = mk_model(path)
+    if demo.len > 0 {
+        set_tick(150)
+        // 展开:| 分段;s:<text> 逐字符(2)/单字命令字符(2);RET=1011/ESC=1014/
+        // UP=1001/DOWN=1002/DEL=1010 键(1)
+        var seg = ""
+        var i: I32 = 0
+        while i <= demo.len {
+            var flush = false
+            if i == demo.len {
+                flush = true
+            } else {
+                if byte_at(demo, i) == 124 {
+                    flush = true
+                } else {
+                    seg = seg + byte_slice(demo, i, i + 1)
+                }
+            }
+            if flush {
+                if seg.len > 0 {
+                    if seg == "RET" {
+                        m.demo_k.push(1)
+                        m.demo_v.push(1011)
+                    } else {
+                        if seg == "ESC" {
+                            m.demo_k.push(1)
+                            m.demo_v.push(1014)
+                        } else {
+                            if seg == "UP" {
+                                m.demo_k.push(1)
+                                m.demo_v.push(1001)
+                            } else {
+                                if seg == "DOWN" {
+                                    m.demo_k.push(1)
+                                    m.demo_v.push(1002)
+                                } else {
+                                    if seg == "DEL" {
+                                        m.demo_k.push(1)
+                                        m.demo_v.push(1010)
+                                    } else {
+                                        if index_of(seg, "s:") == 0 {
+                                            var j: I32 = 2
+                                            while j < seg.len {
+                                                m.demo_k.push(2)
+                                                m.demo_v.push(byte_at(seg, j).as[I32]())
+                                                j += 1
+                                            }
+                                        } else {
+                                            m.demo_k.push(2)
+                                            m.demo_v.push(byte_at(seg, 0).as[I32]())
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                seg = ""
+            }
+            i += 1
+        }
+    }
+    run_app[M0](view, update, m, theme_default())
+    return 0
+}
