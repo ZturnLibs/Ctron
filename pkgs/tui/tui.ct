@@ -1,0 +1,155 @@
+// tui.ct —— pkgs/tui 门面(W3a 骨架;设计 docs/superpowers/specs/2026-10-09-tui-design.md)
+// 档位 T2(系统面):唯一系统依赖 = POSIX libc,自写胶水落 c_src/tui_term.c。
+// 零编译器税:不动 compiler/,全部 C 交互走 #[trusted] extern 窄桥。
+// 门口径(探针定案,2026-10-18):发射臂单臂——解释臂用户 extern 须符号宿主内链
+// (ctron-cc 无 tui_* 即"extern 符号未找到");纯 Ctron 面(theme 色编码等)仍可 seed 测。
+// 本文件 W3a = 窄桥 + 核心类型定案(§3/§7)+ enter/leave 铁律 + quit/size/wait/out 面;
+// buffer/layout/render = W3b,event/run_app/test = W3c,组件 = W4(届时子文件拆分 + 本门面 re-export)。
+//
+// 约定:TUI 生命期内应用不依赖 stderr 时序(panic 重放缓冲,§18);终端太小降级屏
+// 随 W3b 渲染面落;Ctrl+C 产事件不默认退(W3c;statusbar 缺省文案必含「q 退出」提示,
+// 裁决 11)。
+
+// ---- 窄桥(tui_term.c;发射臂) ----
+
+#[trusted]
+extern "c" fn tui_is_tty() -> I64
+#[trusted]
+extern "c" fn tui_enter()
+#[trusted]
+extern "c" fn tui_leave()
+#[trusted]
+extern "c" fn tui_out(s: Str, n: I64)
+#[trusted]
+extern "c" fn tui_wait(ms: I64) -> I64
+#[trusted]
+extern "c" fn tui_w() -> I64
+#[trusted]
+extern "c" fn tui_h() -> I64
+#[trusted]
+extern "c" fn tui_quit_set()
+#[trusted]
+extern "c" fn tui_quit_get() -> I64
+#[trusted]
+extern "c" fn tui_resized_take() -> I64
+
+// ---- 生命周期与进程级事实面 ----
+
+// stdin 非终端 = 防呆(设计 §8:CI 一律走 test headless 面,W3c 落)
+pub fn is_tty() -> Bool {
+    return tui_is_tty() == 1
+}
+
+// 进 raw + alt screen(§8.1);非 tty 即 panic(防呆)
+pub fn enter() {
+    if is_tty() == false {
+        panic("tui: stdin 非终端(headless 请走 test 面)")
+    }
+    tui_enter()
+}
+
+// 还原终端(§8.4;atexit 兜底在 C 侧,双保险)
+pub fn leave() {
+    tui_leave()
+}
+
+// 事件等待:1=有输入 / 0=超时 / -1=poll 错(§6;tui_wait,无订阅者长超时省电归 W3c)
+pub fn wait(ms: I32) -> I32 {
+    return tui_wait(ms.as[I64]()).as[I32]()
+}
+
+// 终端尺寸(ioctl 失败回退 80×24;resize 事件随 W3c)
+pub fn term_w() -> I32 {
+    return tui_w().as[I32]()
+}
+
+pub fn term_h() -> I32 {
+    return tui_h().as[I32]()
+}
+
+// 退出协议(§18):update 内调 quit(),run_app 循环检测(W3c);泛型 M 不约定字段
+pub fn quit() {
+    tui_quit_set()
+}
+
+pub fn quit_requested() -> Bool {
+    return tui_quit_get() == 1
+}
+
+// SIGWINCH 查获(读即清;EV_RESIZE 随 W3c)
+pub fn resized_take() -> Bool {
+    return tui_resized_take() == 1
+}
+
+// 原始输出桥(W3b 渲染 diff 一次 write 的底座)
+pub fn out(s: Str) {
+    tui_out(s, s.len.as[I64]())
+}
+
+// ---- 核心类型定案(§3.1 单元格网格 / §3.2 节点树 / §3.3 事件 / §7 主题)----
+// SoA 平行 List(gui GuiTree 同构,发射面已实证);List[Cell] 值类型下标写回解释口径
+// 不通(assign target:Index 坑)。属性具名拆槽(仓库无位运算算术,位集禁用)。
+// W3a 只钉形状;写面/求解器/渲染器随 W3b。
+
+pub struct TuiBuf {
+    var w: I32
+    var h: I32
+    var chs: List[Str]      // 每格一字素 UTF-8 子串
+    var fg: List[I32]       // -1=终端默认;否则 0xRRGGBB packed
+    var bg: List[I32]
+    var bold: List[Bool]
+    var under: List[Bool]
+    var rev: List[Bool]
+    var wd: List[Bool]      // 宽字符尾随格标记(主格=false)
+}
+
+pub struct TuiTree {
+    var tag: List[Str]      // vbox/hbox/text/para/bar/box/spacer/raw
+    var txt: List[Str]      // 文本内容/样式参数("single"/"double"/"round")
+    var cls: List[Str]      // 样式类(主题令牌解析键)
+    var wmode: List[Str]    // "len"/"pct"/"fill"
+    var wval: List[I32]
+    var hmode: List[Str]
+    var hval: List[I32]
+    var al: List[Str]       // 交轴对齐 left/center/right(top/middle/bottom 同字段)
+    var nfc: List[I32]      // 首子(-1=叶)
+    var ns: List[I32]       // 弟链(-1=末)
+    var aid: List[Str]      // 可寻址 id(headless 断言定位/组件实例路由)
+}
+
+// 事件建模 = 一期 I32 码(裁决 3:enum+match 批落库整体换装,排期决策非绕行);
+// 修饰键具名拆槽(裁决 2)。kind 常量 fn 出面随 W3c(EV_KEY/EV_CHAR/EV_MOUSE/
+// EV_RESIZE/EV_ACT/EV_TICK)。
+pub struct Event {
+    var kind: I32
+    var code: I32       // 功能键码(EV_KEY);鼠标键号(EV_MOUSE)
+    var ch: I32         // 字素码点(EV_CHAR)
+    var shift: Bool
+    var ctrl: Bool
+    var alt: Bool
+    var mx: I32
+    var my: I32
+    var w: I32          // EV_RESIZE 新尺寸
+    var h: I32
+    var name: Str       // EV_ACT 组件事件头名("头:实例",gui 同款合约)
+    var args: List[Str]
+}
+
+// Theme 显式传参(裁决 5,弃 gui_theme 槽先例):run_app 入口收取,渲染层全链显式
+// 传递;字段序即文档槽位惯例。"default" = 终端默认色直通(SGR 49/39)。
+pub struct Theme {
+    var bg: Str
+    var fg: Str
+    var surface: Str
+    var border: Str
+    var text: Str
+    var muted: Str
+    var accent: Str
+    var sel_bg: Str
+    var sel_fg: Str
+    var err: Str
+    var ok: Str
+    var warn: Str
+    var pad_h: I32
+    var pad_v: I32
+}

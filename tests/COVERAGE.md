@@ -2111,3 +2111,26 @@ main.ct 本就 18 枚 E2010 短字面量存量(emit 链非 chk 门,新码随文�
 **终态**:`sh examples/todo_app/run.sh` **26 pass / 0 fail**(相位一全链 HTTP 探针
 24 项 + 相位二重启持久化),红账注释正名为治愈登记。老"分发预算家族"判词一并销账
 (复现族若再现应指 emit 链当前回归,非旧账)。
+
+## 2026-10-18 pkgs/tui W3a 落地(终端界面域包骨架;TUI 泳道开工)
+
+**定位**:T2 系统面域包(POSIX libc 自写胶水,零第三方零编译器税);设计
+docs/superpowers/specs/2026-10-09-tui-design.md(1009 十二裁决全闭)首波。零 compiler/
+改动,完全独立泳道。
+
+**交付**:`pkgs/tui/`——①c_src/tui_term.c(termios 快照+cfmakeraw 留 OPOST+VMIN=1/
+alt screen+隐光标+鼠标+清屏顺序钉死/leave 逆序+atexit 兜底双保险[铁律 §8 任何退出路径
+必还原]/poll wait/TIOCGWINSZ 回退 80×24/SIGWINCH 旗读即清/quit 胶水旗——进程级事实
+才落 C 侧,MUV 纯度裁决 5/6);②tui.ct 门面(#[trusted] extern 窄桥十枚+生命周期面
+[enter 非 tty panic 防呆]+核心四类型形状定案:TuiBuf SoA 九表/TuiTree 十表/Event I32
+码具名修饰槽[enum 换装登记债]/Theme 14 字段显式传参——纯数据无逻辑,W3b 起拆子文件
+本门面 re-export);③tests/tui/s1_link 夹具 + tests/tui/run.sh for 阶梯(§12;headless
+默认 stdin </dev/null,--run 才进真终端)。门 **s1 绿双跑**。
+
+**探针定案(W3a 实施首件,§11 登记销账)**:interp 臂用户 extern = 须符号宿主内链
+(ctron-cc 无 tui_* 即"extern 符号未找到"逐字诊断)——**TUI 门=发射臂单臂**(设计 §1.3
+"门以发射臂为准"落实);纯 Ctron 面(Theme 色编码,W3d)仍可 seed 测。若未来需 interp
+臂:host_shim 惯例可链(cc2_str.c 先例),触发式登记。
+
+挂账:W3b(buffer/布局/渲染/diff+s2–s5)/W3c(解码状态机+run_app/test+panic 消息
+重放+s6)/W3d(主题三档+s7)/W4(tui_widgets 五组件+examples/todo-tui 验收应用+s8)。

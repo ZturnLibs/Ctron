@@ -1,0 +1,5 @@
+pkg {
+    manifest_version = 1
+    name = "tui_s1"
+    version = "0.1.0"
+}

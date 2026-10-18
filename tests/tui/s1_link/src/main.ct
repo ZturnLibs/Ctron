@@ -1,0 +1,30 @@
+// s1 —— pkgs/tui 构建/链接门(W3a):门面解析 + 窄桥链接 + 进程级事实面 headless 跑通。
+// 设计 docs/superpowers/specs/2026-10-09-tui-design.md §12;s 系列首门。
+// 口径:发射臂单臂(interp 臂用户 extern 须宿主内链,探针在册);headless 不进 raw。
+use tui.{ quit, quit_requested, term_w, term_h, wait, out, is_tty }
+
+fn main() -> I32 {
+    // ① quit 旗往返(胶水全局,裁决 5:进程级事实)
+    quit()
+    if quit_requested() == false {
+        panic("tui s1: quit flag roundtrip broken")
+    }
+    // ② 输出桥(空串零写;非空串 W3b 渲染面细验)
+    out("")
+    // ③ 尺寸面(headless 下 ioctl 落回退 80×24 或真终端值,只验域)
+    let w = term_w()
+    let h = term_h()
+    if w < 1 {
+        panic("tui s1: bad width")
+    }
+    if h < 1 {
+        panic("tui s1: bad height")
+    }
+    // ④ wait 面(0ms 轮询;stdin 接 /dev/null 或管道时可能立即读败/就绪,只验域)
+    let r = wait(0)
+    if r < 0 - 1 {
+        panic("tui s1: wait out of domain")
+    }
+    println("s1_link-probe ok w=" + w.to_string() + " h=" + h.to_string() + " wait=" + r.to_string() + " tty=" + is_tty().to_string())
+    return 0
+}
