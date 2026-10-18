@@ -2298,3 +2298,18 @@ tree_attach 未列即 E2020);②tui_render tree_attach pub(解析器=包内子�
 (E5030 只是首个可见症状,腐蚀或兼致同窗口内其他 decl 丢失——四 d_ 函数整窗未注册
 与此吻合)。归编译器泳道批C(疑似 parse_pkg 合并/sem 泛型形参注册路径)。
 池扩容(ct_frn 128)与本症无关(先后证)。
+
+## 2026-10-18 批C 病灶三次精化:跨文件泛型 struct 参数型=类型名泄漏为顶层 decl
+
+**增量二分**(真 context 逐件剥:struct→test→tt_frame):触发形状 =
+`fn f[M](x: Box[TuiTest[M]])`,其中 **TuiTest[M] 声明于同包另一文件**(跨文件泛型
+struct + fn 字段含跨模块类型)。合并期 **类型名泄漏为顶层 decl** → E5030 撞名:
+- struct 与 fn 同文件共置:泄漏名 = **参数名**(tt/t,随改名走);
+- struct 跨文件:泄漏名 = **类型名**(TuiTest);
+- 独立单文件同形:无恙(zzprobe 三变体全过);
+- struct 本体声明/fn-type 内嵌 fn(Box[...]) 形参:无恙;
+- **AST 完好**(ctc.sh ast dump:Fn/Param/Named Box→TuiTest→M 逐槽全对)= 合并期
+  decl 名槽对比的泄漏,非 parse 错。
+归编译器批C:parse_pkg 合并名槽(或 sem 泛型实例化把参数型引用物注册为顶层 decl
+路径)。池扩容(ct_frn 128)与本症无关先后证;zzprobe 三变体最小包法(三文件:
+跨模块类型/携 fn 字段泛型 struct/直参数型 fn)为可复用归因工具。
