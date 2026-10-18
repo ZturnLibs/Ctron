@@ -2311,5 +2311,10 @@ struct + fn 字段含跨模块类型)。合并期 **类型名泄漏为顶层 dec
 - **AST 完好**(ctc.sh ast dump:Fn/Param/Named Box→TuiTest→M 逐槽全对)= 合并期
   decl 名槽对比的泄漏,非 parse 错。
 归编译器批C:parse_pkg 合并名槽(或 sem 泛型实例化把参数型引用物注册为顶层 decl
-路径)。池扩容(ct_frn 128)与本症无关先后证;zzprobe 三变体最小包法(三文件:
-跨模块类型/携 fn 字段泛型 struct/直参数型 fn)为可复用归因工具。
+路径)。池扩容(ct_frn 128)与本症无关先后证。
+**形状触发性勘定(增量 neg 包试验)**:同形状(struct 携 fn 字段+同文件直参数型 fn)
+在**全新迷你包不触发**(zzprobe 与 s11_neg_pkg 双验)——病灶依赖 tui_driver 的累积
+上下文(状态性腐蚀指向合并视图跨载共享/表索引渗漏,非纯 AST 形状)。**复现配方**
+= tui_driver.ct 增量三步(struct TuiTest[M] → test[M] → fn tt_frame[M](tt:
+Box[TuiTest[M]]),facade chk 即 E5030 随参名);zzprobe 三变体包法仍可作归因起点,
+但归因须在 tui-driver 真 context 进行(批C)。
