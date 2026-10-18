@@ -275,3 +275,33 @@ int64_t tui_ev_my(void) { return ev_my; }
 /* tick 间隔(0=无;run_app wait 超时面消费) */
 void tui_set_tick(int64_t ms) { tui_tick_ms = (ms > 0 ? (int)ms : 0); }
 int64_t tui_tick_get(void) { return tui_tick_ms; }
+
+/* ── W3d:色能力探测(设计 §7;启动一次存胶水 int)──
+ * NO_COLOR→mono;COLORTERM truecolor/24bit→24;TERM direct→24;
+ * TERM *256color→256;余→16。CTRON_TUI_COLOR 测试钩子优先(门确定性)。 */
+int tui_color_level(void) {
+    static int cached = 0 - 1;
+    if (cached >= 0) { return cached; }
+    int lvl = 1;
+    const char* hook = getenv("CTRON_TUI_COLOR");
+    if (hook && hook[0]) {
+        if (strcmp(hook, "24") == 0) { lvl = 3; }
+        else { if (strcmp(hook, "256") == 0) { lvl = 2; } else { if (strcmp(hook, "16") == 0) { lvl = 1; } else { lvl = 0; } } }
+    } else {
+        const char* nc = getenv("NO_COLOR");
+        if (nc && nc[0]) {
+            lvl = 0;
+        } else {
+            const char* ct = getenv("COLORTERM");
+            if (ct && (strstr(ct, "truecolor") || strstr(ct, "24bit"))) {
+                lvl = 3;
+            } else {
+                const char* tm = getenv("TERM");
+                if (tm && strstr(tm, "direct")) { lvl = 3; }
+                else { if (tm && strstr(tm, "256color")) { lvl = 2; } else { lvl = 1; } }
+            }
+        }
+    }
+    cached = lvl;
+    return lvl;
+}

@@ -2193,3 +2193,20 @@ List[I32] 有 cast 正常)——属性槽 0/1 整形替身(登记债:发射器 B
 实证);⑤结构体 var 未初始化声明不可用(一律字面量全槽构造);⑥推断形 struct var 重
 赋值坏 C 而**显式注解形可用**(`var x: T = a; x = b` ✓——W3b 坑②窄化);⑦泛型内部
 调用 M 不在实参位需显式 TypeArgs(E2060 示速记法)。
+
+## 2026-10-18 pkgs/tui W3d 落地(主题+色能力探测三档;TUI 泳道第四波)
+
+**交付**:
+- **tui_theme.ct**:theme_default()(深色;bg="default"=终端默认直通,§7 好公民差异)+
+  parse_color(自 render 迁入,色编码纯函数归位)+ 色能力档(fn 常量 mono/16/256/24)+
+  **sgr_fg/sgr_bg 降级路由**(24bit 直写/256 最近邻 6×6×6 立方+灰阶 232..255/16 最近邻
+  xterm 标准表平方距/mono 无色码;bg 面同构)。
+- **C 胶水**:tui_color_level 探测(NO_COLOR→mono;COLORTERM truecolor/24bit→24;
+  TERM direct→24/256color→256;余 16;缓存一次)+ CTRON_TUI_COLOR 测试钩子(门确定性)。
+- **门 s7**:四档 env 注入(24/256/16/mono)+ NO_COLOR 标准面——LEVEL 判读 + 24bit
+  FG 精确码 + mono 默认 fg 无码。**10/10 双跑绿**。
+- 随批:s5 diff 字节断言夹具钉 CTRON_TUI_COLOR=24(降级路由落地后字节面按档走,断言
+  需锁档;env_set=前奏内建裸名)。
+
+挂账:256 档 bg 默认直通(49)与 16 档 fg 默认(无码)不对称面复核;主题分发包
+(pkgs/tui_themes)候需求;256 灰阶阈值粗判登记。

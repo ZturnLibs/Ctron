@@ -1,0 +1,13 @@
+// s7 —— 色编码三档门(W3d):能力档由 run.sh env 注入(CTRON_TUI_COLOR 测试钩子/
+// NO_COLOR/COLORTERM/TERM 标准面);本程序按档打印 FG/BG 编码,断言在门内 grep。
+use tui.{ theme_default, color_level, sgr_fg, sgr_bg, parse_color }
+
+fn main() -> I32 {
+    println("LEVEL " + color_level().to_string())
+    println("DEFAULT_BG " + parse_color(theme_default().bg).to_string())
+    println("FG-RED " + sgr_fg(0xff0000))
+    println("BG-GREEN " + sgr_bg(0x00aa00))
+    println("FG-DEFAULT " + sgr_fg(0 - 1))
+    println("s7_color-probe ok")
+    return 0
+}

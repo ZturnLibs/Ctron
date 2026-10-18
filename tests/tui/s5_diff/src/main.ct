@@ -3,6 +3,8 @@
 use tui.{ TuiBuf, buf_new, buf_put, buf_put_wide, buf_diff }
 
 fn main() -> I32 {
+    // 钉 24bit 档(色降级路由随 W3d 落地;字节断言面按 truecolor 口径)
+    assert(env_set("CTRON_TUI_COLOR", "24"))
     // ① 单格变更:光标定位(1-based)+ SGR(0 重置+fg24)+ 字符,全序逐字节
     let f1 = buf_new(4, 1)
     let b1 = buf_new(4, 1)

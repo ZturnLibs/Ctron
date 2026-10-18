@@ -210,42 +210,6 @@ pub fn wrap(s: Str, width: I32) -> List[Str] {
     return lines
 }
 
-// ---- 色/类解析(parse_color 迁 tui_theme 随 W3d;先驻此供渲染消费) ----
-
-fn hexval(c: I32) -> I32 {
-    if c >= 48 {
-        if c <= 57 {
-            return c - 48
-        }
-    }
-    if c >= 97 {
-        if c <= 102 {
-            return c - 87
-        }
-    }
-    if c >= 65 {
-        if c <= 70 {
-            return c - 55
-        }
-    }
-    return 0
-}
-
-pub fn parse_color(s: Str) -> I32 {
-    if s == "default" {
-        return 0 - 1
-    }
-    if s.len != 7 {
-        return 0 - 1
-    }
-    if byte_at(s, 0) != 35 {
-        return 0 - 1
-    }
-    let r = hexval(byte_at(s, 1)) * 16 + hexval(byte_at(s, 2))
-    let g = hexval(byte_at(s, 3)) * 16 + hexval(byte_at(s, 4))
-    let bl = hexval(byte_at(s, 5)) * 16 + hexval(byte_at(s, 6))
-    return r * 65536 + g * 256 + bl
-}
 
 fn cls_fg(cls: Str, th: Theme) -> I32 {
     if cls == "muted" {

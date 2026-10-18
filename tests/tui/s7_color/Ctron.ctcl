@@ -1,0 +1,5 @@
+pkg {
+    manifest_version = 1
+    name = "tui_s7_color"
+    version = "0.1.0"
+}

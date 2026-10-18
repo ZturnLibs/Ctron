@@ -225,28 +225,6 @@ pub fn str_w(s: Str) -> I32 {
     return w
 }
 
-// 24bit 色码(fg;-1=终端默认 39)
-pub fn sgr_fg(v: I32) -> Str {
-    if v < 0 {
-        return "\u{1b}[39m"
-    }
-    let r = v / 65536
-    let g = (v / 256) - r * 256
-    let bl = v - r * 65536 - g * 256
-    return "\u{1b}[38;2;" + r.to_string() + ";" + g.to_string() + ";" + bl.to_string() + "m"
-}
-
-// 24bit 色码(bg;-1=终端默认 49)
-pub fn sgr_bg(v: I32) -> Str {
-    if v < 0 {
-        return "\u{1b}[49m"
-    }
-    let r = v / 65536
-    let g = (v / 256) - r * 256
-    let bl = v - r * 65536 - g * 256
-    return "\u{1b}[48;2;" + r.to_string() + ";" + g.to_string() + ";" + bl.to_string() + "m"
-}
-
 fn cell_eq(front: TuiBuf, back: TuiBuf, i: I32) -> Bool {
     if front.chs[i] != back.chs[i] {
         return false

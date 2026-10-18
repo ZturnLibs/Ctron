@@ -17,7 +17,7 @@
 | W3a | 门面骨架 + 窄桥 + tui_term.c + enter/leave 铁律 + s1 门 | ✅ 本批 |
 | W3b | buffer/布局/渲染(diff)+ s2–s5 门 | ✅ 2026-10-18 |
 | W3c | 输入事件 + run_app/test + panic 消息重放 + s6 门 | ✅ 2026-10-18 |
-| W3d | 主题 + 能力探测三档 + s7 门 | 待做 |
+| W3d | 主题 + 能力探测三档 + s7 门 | ✅ 2026-10-18 |
 | W4 | pkgs/tui_widgets 交互组件(list/input/statusbar/dialog/progress)+ s8 | 待做 |
 | W5 | ctml 运行时版(+W5b/5c 触发式) | 待做 |
 

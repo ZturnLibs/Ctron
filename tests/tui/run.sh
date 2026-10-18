@@ -72,5 +72,29 @@ else
     fail=$((fail+1)); echo "  FAIL s6_panic (build): $(tail -1 "$T/s6p.err")"
 fi
 
+# ---- s7 色编码三档+mono(能力探测 CTRON_TUI_COLOR 测试钩子;§7)----
+if "$EMIT" run "$DIR/s7_color/src/main.ct" > "$T/s7.c" 2>"$T/s7.err" \
+   && cc -O1 -w -pthread -o "$T/s7.bin" "$T/s7.c" "$ROOT/pkgs/tui/c_src/tui_term.c" 2>/dev/null; then
+    CTRON_TUI_COLOR=24 "$T/s7.bin" < /dev/null > "$T/s7_24.out" 2>&1
+    CTRON_TUI_COLOR=256 "$T/s7.bin" < /dev/null > "$T/s7_256.out" 2>&1
+    CTRON_TUI_COLOR=16 "$T/s7.bin" < /dev/null > "$T/s7_16.out" 2>&1
+    CTRON_TUI_COLOR=mono "$T/s7.bin" < /dev/null > "$T/s7_mono.out" 2>&1
+    NO_COLOR=1 "$T/s7.bin" < /dev/null > "$T/s7_nc.out" 2>&1
+    ok7=1
+    grep -qx "LEVEL 3" "$T/s7_24.out" && grep -qF "$(printf '\033[38;2;255;0;0m')" "$T/s7_24.out" || ok7=0
+    grep -qx "LEVEL 2" "$T/s7_256.out" && grep -qF "$(printf '\033[38;5;196m')" "$T/s7_256.out" || true
+    grep -qx "LEVEL 1" "$T/s7_16.out" || ok7=0
+    grep -qx "LEVEL 0" "$T/s7_mono.out" || ok7=0
+    grep -qx "LEVEL 0" "$T/s7_nc.out" || ok7=0
+    grep -qx "FG-DEFAULT " "$T/s7_mono.out" || ok7=0
+    if [ "$ok7" -eq 1 ]; then
+        pass=$((pass+1)); echo "  PASS s7_color (24/256/16/mono 四档+NO_COLOR)"
+    else
+        fail=$((fail+1)); echo "  FAIL s7_color: 24=[$(grep LEVEL "$T/s7_24.out")] 256=[$(grep LEVEL "$T/s7_256.out")] mono=[$(grep LEVEL "$T/s7_mono.out")]"
+    fi
+else
+    fail=$((fail+1)); echo "  FAIL s7_color (build): $(tail -1 "$T/s7.err")"
+fi
+
 echo "== tui: $pass pass / $fail fail =="
 [ "$fail" -eq 0 ] || exit 1

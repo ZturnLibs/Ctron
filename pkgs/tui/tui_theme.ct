@@ -1,0 +1,220 @@
+// tui_theme.ct —— 主题令牌 + theme_default + 色能力档 + 色编码降级(设计 §7)
+// 纯数据+纯函数,零 extern(比 gui_theme 更纯:无槽、无平台探测;色能力档=进程级
+// 事实,存胶水 int 经窄桥读)。降级口径:24bit 直写 / 256 最近邻(6×6×6 立方+灰阶)/
+// 16 最近邻(xterm 标准表,平方距)/ mono 无色码(属性 1/4/7 与 rev 仍可用)。
+// parse_color 自 render 迁入(色编码纯函数归本文件)。
+
+// 能力档常量
+pub fn color_mono() -> I32 {
+    return 0
+}
+
+pub fn color_16() -> I32 {
+    return 1
+}
+
+pub fn color_256() -> I32 {
+    return 2
+}
+
+pub fn color_true() -> I32 {
+    return 3
+}
+
+// 能力档(探测一次缓存于胶水)
+pub fn color_level() -> I32 {
+    return tui_color_level().as[I32]()
+}
+
+fn hexval(c: I32) -> I32 {
+    if c >= 48 {
+        if c <= 57 {
+            return c - 48
+        }
+    }
+    if c >= 97 {
+        if c <= 102 {
+            return c - 87
+        }
+    }
+    if c >= 65 {
+        if c <= 70 {
+            return c - 55
+        }
+    }
+    return 0
+}
+
+// "#RRGGBB" → packed;"default" → -1(终端默认直通)
+pub fn parse_color(s: Str) -> I32 {
+    if s == "default" {
+        return 0 - 1
+    }
+    if s.len != 7 {
+        return 0 - 1
+    }
+    if byte_at(s, 0) != 35 {
+        return 0 - 1
+    }
+    let r = hexval(byte_at(s, 1)) * 16 + hexval(byte_at(s, 2))
+    let g = hexval(byte_at(s, 3)) * 16 + hexval(byte_at(s, 4))
+    let bl = hexval(byte_at(s, 5)) * 16 + hexval(byte_at(s, 6))
+    return r * 65536 + g * 256 + bl
+}
+
+// xterm 16 表(RGB;0..15)——最近邻平方距
+fn pal16(i: I32, which: I32) -> I32 {
+    // which: 0=r 1=g 2=b
+    if i == 0 { if which == 2 { return 0 } return 0 }
+    if i == 1 { if which == 0 { return 128 } return 0 }
+    if i == 2 { if which == 1 { return 128 } return 0 }
+    if i == 3 { if which == 0 { return 128 } if which == 1 { return 128 } return 0 }
+    if i == 4 { if which == 2 { return 128 } return 0 }
+    if i == 5 { if which == 0 { return 128 } if which == 2 { return 128 } return 0 }
+    if i == 6 { if which == 1 { return 128 } if which == 2 { return 128 } return 0 }
+    if i == 7 { if which == 0 { return 192 } if which == 1 { return 192 } return 192 }
+    if i == 8 { if which == 0 { return 128 } if which == 1 { return 128 } return 128 }
+    if i == 9 { if which == 0 { return 255 } return 0 }
+    if i == 10 { if which == 1 { return 255 } return 0 }
+    if i == 11 { if which == 0 { return 255 } if which == 1 { return 255 } return 0 }
+    if i == 12 { if which == 2 { return 255 } return 0 }
+    if i == 13 { if which == 0 { return 255 } if which == 2 { return 255 } return 0 }
+    if i == 14 { if which == 1 { return 255 } if which == 2 { return 255 } return 0 }
+    return 255
+}
+
+// 256 立方最近邻档位(v → 0..5;阈值法)
+fn cube6(v: I32) -> I32 {
+    if v < 48 {
+        return 0
+    }
+    if v < 115 {
+        return 1
+    }
+    if v < 155 {
+        return 2
+    }
+    if v < 195 {
+        return 3
+    }
+    if v < 235 {
+        return 4
+    }
+    return 5
+}
+
+// packed RGB → 256 调色码(灰阶走 232..255,余走 16+36r+6g+b)
+pub fn ansi256(v: I32) -> I32 {
+    let r = v / 65536
+    let g = (v / 256) - r * 256
+    let bl = v - r * 65536 - g * 256
+    if r == g {
+        if g == bl {
+            if r < 8 {
+                return 16
+            }
+            if r > 248 {
+                return 231
+            }
+            return 232 + (r - 8) / 10
+        }
+    }
+    return 16 + 36 * cube6(r) + 6 * cube6(g) + cube6(bl)
+}
+
+// packed RGB → 16 表最近邻码
+pub fn ansi16(v: I32) -> I32 {
+    let r = v / 65536
+    let g = (v / 256) - r * 256
+    let bl = v - r * 65536 - g * 256
+    var best: I32 = 0
+    var bd: I32 = 0 - 1
+    var i: I32 = 0
+    while i < 16 {
+        let dr = r - pal16(i, 0)
+        let dg = g - pal16(i, 1)
+        let db = bl - pal16(i, 2)
+        let d = dr * dr + dg * dg + db * db
+        if bd < 0 {
+            bd = d
+            best = i
+        } else {
+            if d < bd {
+                bd = d
+                best = i
+            }
+        }
+        i += 1
+    }
+    return best
+}
+
+fn fg_code16(idx: I32) -> Str {
+    if idx < 8 {
+        return "\u{1b}[" + (30 + idx).to_string() + "m"
+    }
+    return "\u{1b}[" + (90 + idx - 8).to_string() + "m"
+}
+
+fn bg_code16(idx: I32) -> Str {
+    if idx < 8 {
+        return "\u{1b}[" + (40 + idx).to_string() + "m"
+    }
+    return "\u{1b}[" + (100 + idx - 8).to_string() + "m"
+}
+
+// 前景 SGR(降级路由:mono 无码 / 16 / 256 / 24bit)
+pub fn sgr_fg(v: I32) -> Str {
+    let lvl = color_level()
+    if lvl == color_mono() {
+        return ""
+    }
+    if lvl == color_16() {
+        return fg_code16(ansi16(v))
+    }
+    if lvl == color_256() {
+        if v < 0 {
+            return "\u{1b}[39m"
+        }
+        return "\u{1b}[38;5;" + ansi256(v).to_string() + "m"
+    }
+    if v < 0 {
+        return "\u{1b}[39m"
+    }
+    let r = v / 65536
+    let g = (v / 256) - r * 256
+    let bl = v - r * 65536 - g * 256
+    return "\u{1b}[38;2;" + r.to_string() + ";" + g.to_string() + ";" + bl.to_string() + "m"
+}
+
+// 背景 SGR(同降级路由)
+pub fn sgr_bg(v: I32) -> Str {
+    let lvl = color_level()
+    if lvl == color_mono() {
+        return ""
+    }
+    if lvl == color_16() {
+        if v < 0 {
+            return ""
+        }
+        return bg_code16(ansi16(v))
+    }
+    if lvl == color_256() {
+        if v < 0 {
+            return "\u{1b}[49m"
+        }
+        return "\u{1b}[48;5;" + ansi256(v).to_string() + "m"
+    }
+    if v < 0 {
+        return "\u{1b}[49m"
+    }
+    let r = v / 65536
+    let g = (v / 256) - r * 256
+    let bl = v - r * 65536 - g * 256
+    return "\u{1b}[48;2;" + r.to_string() + ";" + g.to_string() + ";" + bl.to_string() + "m"
+}
+
+// 默认主题(深色;§7 关键差异:bg="default" = 终端默认色直通,尊重用户终端配色)
+pub fn theme_default() -> Theme {
+    return Theme { bg: "default", fg: "#c8c8c8", surface: "#2a2a35", border: "#565f89", text: "#c8c8c8", muted: "#808080", accent: "#4a9eff", sel_bg: "#314365", sel_fg: "#ffffff", err: "#ff6c6c", ok: "#b3f6c0", warn: "#efef8f", pad_h: 1, pad_v: 0 }
+}
