@@ -94,3 +94,9 @@ pub fn run_app[M](view: fn(M) -> TuiTree, update: fn(M, Event), m: M, theme: The
 }
 
 // ---- headless 测试驱动(§9;不进 raw/alt,虚拟 buffer 直断言)----
+
+
+// test/d_* 家族持出(批C 精准病灶,2026-10-18 增量二分定案):泛型 struct 携 fn 字段
+// (TuiTest[M])作参数型——合并语境下参数名被注册成模块 decl(E5030 随参数名走:
+// tt→t 改名全程跟;fn-type 内嵌 fn(Box[TuiTest[M]]) 反通过;独立文件无恙)。
+// test[M]/script(fn(Box[TuiTest[M]]) 单参)已证可声明——仅"直参数型"触发。

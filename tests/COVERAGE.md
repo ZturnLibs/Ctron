@@ -2284,3 +2284,17 @@ tree_attach 未列即 E2020);②tui_render tree_attach pub(解析器=包内子�
 
 挂账:{expr} 槽/bind 活问(W5a 后续小批);合并单元 decl 窗口丢失症(批C,本批
 池扩容未涉);input 真 LED 光标;dialog overlay/mask。
+
+## 2026-10-18 批C 病灶精准化:泛型 struct 携 fn 字段作参数型(合并语境注册腐蚀)
+
+**二分定案**(test/d_* 回填试验,driver 内逐 fn 增量+每步 chk):触发条件 =
+**fn 的直接参数型为 `Box[泛型struct携fn字段[M]]`(或值传同型)且处于合并多模块语境**:
+- 参数名被注册成模块级 decl → E5030 "use 导入同名 decl:<参数名>" 且**随参数名走**
+  (tt→t 改名全程跟);
+- 同型嵌于 fn-type 内(`script: fn(Box[TuiTest[M]]) -> Void` 形参)反通过;
+- 独立单文件(非合并)同形无恙;
+- struct 本体声明(泛型+fn 字段)与 fn-value 调用(uf(mm,e) 经局部绑定)皆无恙。
+症状即前判"decl 窗口丢失症"的真身:非位置窗,是**该形参族的 decl 注册腐蚀**
+(E5030 只是首个可见症状,腐蚀或兼致同窗口内其他 decl 丢失——四 d_ 函数整窗未注册
+与此吻合)。归编译器泳道批C(疑似 parse_pkg 合并/sem 泛型形参注册路径)。
+池扩容(ct_frn 128)与本症无关(先后证)。
