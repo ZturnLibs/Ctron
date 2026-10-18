@@ -1,0 +1,160 @@
+// tui_event.ct —— 事件常量(fn 出面,跨文件 const 双坑规避 §3.3)+ C 解码产物 → Event 映射
+// 一期事件建模 = I32 码(裁决 3:enum+match 批落库整体换装);修饰键具名拆槽(裁决 2)。
+
+// 事件种类
+pub fn ev_none() -> I32 {
+    return 0
+}
+
+pub fn ev_key() -> I32 {
+    return 1
+}
+
+pub fn ev_char() -> I32 {
+    return 2
+}
+
+pub fn ev_mouse() -> I32 {
+    return 3
+}
+
+pub fn ev_resize() -> I32 {
+    return 4
+}
+
+pub fn ev_act() -> I32 {
+    return 5
+}
+
+pub fn ev_tick() -> I32 {
+    return 6
+}
+
+// 功能键码(ctrl 族 = 1..26 与 C0 对齐,应用侧直接比码)
+pub fn k_up() -> I32 {
+    return 1001
+}
+
+pub fn k_down() -> I32 {
+    return 1002
+}
+
+pub fn k_left() -> I32 {
+    return 1003
+}
+
+pub fn k_right() -> I32 {
+    return 1004
+}
+
+pub fn k_home() -> I32 {
+    return 1005
+}
+
+pub fn k_end() -> I32 {
+    return 1006
+}
+
+pub fn k_pgup() -> I32 {
+    return 1007
+}
+
+pub fn k_pgdn() -> I32 {
+    return 1008
+}
+
+pub fn k_ins() -> I32 {
+    return 1009
+}
+
+pub fn k_del() -> I32 {
+    return 1010
+}
+
+pub fn k_enter() -> I32 {
+    return 1011
+}
+
+pub fn k_tab() -> I32 {
+    return 1012
+}
+
+pub fn k_backspace() -> I32 {
+    return 1013
+}
+
+pub fn k_esc() -> I32 {
+    return 1014
+}
+
+pub fn k_f1() -> I32 {
+    return 1015
+}
+
+pub fn k_f2() -> I32 {
+    return 1016
+}
+
+pub fn k_f3() -> I32 {
+    return 1017
+}
+
+pub fn k_f4() -> I32 {
+    return 1018
+}
+
+pub fn k_f5() -> I32 {
+    return 1019
+}
+
+pub fn k_f6() -> I32 {
+    return 1020
+}
+
+pub fn k_f7() -> I32 {
+    return 1021
+}
+
+pub fn k_f8() -> I32 {
+    return 1022
+}
+
+pub fn k_f9() -> I32 {
+    return 1023
+}
+
+pub fn k_f10() -> I32 {
+    return 1024
+}
+
+pub fn k_f11() -> I32 {
+    return 1025
+}
+
+pub fn k_f12() -> I32 {
+    return 1026
+}
+
+// C 解码产物 → Event(一轮一枚;kind 0 = 无事件)
+pub fn poll_ev(ms: I32) -> Event {
+    var e = Event { kind: ev_none(), code: 0, ch: 0, shift: false, ctrl: false, alt: false, mx: 0, my: 0, w: 0, h: 0, name: "", args: List[Str]() }
+    let r = tui_poll(ms.as[I64]())
+    if r != 1 {
+        return e
+    }
+    e.kind = tui_ev_kind().as[I32]()
+    e.code = tui_ev_code().as[I32]()
+    e.ch = tui_ev_ch().as[I32]()
+    if tui_ev_shift() == 1 {
+        e.shift = true
+    }
+    if tui_ev_ctrl() == 1 {
+        e.ctrl = true
+    }
+    if tui_ev_alt() == 1 {
+        e.alt = true
+    }
+    e.mx = tui_ev_mx().as[I32]()
+    e.my = tui_ev_my().as[I32]()
+    return e
+}

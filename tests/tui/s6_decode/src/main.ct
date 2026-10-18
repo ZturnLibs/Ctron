@@ -1,0 +1,27 @@
+// s6a —— 解码状态机 Ctron 映射面(W3c):piped stdin 事件 → 种类/码逐行输出。
+// 向量由 tests/tui/run.sh 提供(方向/字符/Enter/SGR 鼠标/Backspace/独立 ESC)。
+use tui.{ poll_ev, ev_none, ev_key, ev_char, ev_mouse }
+
+fn main() -> I32 {
+    var n: I32 = 0
+    while n < 8 {
+        let e = poll_ev(300)
+        if e.kind == ev_none() {
+            break
+        }
+        if e.kind == ev_key() {
+            println("KEY " + e.code.to_string())
+        } else {
+            if e.kind == ev_char() {
+                println("CHAR " + e.ch.to_string())
+            } else {
+                if e.kind == ev_mouse() {
+                    println("MOUSE " + e.code.to_string() + " " + e.mx.to_string() + " " + e.my.to_string())
+                }
+            }
+        }
+        n += 1
+    }
+    println("s6_decode-probe ok")
+    return 0
+}

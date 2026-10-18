@@ -2164,3 +2164,32 @@ List[I32] 有 cast 正常)——属性槽 0/1 整形替身(登记债:发射器 B
 哈希,pkgs/ 子文件变更不失效**(bare 泳道在册坑二次踩:s3/s4 假绿两轮)——改包内文件必
 `rm -rf .cache/emit`;⑤相对 CTRON_STDPATH 下 pkgs 域解析失灵(门用绝对路径无恙,交互
 探针被误导两轮)。
+
+## 2026-10-18 pkgs/tui W3c 落地(输入解码/run_app/test 驱动/panic 消息重放;TUI 泳道第三波)
+
+**交付**:
+- **c_src/tui_term.c 扩展**:输入解码状态机(§6 全表:CSI 方向/H F/1~7~4~8~2~3~5~6~/
+  SS3 变体/F1–F4/ESC char=Alt+char/\r\t\x7f/Ctrl 族 C0 对齐/UTF-8 多字节码点/SGR 鼠标
+  ESC[<b;x;yM press 面)+ ESC 歧义 25ms 窗 + 环形输入缓冲 + 事件胶水全局 + getter 族 +
+  **stderr 重放缓冲**(§18:enter 全缓冲/leave 还原终端→fflush→复默认——panic 消息落
+  还原后主屏)+ tick 间隔胶水。
+- **tui_event.ct**:EV 种类/键码常量全 fn 出面(§3.3 跨文件 const 双坑规避)+ poll_ev
+  (C 产物 → Event 映射)。
+- **tui_driver.ct**:run_app(生命周期 §8 顺序钉死/事件驱动重画 §19/tick 面/resize 合成
+  EV_RESIZE/小终端降级屏 §18「终端太小」/静态布局 E 码 panic 诊断)+ test[M] headless
+  驱动 + TuiTest + d_key/d_char/d_act/d_cell/d_frame/d_expect_text(坐标诊断)/
+  d_expect_find。
+- **门 s6 双臂**:s6_decode(piped stdin 七向量:上/下/字符 x/Enter/SGR 鼠标 btn0@(4,2)/
+  Backspace/独立 ESC)全 PASS;s6_panic(script pty 供真 tty:断言 alt(1049h)→还原首段
+  (1006l)→重放标记(tui-replay-marker)有序)。**8/8 双跑绿**。
+
+**坑位入册(本批新钉)**:①**发射臂 Box 链式写面整族缺口**(`boxp.v.field=x`/
+`boxp.v.list.push` 即 ct_stmt:struct 字段赋值未支持/Member@——interp 臂同形可用,双宿
+不对称)→ 模型按值传(run_app[M] 签名 m:M 非 Box[M];标量走 List 槽引用语义,42z 形
+态);②**数组字面量入 struct 槽=元数据错位**(在册"短字面量"坑新面:`P0 { arr: [7] }`
+即 index-目标错乱)——模型槽一律 List;③**pty 尾字节竞态**:script 收到子退出即闭主
+端,尾部未读字节丢弃——pty 断言锚远离尾部(用还原序首段 1006l 非收尾 1049l);④
+**write 必须 write-all 循环**(SIGWINCH 无 SA_RESTART,单发 write 被断 25/29 尾四字节
+实证);⑤结构体 var 未初始化声明不可用(一律字面量全槽构造);⑥推断形 struct var 重
+赋值坏 C 而**显式注解形可用**(`var x: T = a; x = b` ✓——W3b 坑②窄化);⑦泛型内部
+调用 M 不在实参位需显式 TypeArgs(E2060 示速记法)。

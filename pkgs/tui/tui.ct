@@ -14,9 +14,12 @@
 // (buffer/layout/render 共享本文件类型与 std 导入);门面 re-export=显式 use 清单。
 
 use std.unicode.{cp_at}
+use std.str.{index_of}
 use tui.tui_buffer.{buf_new, buf_put, buf_put_attr, buf_put_wide, buf_fill, buf_line, str_w, cp_wide, buf_diff, sgr_fg, sgr_bg, buf_at, buf_fg_at}
 use tui.tui_layout.{solve_sizes, LR, lr}
 use tui.tui_render.{render, vbox, hbox, text, para, bar, box, spacer, with_id, with_h, with_w, with_cls, with_al, with_title, wrap, parse_color}
+use tui.tui_event.{poll_ev, ev_none, ev_key, ev_char, ev_mouse, ev_resize, ev_act, ev_tick, k_up, k_down, k_left, k_right, k_home, k_end, k_pgup, k_pgdn, k_ins, k_del, k_enter, k_tab, k_backspace, k_esc}
+use tui.tui_driver.{run_app, test, TuiTest, d_key, d_char, d_act, d_cell, d_frame, d_expect_text, d_expect_find}
 
 // ---- 窄桥(tui_term.c;发射臂) ----
 
@@ -40,6 +43,28 @@ extern "c" fn tui_quit_set()
 extern "c" fn tui_quit_get() -> I64
 #[trusted]
 extern "c" fn tui_resized_take() -> I64
+#[trusted]
+extern "c" fn tui_poll(ms: I64) -> I64
+#[trusted]
+extern "c" fn tui_ev_kind() -> I64
+#[trusted]
+extern "c" fn tui_ev_code() -> I64
+#[trusted]
+extern "c" fn tui_ev_ch() -> I64
+#[trusted]
+extern "c" fn tui_ev_shift() -> I64
+#[trusted]
+extern "c" fn tui_ev_ctrl() -> I64
+#[trusted]
+extern "c" fn tui_ev_alt() -> I64
+#[trusted]
+extern "c" fn tui_ev_mx() -> I64
+#[trusted]
+extern "c" fn tui_ev_my() -> I64
+#[trusted]
+extern "c" fn tui_set_tick(ms: I64)
+#[trusted]
+extern "c" fn tui_tick_get() -> I64
 
 // ---- 生命周期与进程级事实面 ----
 
@@ -82,6 +107,15 @@ pub fn quit() {
 
 pub fn quit_requested() -> Bool {
     return tui_quit_get() == 1
+}
+
+// tick 间隔(§18:0=无 EV_TICK;有动画/闪烁才开,空闲长超时省电)
+pub fn set_tick(ms: I32) {
+    tui_set_tick(ms.as[I64]())
+}
+
+pub fn tick_get() -> I32 {
+    return tui_tick_get().as[I32]()
 }
 
 // SIGWINCH 查获(读即清;EV_RESIZE 随 W3c)

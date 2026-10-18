@@ -1,0 +1,41 @@
+// s6b —— panic 还原+消息重放门(W3c;设计 §18):首事件 panic → atexit leave
+// (还原终端)→ stderr 冲刷落主屏。run.sh 经 script(pty)供真 tty;断言 =
+// 输出中 ?1049l(还原)先于 panic 标记文本(重放)。
+// 模型按值+List 槽计数(Box 链式写面缺口绕行,driver 定案注)。
+use tui.{ Theme, TuiTree, Event, run_app, set_tick, ev_tick, vbox, text }
+
+struct M0 {
+    var hits: List[I32]
+}
+
+fn kids1(a: TuiTree) -> List[TuiTree] {
+    var l = List[TuiTree]()
+    l.push(a)
+    return l
+}
+
+fn view(m: M0) -> TuiTree {
+    return vbox(kids1(text("panic-replay-probe")))
+}
+
+fn update(m: M0, e: Event) {
+    if e.kind == ev_tick() {
+        panic("tui-replay-marker")
+    }
+}
+
+fn mk_theme() -> Theme {
+    return Theme { bg: "default", fg: "#ffffff", surface: "default", border: "#888888", text: "#ffffff", muted: "#888888", accent: "#4a9eff", sel_bg: "#333333", sel_fg: "#ffffff", err: "#ff0000", ok: "#00ff00", warn: "#ffff00", pad_h: 0, pad_v: 0 }
+}
+
+fn mk_model() -> M0 {
+    var h = List[I32]()
+    h.push(0)
+    return M0 { hits: h }
+}
+
+fn main() -> I32 {
+    set_tick(100)
+    run_app[M0](view, update, mk_model(), mk_theme())
+    return 0
+}

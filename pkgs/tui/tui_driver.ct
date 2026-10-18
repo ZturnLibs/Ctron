@@ -1,0 +1,179 @@
+// tui_driver.ct —— run_app 主循环 + test headless 驱动 + d_* 断言族(设计 §8/§9)
+// 铁律 §8:任何退出路径必还原(enter/leave C 侧 atexit 兜底;panic 消息重放 = stderr
+// 全缓冲,leave 还原终端后冲刷,§18)。事件驱动重画 §19:无事件不重画(tick 除外)。
+// 形状纪律:struct 值整体重赋值发射坏 C(W3b 坑 ②)——front 缓冲走 Box[TuiBuf] 槽写。
+// 模型按值传(2026-10-18 定案):发射臂 Box 链式写面(v.field=x/v.list.push 整族)在册缺口
+// ——模型标量一律 List 槽(引用语义过值拷贝,42z 形态);MUV 纯度不受影响。
+use tui.tui_event.{Event, poll_ev, ev_none, ev_key, ev_char, ev_mouse, ev_resize, ev_act, ev_tick, k_up}
+
+fn frame_buf(tree: TuiTree, w: I32, h: I32, th: Theme) -> TuiBuf {
+    // Err(E 码)= 应用静态布局 bug(裁决 1)→ panic 坐标诊断
+    let r = render(tree, w, h, th)
+    var emsg = ""
+    match r {
+        Err(m) => {
+            emsg = m
+        }
+        Ok(_) => {
+        }
+    }
+    if emsg.len != 0 {
+        panic("tui: 布局错误: " + emsg)
+    }
+    return r.expect("buf")
+}
+
+// 小终端降级屏(§18:w<20 或 h<6 = 单行提示,不崩不乱画)
+fn mini_frame(w: I32, h: I32) -> TuiBuf {
+    var b = buf_new(w, h)
+    buf_put_wide(b, 0, 0, "终", 0 - 1, 0 - 1)
+    buf_put_wide(b, 2, 0, "端", 0 - 1, 0 - 1)
+    buf_put_wide(b, 4, 0, "太", 0 - 1, 0 - 1)
+    buf_put_wide(b, 6, 0, "小", 0 - 1, 0 - 1)
+    return b
+}
+
+fn frame_out(front: TuiBuf, tree: TuiTree, w: I32, h: I32, th: Theme) -> TuiBuf {
+    var b2 = buf_new(0, 0)
+    if w < 20 {
+        b2 = mini_frame(w, h)
+    } else {
+        if h < 6 {
+            b2 = mini_frame(w, h)
+        } else {
+            b2 = frame_buf(tree, w, h, th)
+        }
+    }
+    out(buf_diff(front, b2))
+    return b2
+}
+
+// 主循环(§8 生命周期;§18 退出协议:tui.quit → rc)
+pub fn run_app[M](view: fn(M) -> TuiTree, update: fn(M, Event), m: M, theme: Theme) -> I32 {
+    enter()
+    var front: TuiBuf = buf_new(0, 0)
+    var w = term_w()
+    var h = term_h()
+    front = frame_out(front, view(m), w, h, theme)
+    while quit_requested() == false {
+        var waitms: I32 = 500
+        if tui_tick_get() > 0 {
+            waitms = tui_tick_get().as[I32]()
+        }
+        var ev = poll_ev(waitms)
+        var got: Bool = false
+        while ev.kind != ev_none() {
+            if ev.kind == ev_resize() {
+                w = ev.w
+                h = ev.h
+            }
+            update(m, ev)
+            got = true
+            ev = poll_ev(0)
+        }
+        if resized_take() {
+            w = term_w()
+            h = term_h()
+            var re = Event { kind: ev_resize(), code: 0, ch: 0, shift: false, ctrl: false, alt: false, mx: 0, my: 0, w: w, h: h, name: "", args: List[Str]() }
+            update(m, re)
+            got = true
+        }
+        if got == false {
+            if tui_tick_get() > 0 {
+                var te = Event { kind: ev_tick(), code: 0, ch: 0, shift: false, ctrl: false, alt: false, mx: 0, my: 0, w: 0, h: 0, name: "", args: List[Str]() }
+                update(m, te)
+                got = true
+            }
+        }
+        if got {
+            front = frame_out(front, view(m), w, h, theme)
+        }
+    }
+    leave()
+    return 0
+}
+
+// ---- headless 测试驱动(§9;不进 raw/alt,虚拟 buffer 直断言)----
+
+pub struct TuiTest {
+    var buf: TuiBuf
+    var frames: I32
+    var w: I32
+    var h: I32
+}
+
+pub fn test[M](view: fn(M) -> TuiTree, update: fn(M, Event), m: M, theme: Theme, w: I32, h: I32,
+               script: fn(Box[TuiTest], fn(M) -> TuiTree, fn(M, Event), M, Theme) -> Void) -> I32 {
+    let b0 = frame_buf(view(m), w, h, theme)
+    var tt = Box[TuiTest](TuiTest { buf: b0, frames: 1, w: w, h: h })
+    script(tt, view, update, m, theme)
+    return 0
+}
+
+fn tt_frame[M](tt: Box[TuiTest], view: fn(M) -> TuiTree, m: M, th: Theme) {
+    tt.v.buf = frame_buf(view(m), tt.v.w, tt.v.h, th)
+    tt.v.frames += 1
+}
+
+fn d_send[M](tt: Box[TuiTest], view: fn(M) -> TuiTree, update: fn(M, Event), m: M, th: Theme, e: Event) {
+    update(m, e)
+    tt_frame[M](tt, view, m, th)
+}
+
+// 键事件注入(功能键码)
+pub fn d_key[M](tt: Box[TuiTest], view: fn(M) -> TuiTree, update: fn(M, Event), m: M, th: Theme, code: I32) {
+    var e = Event { kind: ev_key(), code: code, ch: 0, shift: false, ctrl: false, alt: false, mx: 0, my: 0, w: 0, h: 0, name: "", args: List[Str]() }
+    d_send[M](tt, view, update, m, th, e)
+}
+
+// 字符注入(码点;宽字符按码点逐枚)
+pub fn d_char[M](tt: Box[TuiTest], view: fn(M) -> TuiTree, update: fn(M, Event), m: M, th: Theme, cp: I32) {
+    var e = Event { kind: ev_char(), code: 0, ch: cp, shift: false, ctrl: false, alt: false, mx: 0, my: 0, w: 0, h: 0, name: "", args: List[Str]() }
+    d_send[M](tt, view, update, m, th, e)
+}
+
+// 组件事件直驱(actc 后缀名直驱同款;"头:实例" + args)
+pub fn d_act[M](tt: Box[TuiTest], view: fn(M) -> TuiTree, update: fn(M, Event), m: M, th: Theme, name: Str, args: List[Str]) {
+    var e = Event { kind: ev_act(), code: 0, ch: 0, shift: false, ctrl: false, alt: false, mx: 0, my: 0, w: 0, h: 0, name: name, args: args }
+    d_send[M](tt, view, update, m, th, e)
+}
+
+pub fn d_cell(tt: Box[TuiTest], x: I32, y: I32) -> Str {
+    return buf_at(tt.v.buf, x, y)
+}
+
+pub fn d_frame(tt: Box[TuiTest]) -> I32 {
+    return tt.v.frames
+}
+
+// 行段断言(失败 panic 带坐标诊断)
+pub fn d_expect_text(tt: Box[TuiTest], x: I32, y: I32, n: I32, s: Str) {
+    var seg = ""
+    var i: I32 = 0
+    while i < n {
+        seg = seg + buf_at(tt.v.buf, x + i, y)
+        i += 1
+    }
+    if seg != s {
+        panic("tui d_expect_text: (" + x.to_string() + "," + y.to_string() + ") 期望 [" + s + "] 实得 [" + seg + "]")
+    }
+}
+
+// 全屏找串(首个命中坐标;未现 panic)
+pub fn d_expect_find(tt: Box[TuiTest], s: Str) {
+    var y: I32 = 0
+    while y < tt.v.h {
+        var row = ""
+        var x: I32 = 0
+        while x < tt.v.w {
+            row = row + buf_at(tt.v.buf, x, y)
+            x += 1
+        }
+        let at = index_of(row, s)
+        if at >= 0 {
+            return
+        }
+        y += 1
+    }
+    panic("tui d_expect_find: 未找到 [" + s + "]")
+}
