@@ -1,3 +1,13 @@
+> **CC1 判别宇宙×前奏双名册并集(2026-10-19,gui 阶梯三债清偿)。**
+> `ct_sym_resolvable` 前奏面补并 `sem_type.ct prelude_ok`(权威册):pkg_is_prelude_sym
+> (T17 use 判定)长期滞后(env_get/env_set/utf8_enc/str_byte/ctron_exe_path/dlopen 族/
+> T41 分配器族…缺席),CC1 响亮失败门据此误伤闭包/spawn 内建调用——s26_reload_d/
+> s32_theme(闭包值位 env_get)+s80_datepick(utf8_enc)三夹具 emit 误报「未解析标识符」。
+> gui 阶梯 97/4→100/1。**s23_sk_native 精确定性(留专门批)**:lldb 单帧——
+> `gui_list_ni`(ctron_gui.c:1567)读 `((CtronListC*)l)->n`,入参 0x10023cf10 =
+> 二进制静态数据段地址(非堆)——骨架直通(gui_sk_load β3 静态构造)路径槽型错位,
+> Str 常量被当 List 槽传入;复现=sh tests/gui/s23_sk_native/run.sh,-g 重编 + lldb bt 法在册。
+>
 > **w7 双修+门禁收编(2026-10-19,插值批随行核查产出;w7 此前不在 smoke/gate 任何门禁=静默回归通道)。**
 > ①spawn 闭包 Match 模式绑定收集(CC1 批1 响亮失败门的判别宇宙缺口):解析器给枚举
 > 变体元组载荷造 `PatAgg+SubTup`,而 `ct_pat_names` PatAgg 臂只认 SubSt/SubUnit/直连

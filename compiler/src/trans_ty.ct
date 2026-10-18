@@ -647,7 +647,12 @@ fn ct_fn_decl_any(file: List[Str], nm: Str) -> Bool {
 // 类型名"。导入经 pkg_load_use 拼入 file,跨模块符号天然在案)
 fn ct_sym_resolvable(file: List[Str], nm: Str) -> Bool {
     if nm.len == 0 { return true }
-    if pkg_is_prelude_sym(nm) { return true }
+    // 前奏面双名册并集:pkg_is_prelude_sym(use 判定 T17)长期滞后于 sem 权威册
+    // sem_type.ct prelude_ok(env_get/env_set/utf8_enc/str_byte/ctron_exe_path/
+    // prog_args 族/dlopen 族/GC 观测口/T41 分配器族…)——CC1 响亮失败门据此误伤
+    // 闭包/spawn 内建调用(s26_reload_d/s32_theme/s80_datepick 三夹具实证);
+    // 并集=保守放行,权威册唯一真身,本判定只兜诊断不参与语义
+    if or2(pkg_is_prelude_sym(nm), prelude_ok(nm)) { return true }
     if nm == "self" { return true }
     if nm == "List" { return true }
     if nm == "Box" { return true }
