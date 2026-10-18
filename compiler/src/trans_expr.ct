@@ -44,6 +44,19 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     frag = "ctron_i32_to_string((int32_t)(" + core + "))"
                 } else if ik == "6" {
                     frag = "ctron_i64_to_string((int64_t)(" + core + "))"
+                } else if ik == "7" {
+                    frag = "ctron_u64_to_string((uint64_t)(" + core + "))"
+                } else if ik == "z" {
+                    // USize → size_t;eval 值域与 U64 共享(§9.6),文本化同 %llu
+                    frag = "ctron_u64_to_string((unsigned long long)(" + core + "))"
+                } else if ik == "f" {
+                    frag = "ctron_f64_to_string((double)(" + core + "))"
+                } else if ik == "g" {
+                    // F32(binary32)升 double 后文本化;非整数值以 float 精度入 g 域
+                    frag = "ctron_f64_to_string((double)(float)(" + core + "))"
+                } else if or2(ik == "w8u", or2(ik == "w8s", or2(ik == "w16u", ik == "w16s"))) {
+                    // W 域定宽标量(U8/I8/U16/I16):值域 ⊂ int32,升宽复用 i32 面
+                    frag = "ctron_i32_to_string((int32_t)(" + core + "))"
                 } else if ik == "b" {
                     frag = "((" + core + ") ? \"true\" : \"false\")"
                 } else if ik.len > 2 && byte_slice(ik, 0, 2) == "u:" {

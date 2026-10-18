@@ -50,7 +50,9 @@ if [ -f "$mg/src/grow.ct" ]; then
         CTRON_RT=coro CTRON_RT_STACK_KB=64 "$T/mg_on.bin" run "$mg/src/grow.ct" > "$T/mg_on.out" 2>&1
         on_rc=$?
     fi
-    sed 's/20000/1000/' "$mg/src/grow.ct" > "$T/mg_shallow.ct"
+    # 浅深度同形对深度随帧宽走:75cb7395 帧池扩容后帧 848B→3248B,1000 层≈3.3MB
+    # 已超 1MB 缺省栈(同形对 OFF 臂必触顶)→ 250 层≈0.83MB 留余量
+    sed 's/20000/250/' "$mg/src/grow.ct" > "$T/mg_shallow.ct"
     CTRON_STDPATH="$ROOT/lib/std" "$EMIT" run "$T/mg_shallow.ct" > "$T/mg_sh_off.c" 2>/dev/null
     cc -O1 -w -o "$T/mg_sh_off.bin" "$T/mg_sh_off.c" $RT2 -pthread 2>/dev/null
     CTRON_RT=coro "$T/mg_sh_off.bin" run "$T/mg_shallow.ct" > "$T/mg_sh_off.out" 2>&1

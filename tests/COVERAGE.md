@@ -1,3 +1,36 @@
+> **w7 双修+门禁收编(2026-10-19,插值批随行核查产出;w7 此前不在 smoke/gate 任何门禁=静默回归通道)。**
+> ①spawn 闭包 Match 模式绑定收集(CC1 批1 响亮失败门的判别宇宙缺口):解析器给枚举
+> 变体元组载荷造 `PatAgg+SubTup`,而 `ct_pat_names` PatAgg 臂只认 SubSt/SubUnit/直连
+> ——SubTup 无臂=载荷绑定名全漏,`match rx.recv(){Ok(v)=>…}` 形 spawn 闭包发射期
+> 误报「spawn 闭包未解析标识符:v」(ws_steal 锚 10-10 后静默红)。修=trans_conc PatAgg
+> 臂补 SubTup 走查。**裸元组模式 `(a,b)` match 语句发射缺口另立**(`ct_stmt:match pat`,
+> 解释臂绿,trans_stmt.ct:1569,在册)。②morestack EST×帧池扩容联动:75cb7395 帧池
+> 32→128 曾标注「纯 headroom 零语义」,实际每函数帧 848B→3248B(反汇编 sub sp
+> 0x350→0xcb0 实证),序言 EST 底数 256 未计 ct_frn 固定开销→64KB 小栈检查通过后
+> 本帧踏穿 guard(ms_grow ON 态触顶)。修=EST 底数 256→2300(与 ct_fr typedef
+> pool/sv 尺寸联动注释)+RT_MS_MARGIN 2048→4096(第二层兜底罩一整帧帽;双层启发
+> 两层同窗失守的教训在案)+RT_MS_SEG_MAX 1024→4096(64KB 段在新帧宽下每段仅容
+> ~19 层,2 万层≈1053 段恰踏旧上限=失控保险误伤正当用例;4096=256MB VA/任务
+> 惰性提交)+w7 同形对浅深度 1000→250(1000 层×3.3KB≈3.3MB 已超 1MB 缺省栈,
+> OFF 臂必触顶破坏逐字节对;run.sh 随批注记帧宽数学)。默认发射(CTRON_MORESTACK
+> 门关)零字节变化,黄金站岗不破。
+> ③门禁:`sh tests/w7/run.sh` 收编 gate 步骤族(P9 栈面三锚自此有门)。
+> A/B 定性法在册:compiler/bin.bak-fclk2(10-10 旧 bin)双锚全绿→回归落在 10-10..10-19
+> 窗口;探针 sp1-sp8 最小复现族(/tmp/ct_probe)。
+>
+> **插值标量八码发射臂已落地(2026-10-19,§4.11「插值标量自动 Show」发射半边补齐)。**
+> trans_expr Str 节点插值片段链补 `7`(U64)/`z`(USize)/`f`(F64)/`g`(F32)/`w8u w8s w16u w16s`
+> (U8/I8/U16/I16 升 int32 复用 i32 面);driver_emit prelude 补 `ctron_u64_to_string`
+> (%llu)+`ctron_f64_to_string`(整数形 %.1f/其余 %g——与 println 三元约定同形,界内
+> long long 试探防 ≥2^63 UB,512B 容 %.1f 全量位)。此前八码插值发射 panic「ct_expr:interp
+> 类型」(解释臂/种子臂两宿全绿,唯发射臂缺码)。夹具 `01d_strings.ct` 新块九标量值面+
+> 文本面双断言;**宿主 W8030 不走查插值部件(纯文本,sem.c 注释在案)——插值独用绑定
+> 宿主必报未使用,夹具纪律=每个标量须有插值外真使用**(assert_eq 同型断言兼值面钉)。
+> 门:双臂探针逐字一致(U8..F32 八码+浮点边界 1.23457e+06/0.001/100.25)+suite 宿主列
+> 120/120(分歧清零,cc 列 119/120=07a 在册)+meta_check 无新增(13 处在册债)。
+> repeat 字面量复验:U8 定长 `[0] ** 4096` 发射本就绿(此前误判插值连坐),`[v] ** N`×
+> 插值混合程序发射运行全通。
+>
 > **http U8 平面化批已落地(2026-10-09,批1 c02257f2/批2 3e8b5bf9+3b95b1d9/批3 c93ec0e4;aa6fad0d 点名遗留清账)。**
 > parse/message/router/middleware/client/sse/ws/serve/connect/trace 字节道 &I64[]→
 > &U8[](约 60 处形参)+corpus 16/frm_route/fuzz/bench_parse/五 e2e 夹具同批;

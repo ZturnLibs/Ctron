@@ -223,9 +223,14 @@ static size_t rt_stack_size(void)
 #define RT_BACKOFF_MAX_SHIFT 3                 /* 空闲退避上限:20µs << 3 = 160µs */
 /* T34 栈面全量(A′分段+调用窗回收):序言检查安全余量(需罩住 grow 自身帧 +
  * rt_swap 的 callee-saved 推栈 + 宿主编译器帧宽出倍差);链深上限(并发段链
- * 资源闸;段随调用窗 free-on-return,go 1.2 同款,见 ctron_rt_stk_grow)。 */
-#define RT_MS_MARGIN    2048u
-#define RT_MS_SEG_MAX   1024
+ * 资源闸;段随调用窗 free-on-return,go 1.2 同款,见 ctron_rt_stk_grow)。
+ * 4096=第二层兜底:EST(发射器侧,已计入 ct_frn 帧池 2196B)之外再罩一整帧
+ * 帽——75cb7395 池扩容曾令旧余量(2048<帧 3248)单层失守(w7 ms_grow 回归)。 */
+#define RT_MS_MARGIN    4096u
+/* 4096=段链保险闸(非预算):64KB 段在帧池扩容(75cb7395,帧 848B→3248B)后
+ * 每段仅容 ~19 层,2 万层深递归≈1053 段——旧 1024 恰被 ms_grow 正当用例
+ * 踏线(分段抖动上限误伤);4096=256MB VA/任务惰性提交上限,失控语义不变。 */
+#define RT_MS_SEG_MAX   4096
 
 /* guard 页大小取真页粒度(darwin/arm64 页为 16KB)。 */
 static long rt_pagesize(void)

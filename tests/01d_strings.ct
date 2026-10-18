@@ -13,6 +13,36 @@ test "interpolation with member chains and indexing" {
     assert_eq("v={opt.or(0)}", "v=7")            // 方法调用进插值
 }
 
+test "interpolation scalar widths (U8/I8/U16/I16/U64/USize/F64/F32)" {
+    var u8v: U8 = 200
+    var i8v: I8 = -5
+    var u16v: U16 = 40000
+    var i16v: I16 = -300
+    var u64v: U64 = 18000000000
+    var usv: USize = 42
+    var fv: F64 = 3.5
+    var gv: F32 = 2.5
+    var dv: F64 = 7.0
+    assert_eq(u8v, 200u8)                        // 值面(宿主 W8030 不走查插值部件,绑定须有插值外使用)
+    assert_eq(i8v, -5i8)
+    assert_eq(u16v, 40000u16)
+    assert_eq(i16v, -300i16)
+    assert_eq(u64v, 18000000000u64)
+    assert_eq(usv.as[I32](), 42)
+    assert_eq(fv, 3.5)
+    assert_eq(gv, 2.5f32)
+    assert_eq(dv, 7.0)
+    assert_eq("u8={u8v}", "u8=200")              // 文本面(插值发射臂八码)
+    assert_eq("i8={i8v}", "i8=-5")
+    assert_eq("u16={u16v}", "u16=40000")
+    assert_eq("i16={i16v}", "i16=-300")
+    assert_eq("u64={u64v}", "u64=18000000000")
+    assert_eq("us={usv}", "us=42")
+    assert_eq("f={fv}", "f=3.5")
+    assert_eq("g={gv}", "g=2.5")
+    assert_eq("d={dv}", "d=7.0")                 // 整数形浮点补 .0(与 println 同约定)
+}
+
 test "str contains (§3.8.2;T09)" {
     assert("a:b:c".contains(":"))
     assert(!"abc".contains(":"))

@@ -134,7 +134,12 @@ fn ct_ms_pre(sym: Str, d: List[Str], file: List[Str], rc: Str) -> Str {
         k += 1
     }
     var np = nms.len
-    var est = 256 + 96 * (ct_ms_lets_b(d[5]) + np)
+    // EST 底数计入每函数固定帧开销:发射器为每函数钉 ct_frn(ct_fr = up 8B +
+    // pool[128]×16B + pn/ovf/spn + sv[32]×4 ≈ 2196B)+ 被调保存寄存器/对齐
+    // ≈ 0x60——本式须与 driver_emit.ct ct_fr typedef 的 pool/sv 尺寸联动,改池
+    // 必同步本底数。史鉴:75cb7395 池扩容(32→128)曾使 256 底数低估 2.9KB/帧
+    //(帧 848B→3248B),64KB 小栈上检查通过后本帧踏穿 guard = w7 ms_grow 回归
+    var est = 2300 + 96 * (ct_ms_lets_b(d[5]) + np)
     if est > 32768 {
         est = 32768
     }

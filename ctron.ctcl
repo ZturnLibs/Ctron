@@ -74,7 +74,7 @@ task "fast" {
 }
 
 task "gate" {
-    steps = ["python3 tests/meta_check.py", "python3 tests/manifest/run.py", "python3 tests/manifest/diff.py", "python3 tools/ctcl_check.py --selftest", "sh compiler/build.sh", "sh compiler/native.sh", "sh tests/drv_parity/run.sh", "sh compiler/test/smoke.sh --full", "python3 compiler/test/suite.py", "sh tests/net/rt_core_smoke/run.sh", "sh tests/net/rt_reactor_smoke/run.sh", "sh tests/dist/ctron_smoke.sh", "sh tests/plugins/run.sh", "sh tests/bare/gate.sh", "sh tests/wasm/gate.sh", "sh compiler/bench.sh", "sh compiler/test/bench_ffi.sh", "sh tests/gc/bench.sh", "sh tests/gc/determinism.sh", "sh tests/lang/bench/bench.sh", "sh tests/gui/gate.sh", "sh tests/fmt/parity.sh"]
+    steps = ["python3 tests/meta_check.py", "python3 tests/manifest/run.py", "python3 tests/manifest/diff.py", "python3 tools/ctcl_check.py --selftest", "sh compiler/build.sh", "sh compiler/native.sh", "sh tests/drv_parity/run.sh", "sh compiler/test/smoke.sh --full", "python3 compiler/test/suite.py", "sh tests/net/rt_core_smoke/run.sh", "sh tests/net/rt_reactor_smoke/run.sh", "sh tests/w7/run.sh", "sh tests/dist/ctron_smoke.sh", "sh tests/plugins/run.sh", "sh tests/bare/gate.sh", "sh tests/wasm/gate.sh", "sh compiler/bench.sh", "sh compiler/test/bench_ffi.sh", "sh tests/gc/bench.sh", "sh tests/gc/determinism.sh", "sh tests/lang/bench/bench.sh", "sh tests/gui/gate.sh", "sh tests/fmt/parity.sh"]
     desc = "全量验证门禁(收编自 ci.sh 九步)"
 }
 

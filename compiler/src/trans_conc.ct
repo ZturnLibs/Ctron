@@ -115,7 +115,9 @@ fn ct_pat_names(p: List[Str], out: List[Str]) {
         return
     }
     if t == "PatAgg" {
-        // ["PatAgg", <构造名 Str>, Sub];Sub = SubSt(PatFld...)/SubUnit/直接模式
+        // ["PatAgg", <构造名 Str>, Sub];Sub = SubSt(PatFld...)/SubTup(载荷元组)/
+        // SubUnit(单元变体,无载荷)/直接模式。SubTup 此前无臂=变体载荷绑定名
+        // 全漏(CC1 批1 spawn 闭包体内绑定收集据此误报未解析,ws_steal 锚实证)
         if p.len > 2 {
             var sub = p[2]
             if sub[0] == "SubSt" {
@@ -123,6 +125,12 @@ fn ct_pat_names(p: List[Str], out: List[Str]) {
                 while j < sub.len {
                     ct_pat_names(sub[j], out)
                     j += 1
+                }
+            } else if sub[0] == "SubTup" {
+                var k: I32 = 1
+                while k < sub.len {
+                    ct_pat_names(sub[k], out)
+                    k += 1
                 }
             } else {
                 if sub[0] != "SubUnit" {
