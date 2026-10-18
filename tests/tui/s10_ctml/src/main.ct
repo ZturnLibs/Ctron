@@ -1,0 +1,69 @@
+// s10 —— ctml 运行时版门(W5a 接线):文法解析→TuiTree→渲染→格断言。
+// 覆盖:嵌套容器/属性三模式(width fill/N/N%)/align/class/box 标题/自闭 spacer/// 注释。
+// 池扩容(32→128)后本门前身段错消除——接线验证批。
+use tui.{ theme_default, render, tui_parse, buf_at }
+
+fn main() -> I32 {
+    var doc = ""
+    doc = doc + "// 顶栏与列表\n"
+    doc = doc + "<vbox>\n"
+    doc = doc + "  <bar>My App</bar>\n"
+    doc = doc + "  <box line=\"round\" title=\"items\" width=\"fill\" height=\"5\">\n"
+    doc = doc + "    <text class=\"muted\">alpha</text>\n"
+    doc = doc + "    <text class=\"rev\">beta</text>\n"
+    doc = doc + "  </box>\n"
+    doc = doc + "  <para width=\"10\">word one two</para>\n"
+    doc = doc + "  <spacer width=\"1\" height=\"1\" />\n"
+    doc = doc + "</vbox>\n"
+    let pr = tui_parse(doc)
+    var emsg = ""
+    match pr {
+        Err(m) => {
+            emsg = m
+        }
+        Ok(_) => {
+        }
+    }
+    if emsg.len != 0 {
+        panic("s10: parse failed: " + emsg)
+    }
+    let tree = pr.expect("tree")
+    let rr = render(tree, 20, 12, theme_default())
+    var remsg = ""
+    match rr {
+        Err(m2) => {
+            remsg = m2
+        }
+        Ok(_) => {
+        }
+    }
+    if remsg.len != 0 {
+        panic("s10: render failed: " + remsg)
+    }
+    let b = rr.expect("buf")
+    // bar 面(y=0)
+    if buf_at(b, 0, 0) != "M" {
+        panic("s10: bar missing")
+    }
+    // box 边框圆角(y=1)
+    if buf_at(b, 0, 1) != "╭" {
+        panic("s10: box corner missing")
+    }
+    // 标题嵌线(x=2 起)
+    if buf_at(b, 2, 1) != "i" {
+        panic("s10: box title missing")
+    }
+    // 内容行(y=2,内缩 1)
+    if buf_at(b, 1, 2) != "a" {
+        panic("s10: text alpha missing")
+    }
+    // para(width=10 折行,y=6 起):word one / two
+    if buf_at(b, 0, 6) != "w" {
+        panic("s10: para row0 missing")
+    }
+    if buf_at(b, 0, 7) != "t" {
+        panic("s10: para row1 missing")
+    }
+    println("s10_ctml-probe ok")
+    return 0
+}

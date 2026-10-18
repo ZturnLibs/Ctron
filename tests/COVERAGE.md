@@ -2259,3 +2259,28 @@ List[I32] 有 cast 正常)——属性槽 0/1 整形替身(登记债:发射器 B
 
 挂账:input 真 LED 光标(§13 cx/cy 槽)、dialog overlay 层与 mask、textareas(二期)、
 test/d_* 家族回填(批C)、mouse motion。
+
+## 2026-10-18 帧寄存器池扩容 + W5a 接线完成(ctml 运行时版全通;TUI 泳道)
+
+**帧寄存器池扩容(编译器发射模板,批次起点)**:ct_frn 池 32→128/作用域栈 sv 8→32
+(trans_stmt 三处 pn 注册点+六处 spn 面+driver_emit typedef)——纯 headroom 扩容零语义
+变化(scope save/restore 机制不变)。重编全净,tui 阶梯与全量面无回归。
+
+**W5a 接线完成(tui_parse 核 c67d0f06 之上)**:门面 +use 行/tui_render tree_attach
+pub/natural_h 显式 hmode 优先(len/pct 缺省才走标签自然——spacer 显式 len/1 曾被按 0
+计,自然和 7 ≠ 求解面 9 → 内层 E8604)/natural_h para width-aware(自带 width 的
+para 按其宽折行,槽高=渲染行数)/wrap 贪心重写(词单元+分隔保留:ASCII 连续窄字符
+=一词空格分隔贪心行内保留,CJK 逐字独立单元无分隔代价,超宽单元独占行)/box 标题嵌线
+摘线型门(round/double 亦嵌,§5 不分层)。**门 s10 全绿,全阶梯 12/12 双跑**;
+todo-tui e2e 4/4 维持。
+
+**wrap 算法更正(原版逐空格断行)**:原实现遇空格即断(词行化),width 10 下
+"word one two" 得三行;贪心正确形态 = 词单元 + 空格仅作行内分隔(放不下才断)。
+s4 全向量维持绿(原五向量均窄宽,两版等价)。
+
+**接线三件执行注记**:①门面 use 行(「use 面缺什么,发射面就缺什么」双向再证:
+tree_attach 未列即 E2020);②tui_render tree_attach pub(解析器=包内子模块走合并
+私面,附着力经 s10);③s10 夹具(嵌套 box 标题/三模式/para 折行/注释/自闭)。
+
+挂账:{expr} 槽/bind 活问(W5a 后续小批);合并单元 decl 窗口丢失症(批C,本批
+池扩容未涉);input 真 LED 光标;dialog overlay/mask。

@@ -149,6 +149,20 @@ pub fn with_al(t: TuiTree, a: Str) -> TuiTree {
 
 // box 标题(嵌上边线 §5):暂驻 al 槽——box 不消费交轴对齐,零碰撞;
 // 登记偏差(正式槽位随 W5a ctml 属性面正名)
+// 附着已存在节点为 parent 的末子(ctml 解析器用;解析器=包内子模块见私面)
+pub fn tree_attach(t: TuiTree, parent: I32, node: I32) {
+    let prev = t.nfc[parent]
+    if prev < 0 {
+        t.nfc[parent] = node
+        return
+    }
+    var cur = prev
+    while t.ns[cur] >= 0 {
+        cur = t.ns[cur]
+    }
+    t.ns[cur] = node
+}
+
 pub fn with_title(t: TuiTree, s: Str) -> TuiTree {
     if t.tag[0] == "box" {
         t.al[0] = s
@@ -159,6 +173,8 @@ pub fn with_title(t: TuiTree, s: Str) -> TuiTree {
 // ---- 折行(§5:空格断点 word wrap + CJK 逐字断;宽字符不拆半) ----
 
 pub fn wrap(s: Str, width: I32) -> List[Str] {
+    // 贪心词单元:ASCII 连续窄字符=一词(空格为分隔,贪心保留行内分隔);CJK 逐字
+    // 独立单元(逐字断);行尾容不下整宽字提前换;超宽单元独占行。
     var lines = List[Str]()
     if width < 1 {
         lines.push("")
@@ -167,6 +183,7 @@ pub fn wrap(s: Str, width: I32) -> List[Str] {
     var cur = ""
     var curw: I32 = 0
     var i: I32 = 0
+    var pend: Bool = false
     while i < s.len {
         let cp = cp_at(s, i)
         if cp < 0 {
@@ -186,25 +203,54 @@ pub fn wrap(s: Str, width: I32) -> List[Str] {
         i += blen
         if ch == " " {
             if curw > 0 {
-                lines.push(cur)
-                cur = ""
-                curw = 0
+                pend = true
             }
             continue
         }
-        if curw + cw > width {
-            if curw > 0 {
-                lines.push(cur)
-                cur = ""
-                curw = 0
+        var unit = ch
+        var uw = cw
+        if cw == 1 {
+            var j = i
+            while j < s.len {
+                let c2 = byte_at(s, j)
+                if c2 <= 32 {
+                    break
+                }
+                if c2 >= 128 {
+                    break
+                }
+                unit = unit + byte_slice(s, j, j + 1)
+                uw += 1
+                j += 1
             }
-            if cw > width {
-                lines.push(ch)
-                continue
+            i = j
+        }
+        var need = uw
+        var sep = ""
+        if curw > 0 {
+            if pend {
+                need += 1
+                sep = " "
             }
         }
-        cur = cur + ch
-        curw += cw
+        if curw > 0 {
+            if curw + need > width {
+                lines.push(cur)
+                cur = unit
+                curw = uw
+            } else {
+                cur = cur + sep + unit
+                curw += need
+            }
+        } else {
+            if uw > width {
+                lines.push(unit)
+            } else {
+                cur = unit
+                curw = uw
+            }
+        }
+        pend = false
     }
     lines.push(cur)
     return lines
@@ -287,6 +333,14 @@ fn is_container(tag: Str) -> Bool {
 }
 
 fn natural_h(t: TuiTree, idx: I32, w: I32) -> I32 {
+    // 显式 hmode 优先(len/pct;缺省才走标签自然高——与求解面同律,2026-10-18:
+    // spacer 显式 len/1 曾被按 0 计,自然和 7 ≠ 求和面 9 → 内层 E8604)
+    if t.hmode[idx] == "len" {
+        return t.hval[idx]
+    }
+    if t.hmode[idx] == "pct" {
+        return t.hval[idx] * w / 100
+    }
     let tag = t.tag[idx]
     if tag == "text" {
         return 1
@@ -298,7 +352,14 @@ fn natural_h(t: TuiTree, idx: I32, w: I32) -> I32 {
         return 0
     }
     if tag == "para" {
-        return wrap(t.txt[idx], w).len
+        var ww = w
+        if t.wmode[idx] == "len" {
+            ww = t.wval[idx]
+        }
+        if t.wmode[idx] == "pct" {
+            ww = t.wval[idx] * w / 100
+        }
+        return wrap(t.txt[idx], ww).len
     }
     if tag == "box" {
         return 2 + natural_kids_h(t, t.nfc[idx], w - 2)
@@ -524,9 +585,7 @@ fn paint_box_border(b: TuiBuf, t: TuiTree, idx: I32, r: LR, th: Theme) {
     // 标题嵌上边线:`┌ title ─…`(标题暂驻 al 槽,with_title)
     let title2 = t.al[idx]
     if title2.len > 0 {
-        if style != "double" {
-            if style != "round" {
-                if r.w >= 6 {
+        if r.w >= 6 {
                     let tw = str_w(title2)
                     let tx = r.x + 2
                     buf_put(b, r.x + 1, r.y, " ", fgc, 0 - 1)
@@ -553,8 +612,6 @@ fn paint_box_border(b: TuiBuf, t: TuiTree, idx: I32, r: LR, th: Theme) {
                     }
                     buf_put(b, tx + tw, r.y, " ", fgc, 0 - 1)
                 }
-            }
-        }
     }
 }
 
