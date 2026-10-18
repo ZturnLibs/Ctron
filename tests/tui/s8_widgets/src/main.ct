@@ -1,0 +1,110 @@
+// s8 —— 组件库门(W4 批1):list 滚窗跟随/选中高亮/截断 + progress 千分比 +
+// statusbar 反色块 + 焦点助手(设计 §14;render+buf_at 直驱断言面)。
+// test/d_* 家族持出(合并单元 decl 窗口丢失症在册),本门不依赖。
+use tui.{ Theme, TuiTree, render, vbox, hbox, text, with_cls, buf_at, theme_default }
+use tui_widgets.{ list, statusbar, progress, list_scroll, focus_next, focus_prev }
+
+struct M0 {
+    var sel: List[I32]
+    var top: List[I32]
+    var ratio: List[I32]
+}
+
+fn kids2(a: TuiTree, b: TuiTree) -> List[TuiTree] {
+    var l = List[TuiTree]()
+    l.push(a)
+    l.push(b)
+    return l
+}
+
+fn kids3(a: TuiTree, b: TuiTree, c: TuiTree) -> List[TuiTree] {
+    var l = List[TuiTree]()
+    l.push(a)
+    l.push(b)
+    l.push(c)
+    return l
+}
+
+fn view(m: M0) -> TuiTree {
+    var items = List[Str]()
+    items.push("alpha")
+    items.push("beta")
+    items.push("gamma")
+    items.push("delta")
+    let bar = progress(m.ratio[0], "64%", 10)
+    return vbox(kids3(list(items, m.sel[0], m.top[0], 3, "todos"), bar, statusbar(sb_hints())))
+}
+
+fn sb_hints() -> List[Str] {
+    var h = List[Str]()
+    h.push("q")
+    h.push("quit")
+    h.push("UP")
+    h.push("move")
+    return h
+}
+
+fn main() -> I32 {
+    // list_scroll 三界钉(§14)
+    if list_scroll(0, 0, 3) != 0 {
+        panic("s8: scroll keep")
+    }
+    if list_scroll(0, 3, 3) != 1 {
+        panic("s8: scroll follow-bottom")
+    }
+    if list_scroll(2, 1, 3) != 1 {
+        panic("s8: scroll follow-top")
+    }
+    // 焦点环绕
+    if focus_next(2, 3) != 0 {
+        panic("s8: focus wrap")
+    }
+    if focus_prev(0, 3) != 2 {
+        panic("s8: focus prev wrap")
+    }
+    // 渲染面:直驱 render + 格断言
+    var sel = List[I32]()
+    sel.push(1)
+    var top = List[I32]()
+    top.push(0)
+    var ratio = List[I32]()
+    ratio.push(640)
+    let m = M0 { sel: sel, top: top, ratio: ratio }
+    let th = theme_default()
+    let r = render(view(m), 24, 8, th)
+    if r.is_ok() == false {
+        var emsg = ""
+        match r {
+            Err(m2) => {
+                emsg = m2
+            }
+            Ok(_) => {
+            }
+        }
+        panic("s8: render failed: " + emsg)
+    }
+    let b = r.expect("buf")
+    // list 行:top=0 起 alpha/beta/gamma;选中行 sel=1(beta)
+    if buf_at(b, 0, 0) != "a" {
+        panic("s8: row0 missing")
+    }
+    if buf_at(b, 0, 1) != "b" {
+        panic("s8: row1 missing")
+    }
+    if buf_at(b, 0, 2) != "g" {
+        panic("s8: row2 missing")
+    }
+    // progress 面(y=3):`━`×6(640‰×10=6.4→6)后接 `░`
+    if buf_at(b, 0, 3) != "━" {
+        panic("s8: progress fill missing")
+    }
+    if buf_at(b, 6, 3) != "░" {
+        panic("s8: progress gap missing")
+    }
+    // statusbar 面(y=4):q 反色块
+    if buf_at(b, 0, 4) != "q" {
+        panic("s8: statusbar hint missing")
+    }
+    println("s8_widgets-probe ok")
+    return 0
+}

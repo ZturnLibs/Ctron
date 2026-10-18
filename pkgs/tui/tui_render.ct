@@ -303,7 +303,23 @@ fn natural_h(t: TuiTree, idx: I32, w: I32) -> I32 {
     if tag == "box" {
         return 2 + natural_kids_h(t, t.nfc[idx], w - 2)
     }
-    // vbox/hbox 缺省走 fill(求解面);此处兜底 0
+    // 嵌套容器自然高(2026-10-18 补:vbox=子自然高求和/hbox=取最大;此前落 0
+    // 致内层 solve main=0 必 E8604——s8 list 组件实证)
+    if tag == "vbox" {
+        return natural_kids_h(t, t.nfc[idx], w)
+    }
+    if tag == "hbox" {
+        var mx: I32 = 0
+        var c = t.nfc[idx]
+        while c >= 0 {
+            let hh = natural_h(t, c, w)
+            if hh > mx {
+                mx = hh
+            }
+            c = t.ns[c]
+        }
+        return mx
+    }
     return 0
 }
 

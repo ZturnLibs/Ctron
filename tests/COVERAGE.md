@@ -2210,3 +2210,27 @@ List[I32] 有 cast 正常)——属性槽 0/1 整形替身(登记债:发射器 B
 
 挂账:256 档 bg 默认直通(49)与 16 档 fg 默认(无码)不对称面复核;主题分发包
 (pkgs/tui_themes)候需求;256 灰阶阈值粗判登记。
+
+## 2026-10-18 pkgs/tui W4 批1(tui_widgets 三组件)+ 合并单元 decl 窗口丢失症(编译器泳道立案)
+
+**交付**:`pkgs/tui_widgets/`(裸文件形态,gui_widgets 同款;消费方双导合流单一名域,
+「use 面缺什么,发射面就缺什么」双向适用)——①list(纯 prop;只物化可见行天然虚拟化/
+选中行 rev 高亮/超宽截断)+ list_scroll 三界钉(§14:sel<top→sel;sel≥top+h→sel-h+1;
+界内→top);②statusbar(交替键反色块/说明 muted,gap 分隔);③progress(千分比避 F64
+双宿主坑,`━`/`░`);④焦点助手 focus_next/prev(环绕)。门 s8(render+buf_at 直驱断言:
+三行 list+选中+progress 640‰=6 填 4 空+statusbar 面位)。**11/11 双跑绿**。
+
+**随批布局真修**:natural_h 嵌套容器落 0(vbox/hbox 无真案)——list 组件被外层算 0 高,
+内层 solve main=0 必 E8604;补 vbox=子自然高求和/hbox=取最大。
+
+**编译器泳道立案(本批主发现):合并单元 decl 窗口丢失症**——pkgs/tui/tui_driver.ct 内
+特定函数序列后,部分函数 decl 整窗未注册(本批:d_press/d_type/d_act/d_cell 四枚连续
+丢失,d_frame 起复现;同名换名/注释摘除/参数增减/字段写替代全数无效=位置窗非名字窗;
+单文件独立 chk 同发,自包含二分 harness(head.ct+切片)可复现)。W3c 前车:test/d_* 家族
+经 TuiTest[M] 泛化重构(发射臂 fn 值 arity≤3 上限→回调装 tt 槽单参 script)后触发本症,
+**该族现持出主链**(facade use 行摘除,重构稿丢弃),归编译器泳道批C 归因后回填。
+伴随症状:E5030 "." 同名 decl(名域污染信号)。窗口边界=内容位置非函数身份。
+
+**挂账**:W4 批2(input 字素编辑/dialog 模态/todo-tui 验收应用+s8 全量);test/d_* 家族
+回填(批C);scroll 任意子树视口原语(list 虚拟化已覆盖主需求);input 光标请求槽
+(TuiTree cx/cy,现版反色块替身)。

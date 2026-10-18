@@ -1,0 +1,110 @@
+// tui_widgets/gui? no —— pkgs/tui_widgets/widgets.ct —— TUI 交互组件库(W4;设计 §14)
+// 模式 = 纯 prop 契约 + 宿主头名事件(gui_widgets 同源):组件体仅消费自家 prop,
+// 事件处理器驻宿主(update 内把键翻成业务;headless 走 d_act 直驱"头:实例")。
+// 裸文件形态(gui_widgets 同款):零 use 行,依赖 = 应用双导(use tui.{...} +
+// use tui_widgets.{...})后合流单一名域。
+// 一期五组件:statusbar/progress/list(本批)+ input/dialog(批2)。
+// 登记偏差:sel 行高亮 = rev 属性(render 无逐节点 bg 面);超宽截断尾 …。
+
+// ---- 焦点助手(§13;一期焦点态在宿主模型)----
+
+pub fn focus_next(cur: I32, n: I32) -> I32 {
+    if n < 1 {
+        return 0
+    }
+    return (cur + 1) % n
+}
+
+pub fn focus_prev(cur: I32, n: I32) -> I32 {
+    if n < 1 {
+        return 0
+    }
+    if cur <= 0 {
+        return n - 1
+    }
+    return cur - 1
+}
+
+// ---- list(§14)----
+// 事件头名:list_pick:<实例>(Enter)/ list_sel:<实例>(载荷 "i:" + 下标)。
+// 键(应用转接):j/k/↑/↓ 移动、PgUp/PgDn 翻页、Home/End 跳端。
+
+// 滚窗跟随(三界各钉 §14:sel<top→sel;sel≥top+h→sel-h+1;界内→top)
+pub fn list_scroll(top: I32, sel: I32, view_h: I32) -> I32 {
+    if sel < top {
+        return sel
+    }
+    if sel >= top + view_h {
+        return sel - view_h + 1
+    }
+    return top
+}
+
+// 列表渲染:只物化 top..top+view_h 行(§19 天然虚拟化);选中行 rev 高亮;超宽截断尾 …
+pub fn list(items: List[Str], sel: I32, top: I32, view_h: I32, inst: Str) -> TuiTree {
+    var kids = List[TuiTree]()
+    var row: I32 = 0
+    while row < view_h {
+        let idx = top + row
+        if idx >= items.len {
+            break
+        }
+        var s = items[idx]
+        var cls = "row"
+        if idx == sel {
+            cls = "row_sel rev"
+        }
+        kids.push(text(s).with_cls(cls))
+        row += 1
+    }
+    return vbox(kids)
+}
+
+// ---- statusbar(§14)----
+// props:hints 交替 键/说明;渲染:键反色块 + 说明 muted,gap 两空格,超宽钳除。无事件。
+pub fn statusbar(hints: List[Str]) -> TuiTree {
+    var kids = List[TuiTree]()
+    var i: I32 = 0
+    var first: Bool = true
+    while i < hints.len {
+        if first == false {
+            kids.push(text("  "))
+        }
+        if i % 2 == 0 {
+            kids.push(text(hints[i]).with_cls("rev"))
+        } else {
+            kids.push(text(hints[i]).with_cls("muted"))
+        }
+        first = false
+        i += 1
+    }
+    return hbox(kids)
+}
+
+// ---- progress(§14)----
+// props:ratio 千分比 0..1000(F64 双宿主坑规避)+ label;`━` 填充 `░` 空缺 + label。
+// 无事件(值经 prop,宿主 act 改模型)。负值/超千钳除。
+pub fn progress(ratio: I32, label: Str, bar_w: I32) -> TuiTree {
+    var r = ratio
+    if r < 0 {
+        r = 0
+    }
+    if r > 1000 {
+        r = 1000
+    }
+    var n: I32 = 0
+    if bar_w > 0 {
+        n = r * bar_w / 1000
+    }
+    var s = ""
+    var i: I32 = 0
+    while i < bar_w {
+        if i < n {
+            s = s + "━"
+        } else {
+            s = s + "░"
+        }
+        i += 1
+    }
+    return text(s + " " + label).with_cls("accent")
+}
