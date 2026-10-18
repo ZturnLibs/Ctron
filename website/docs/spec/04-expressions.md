@@ -7,7 +7,7 @@
 
 1. **One meaning, one symbol**: exactly one spelling per semantic. Bool logical or is only `||`; default-taking is only the `or`/`.or()` pair; synonymous aliases or spelling sugar are never introduced.
 2. **Symbol/keyword division of labor**: symbolic operators = pure Bool-domain combination (`&&`/`||`/`!`); keyword infix = operations touching infallible semantics (`or` takes the default).
-3. **Never repurposed**: `&&`/`||` never perform bitwise operations (bitwise always goes through `bit` module methods, §4.5); `|` is always the closure delimiter, never an operator.
+3. **Never repurposed**: `&&`/`||` never perform bitwise operations (bitwise always goes through the prelude builtin namespace `bit.*`, §4.5); `|` is always the closure delimiter, never an operator.
 4. **Role separation**: the "zero-argument closure / logical or" duality of `||` is two syntactic roles of one token, uniquely determined by syntactic position (§4.7), not semantic ambiguity.
 
 ## 4.1 Bindings
@@ -45,7 +45,15 @@
 
 - **Binary `+` is concatenation when both sides are `Str`** (revised 2026-09-08, T2; previously only interpolation was the convention). A single-sided `Str`, or any other operator (`- * / %`) meeting a `Str`, is still E2010.
 - **Checked arithmetic** by default: integer overflow / division by zero panic (messages contain "overflow"/"division by zero"); in release, the overflow check may be turned off via build configuration (division by zero is never disabled).
-- Explicit wrapping: `+% -%`; `%` is remainder, **the result's sign follows the dividend** (same as Rust `%`, not Euclidean modulo); bitwise operations go through the stdlib (`bit` module).
+- Explicit wrapping: `+% -%`; `%` is remainder, **the result's sign follows the dividend** (same as Rust `%`, not Euclidean modulo).
+- **Bitwise operations: the prelude builtin namespace `bit.*`** (T01, spelled out in v0.9; §4.0 never-repurposed law) — no `use`, no module file; call directly; method names are `<op>_<width>`, currently `and/or/xor/not/shl/shr` × `i32/u32/i64/u64`. Semantics are two's complement at the declared width: `and/or/xor/not` operate at that width's complement; `shl` discards high bits (wraps); `shr` is arithmetic on signed widths and logical on unsigned widths; the shift amount must lie in `[0, width)`, otherwise panic `"bit shift range"` (same checking philosophy as indexing/overflow). The operators `& | ^ ~ << >>` are not opened up for integers — `&` is borrowing and `|` is the closure delimiter (§4.0):
+
+```ctron
+let word: U64 = 0xC0DE_F00D
+let lo = bit.and_u64(word, 0xFF)            // low 8 bits = 0x0D
+let hi = bit.shr_u64(word, 8)               // high bits shifted down = 0xC0DEF0
+assert_eq(bit.and_u64(0b1100, 0b1010), 8)   // and/or/xor/not/shift, no use needed
+```
 - Indexing is **always bounds-checked** (no unchecked in the safe subset); out-of-bounds panics ("index out of bounds"). Index expressions accept any integer type.
 
 ## 4.6 Control Flow

@@ -67,12 +67,13 @@ fn shout(msg: Str) -> I64 {
 }
 ```
 
-Three details you will use immediately:
+Three details you will use immediately, plus one bitwise:
 
 ```ctron
 assert_eq(7 / 2, 3)            // truncating division; checked arithmetic by default
 assert_eq(255u8 +% 1u8, 0u8)   // +% -% are the only doorway to wrapping arithmetic
 assert_eq(21.double(), 42)     // UFCS: 21.double() ≡ double(21)
+assert_eq(bit.and_u64(0b1100, 0b1010), 8)  // no bitwise operators — use the prelude builtins bit.* (no use needed)
 ```
 
 ## Minutes 4–5: Control flow — everything is an expression
@@ -257,7 +258,7 @@ The ten most common beginner pitfalls:
 
 1. **No semicolons** — a newline ends the statement (`;` is a syntax error); `} else {` must stay on one line.
 2. **No ternary** — the `if cond { a } else { b }` expression is the only form.
-3. **`||` is logical or** — `or` is only for Option/Result defaults; bitwise operations are not language operators (use std's bit module).
+3. **`||` is logical or** — `or` is only for Option/Result defaults; bitwise operations are not language operators — use the prelude builtins `bit.*` (e.g. `bit.xor_i64(a, b)`).
 4. **Comparisons don't chain** — write `a < b && b < c`.
 5. **No implicit numeric conversions** — `n.as[U64]()`; unconstrained integer literals default to `I32`.
 6. **A literal `{` in a string is `\{`** — no nested `{}` inside interpolation; string literals cannot span lines.
