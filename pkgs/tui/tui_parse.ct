@@ -1,0 +1,364 @@
+// tui_parse.ct —— ctml 运行时版解析核(W5a;持出未接线,2026-10-18)
+// 状态:解析核已证(单文档探针树结构完美:vbox←{bar, box←{alpha,beta}, para, spacer}
+// 全对;双吞 bug 已修=内容型标签 p_read_content 已消费闭标签,其后不得再消费一轮——
+// 该冗余曾吞下一开标签致隔颗丢节点)。渲染集成段错(池溢出类 segv,GC 无关)待编译器
+// 批C/后续接线:①门面 +use tui.tui_parse.{tui_parse};②tui_render +tree_attach pub
+// (补丁见批记);③s10 夹具(解析→渲染→格断言)。接线后全阶梯 s1–s11。
+// 结构索引/形状依赖:TuiTree 十表同 W3a;tree_node/merge 系 tui_render 私面(子模块
+// 合并可见)。
+
+fn p_ws(src: Str, i: I32) -> I32 {
+    var j = i
+    while j < src.len {
+        let c = byte_at(src, j)
+        if c == 32 {
+            j += 1
+            continue
+        }
+        if c == 9 {
+            j += 1
+            continue
+        }
+        if c == 10 {
+            j += 1
+            continue
+        }
+        if c == 13 {
+            j += 1
+            continue
+        }
+        break
+    }
+    return j
+}
+
+fn p_word(src: Str, i: I32) -> Str {
+    var j = i
+    while j < src.len {
+        let c = byte_at(src, j)
+        if c == 32 || c == 10 || c == 9 || c == 13 || c == 60 || c == 62 || c == 47 || c == 61 {
+            break
+        }
+        j += 1
+    }
+    return byte_slice(src, i, j)
+}
+
+// 属性值("..." 内)
+fn p_qvalue(src: Str, i: I32) -> Str {
+    var j = i
+    while j < src.len {
+        if byte_at(src, j) == 34 {
+            return byte_slice(src, i, j)
+        }
+        j += 1
+    }
+    return byte_slice(src, i, j)
+}
+
+fn p_tag_name(src: Str, i: I32) -> Str {
+    var j = i
+    while j < src.len {
+        let c = byte_at(src, j)
+        if c == 32 || c == 10 || c == 9 || c == 13 || c == 62 || c == 47 {
+            break
+        }
+        j += 1
+    }
+    return byte_slice(src, i, j)
+}
+
+// 单属性落入节点(wmode/wval/hmode/hval/al/cls/txt)/
+fn p_apply_attr(t: TuiTree, node: I32, key: Str, val: Str) {
+    if key == "width" {
+        if val == "fill" {
+            t.wmode[node] = "fill"
+            return
+        }
+        let pc = index_of(val, "%")
+        if pc >= 0 {
+            t.wmode[node] = "pct"
+            t.wval[node] = p_atoi(byte_slice(val, 0, pc))
+            return
+        }
+        t.wmode[node] = "len"
+        t.wval[node] = p_atoi(val)
+        return
+    }
+    if key == "height" {
+        if val == "fill" {
+            t.hmode[node] = "fill"
+            return
+        }
+        let pc2 = index_of(val, "%")
+        if pc2 >= 0 {
+            t.hmode[node] = "pct"
+            t.hval[node] = p_atoi(byte_slice(val, 0, pc2))
+            return
+        }
+        t.hmode[node] = "len"
+        t.hval[node] = p_atoi(val)
+        return
+    }
+    if key == "align" {
+        t.al[node] = val
+        return
+    }
+    if key == "class" {
+        t.cls[node] = val
+        return
+    }
+    if key == "line" {
+        t.txt[node] = val
+        return
+    }
+    if key == "title" {
+        t.al[node] = val
+        return
+    }
+}
+
+fn p_atoi(s: Str) -> I32 {
+    var v: I32 = 0
+    var i: I32 = 0
+    while i < s.len {
+        let c = byte_at(s, i)
+        if c < 48 {
+            if c > 57 {
+                return v
+            }
+        }
+        if c < 48 {
+            return v
+        }
+        if c > 57 {
+            return v
+        }
+        v = v * 10 + (c - 48)
+        i += 1
+    }
+    return v
+}
+
+struct PRC {
+    var text: Str
+    var next: I32
+}
+
+fn p_trim(s: Str) -> Str {
+    var a: I32 = 0
+    var b = s.len
+    while a < b {
+        let c = byte_at(s, a)
+        if c == 32 || c == 10 || c == 9 || c == 13 {
+            a += 1
+            continue
+        }
+        break
+    }
+    while b > a {
+        let c2 = byte_at(s, b - 1)
+        if c2 == 32 || c2 == 10 || c2 == 9 || c2 == 13 {
+            b -= 1
+            continue
+        }
+        break
+    }
+    return byte_slice(s, a, b)
+}
+
+// 内容文本落 text/para/bar 节点(到闭标签止;剥首尾空白)
+fn p_read_content(src: Str, i: I32, tag: Str) -> PRC {
+    let close = "</" + tag + ">"
+    let at = index_of(byte_slice(src, i, src.len), close)
+    if at < 0 {
+        return PRC { text: p_trim(byte_slice(src, i, src.len)), next: src.len }
+    }
+    return PRC { text: p_trim(byte_slice(src, i, i + at)), next: i + at + close.len }
+}
+
+// 解析入口:Err = 文法错误(未闭合标签/未知字符)
+pub fn tui_parse(src: Str) -> Result[TuiTree, Str] {
+    var t = tree_new()
+    tree_node(t, "vbox", "", "", "", 0, "", 0)
+    var stack = List[I32]()
+    stack.push(0)
+    var depth: I32 = 1
+    var i: I32 = p_ws(src, 0)
+    var n: I32 = src.len
+    while i < n {
+        if byte_at(src, i) == 47 {
+            // // 注释
+            if i + 1 < n {
+                if byte_at(src, i + 1) == 47 {
+                    while i < n {
+                        if byte_at(src, i) == 10 {
+                            break
+                        }
+                        i += 1
+                    }
+                    i = p_ws(src, i)
+                    continue
+                }
+            }
+        }
+        if byte_at(src, i) == 60 {
+            // 标签
+            i = p_ws(src, i + 1)
+            if i < n {
+                if byte_at(src, i) == 47 {
+                    // 闭标签:弹栈
+                    i = p_ws(src, i + 1)
+                    i = i + p_tag_name(src, i).len
+                    i = p_ws(src, i)
+                    if i < n {
+                        if byte_at(src, i) == 62 {
+                            i += 1
+                        }
+                    }
+                    if depth > 1 {
+                        depth -= 1
+                    }
+                    i = p_ws(src, i)
+                    continue
+                }
+                let tag = p_tag_name(src, i)
+                i = i + tag.len
+                // 内容型标签:text/para/bar(内容=txt)
+                var node: I32 = 0 - 1
+                if tag == "text" {
+                    node = tree_node(t, "text", "", "", "", 0, "", 0)
+                } else {
+                    if tag == "para" {
+                        node = tree_node(t, "para", "", "", "", 0, "", 0)
+                    } else {
+                        if tag == "bar" {
+                            node = tree_node(t, "bar", "", "", "", 0, "", 0)
+                        } else {
+                            if tag == "box" {
+                                node = tree_node(t, "box", "single", "", "", 0, "", 0)
+                            } else {
+                                if tag == "spacer" {
+                                    node = tree_node(t, "spacer", "", "", "len", 0, "len", 0)
+                                } else {
+                                    if tag == "vbox" {
+                                        node = tree_node(t, "vbox", "", "", "", 0, "", 0)
+                                    } else {
+                                        if tag == "hbox" {
+                                            node = tree_node(t, "hbox", "", "", "", 0, "", 0)
+                                        } else {
+                                            return Err("tui_parse: 未知标签: " + tag)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                // 挂父
+                let parent = stack[depth - 1]
+                tree_attach(t, parent, node)
+                // 属性表
+                var selfclose: Bool = false
+                while i < n {
+                    i = p_ws(src, i)
+                    if i >= n {
+                        break
+                    }
+                    if byte_at(src, i) == 62 {
+                        i += 1
+                        break
+                    }
+                    if byte_at(src, i) == 47 {
+                        if i + 1 < n {
+                            if byte_at(src, i + 1) == 62 {
+                                selfclose = true
+                                i += 2
+                                break
+                            }
+                        }
+                        i += 1
+                        continue
+                    }
+                    let key = p_word(src, i)
+                    i = i + key.len
+                    i = p_ws(src, i)
+                    if i < n {
+                        if byte_at(src, i) == 61 {
+                            i = p_ws(src, i + 1)
+                            if i < n {
+                                if byte_at(src, i) == 34 {
+                                    i += 1
+                                    let val = p_qvalue(src, i)
+                                    i = i + val.len + 1
+                                    p_apply_attr(t, node, key, val)
+                                }
+                            }
+                        }
+                    }
+                }
+                // 内容型:读到闭标签
+                if selfclose == false {
+                    if tag == "text" {
+                        let cr = p_read_content(src, i, tag)
+                        t.txt[node] = cr.text
+                        i = p_ws(src, cr.next)
+                        continue
+                    }
+                    if false {
+                        if byte_at(src, i) == 60 {
+                        }
+                        i = p_ws(src, i)
+                        continue
+                    }
+                    if tag == "para" {
+                        let cr2 = p_read_content(src, i, tag)
+                        t.txt[node] = cr2.text
+                        i = p_ws(src, cr2.next)
+                        continue
+                    }
+                    if tag == "bar" {
+                        let cr3 = p_read_content(src, i, tag)
+                        t.txt[node] = cr3.text
+                        i = p_ws(src, cr3.next)
+                        continue
+                    }
+                }
+                if selfclose == false {
+                    if is_container_p(tag) {
+                        if stack.len == depth {
+                            stack.push(node)
+                        } else {
+                            stack[depth] = node
+                        }
+                        depth += 1
+                    }
+                }
+                i = p_ws(src, i)
+                continue
+            }
+        }
+        // 裸文本 = 跳过(文法只认 <tag> 面)
+        while i < n {
+            if byte_at(src, i) == 60 {
+                break
+            }
+            i += 1
+        }
+        i = p_ws(src, i)
+    }
+    return Ok(t)
+}
+
+fn is_container_p(tag: Str) -> Bool {
+    if tag == "vbox" {
+        return true
+    }
+    if tag == "hbox" {
+        return true
+    }
+    if tag == "box" {
+        return true
+    }
+    return false
+}
