@@ -2134,3 +2134,33 @@ alt screen+隐光标+鼠标+清屏顺序钉死/leave 逆序+atexit 兜底双保�
 
 挂账:W3b(buffer/布局/渲染/diff+s2–s5)/W3c(解码状态机+run_app/test+panic 消息
 重放+s6)/W3d(主题三档+s7)/W4(tui_widgets 五组件+examples/todo-tui 验收应用+s8)。
+
+## 2026-10-18 pkgs/tui W3b 落地(buffer/布局/渲染/diff;TUI 泳道第二波)
+
+**交付**(纯 Ctron 面,零 extern;门 s2–s5 与 s1 同阶梯,发射臂单臂):
+- **tui_buffer.ct**:buf_new/put/put_attr/put_wide(主格+尾格 wd)/fill/line(越界静默钳除
+  §3.1)+ buf_at/buf_fg_at 读面(headless 断言原型,d_cell 前身)+ cp_wide 粗判表
+  (0x1100 起宽,emoji 精确表登记债)+ str_w 逐码点宽 + sgr_fg/bg 24bit 编码(-1=39/49
+  默认直通)+ buf_diff(§5:行内连续段首定位光标顺写/SGR 状态机记 last 避重复发码/
+  尺寸变=清屏全帧/尾格跳过)。
+- **tui_layout.ct**:solve_sizes 三尺寸模式(定长先扣→pct 向零截断→fill 均分余数左→右
+  逐格)+ 静态 E 码四枚(E8601 len 负/E8602 pct 负/E8603 非法模式/E8604 定长和超容器
+  且无 fill;裁决 1 分层口径,渲染期越界=钳除不崩)。
+- **tui_render.ct**:builders 合并式(vbox/hbox/text/para/bar/box/spacer/with_id/with_h/
+  with_w/with_cls/with_al/with_title)+ wrap(word wrap 空格断点+CJK 逐字断+宽字符不拆
+  半+行尾容不下整宽提前换行+width<1 防御钳)+ box 三样式边框(single/double/round,标题
+  嵌上边线,标题暂驻 al 槽登记偏差)+ bar 反色面(accent 底+theme.bg fg)+ cls 令牌面
+  (muted/accent/err/ok/warn/border/bold/under/rev)+ DFS 渲染(vbox 列/hbox 行/交轴 al
+  偏移/自然高递归)。
+- **门**:s2 渲染冒烟(边框角/内容格/fg 色)/s3 布局三模式(求解精确值+余数左→右+四枚
+  E 码)/s4 折行+CJK(wrap 五向量+para 落格)/s5 diff 字节断言(单格/全同空/默认色恢复/
+  宽字符尾格跳过——逐字节精确比对)。**5/5 双跑绿**。
+
+**坑位入册(本批新钉)**:①发射臂 **List[Bool] 下标写=坏 C**(raw int 入 char* 槽;
+List[I32] 有 cast 正常)——属性槽 0/1 整形替身(登记债:发射器 Bool 槽 cast);②struct
+值**重赋值**发射坏 C(t_cr int32 化)——分支构造改纯函数偏移助手;③**tree_append 结构
+索引偏移**:子树合并必须 nfc/ns+off 平移,否则子树内"孩子下标 1"落进新树=自环
+(s2 E8604 迷踪根因,solve 探针实证 main=2 fixed=4=len/4 自指);④**emit 缓存键=主文件
+哈希,pkgs/ 子文件变更不失效**(bare 泳道在册坑二次踩:s3/s4 假绿两轮)——改包内文件必
+`rm -rf .cache/emit`;⑤相对 CTRON_STDPATH 下 pkgs 域解析失灵(门用绝对路径无恙,交互
+探针被误导两轮)。

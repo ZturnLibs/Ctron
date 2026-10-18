@@ -1,0 +1,58 @@
+// s2 —— 渲染冒烟门(W3b):builder→render→格子断言(vbox/text/box 边框)
+use tui.{ Theme, render, vbox, text, box, with_h, buf_at, buf_fg_at }
+
+fn kids1(a: TuiTree) -> List[TuiTree] {
+    var l = List[TuiTree]()
+    l.push(a)
+    return l
+}
+
+fn kids2(a: TuiTree, b: TuiTree) -> List[TuiTree] {
+    var l = List[TuiTree]()
+    l.push(a)
+    l.push(b)
+    return l
+}
+
+fn mk_theme() -> Theme {
+    return Theme { bg: "default", fg: "#c8c8c8", surface: "default", border: "#666666", text: "#c8c8c8", muted: "#808080", accent: "#4a9eff", sel_bg: "#314365", sel_fg: "#ffffff", err: "#ff6c6c", ok: "#b3f6c0", warn: "#efef8f", pad_h: 0, pad_v: 0 }
+}
+
+fn main() -> I32 {
+    let th = mk_theme()
+    let tree = vbox(kids2(with_h(box(kids1(text("ab")), "single"), 4), text("tail")))
+    let r = render(tree, 10, 6, th)
+    if r.is_ok() == false {
+        var emsg = ""
+        match r {
+            Err(m) => {
+                emsg = m
+            }
+            Ok(_) => {
+            }
+        }
+        panic("s2: render failed: " + emsg)
+    }
+    let b = r.expect("buf")
+    // 边框角
+    if buf_at(b, 0, 0) != "┌" {
+        panic("s2: corner missing")
+    }
+    // 文本面:box 内容行 y=1,"ab" 在 (1,1)(2,1)
+    if buf_at(b, 1, 1) != "a" {
+        panic("s2: text a missing")
+    }
+    if buf_at(b, 2, 1) != "b" {
+        panic("s2: text b missing")
+    }
+    // 尾行:vbox 第二子 y=4(第一子定高 4)
+    if buf_at(b, 0, 4) != "t" {
+        panic("s2: tail row missing")
+    }
+    // fg 面:border 色在角上
+    if buf_fg_at(b, 0, 0) != 0x666666 {
+        panic("s2: border color missing")
+    }
+    println("s2_smoke-probe ok")
+    return 0
+}

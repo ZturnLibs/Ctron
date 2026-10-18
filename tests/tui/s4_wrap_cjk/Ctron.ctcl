@@ -1,0 +1,5 @@
+pkg {
+    manifest_version = 1
+    name = "tui_s4_wrap_cjk"
+    version = "0.1.0"
+}

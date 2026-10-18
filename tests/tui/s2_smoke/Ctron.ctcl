@@ -1,0 +1,5 @@
+pkg {
+    manifest_version = 1
+    name = "tui_s2_smoke"
+    version = "0.1.0"
+}

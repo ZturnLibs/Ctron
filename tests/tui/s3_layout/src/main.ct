@@ -1,0 +1,118 @@
+// s3 —— 布局三模式门(W3b):len/pct/fill 求解 + 余数左→右 + 四枚静态 E 码(裁决 1)
+// 形状纪律:数组字面量不适配 List(在册坑)——全部显式构造。
+use tui.{ Theme, render, vbox, text, with_h, solve_sizes, buf_at }
+
+fn mk_theme() -> Theme {
+    return Theme { bg: "default", fg: "#ffffff", surface: "default", border: "#888888", text: "#ffffff", muted: "#888888", accent: "#4a9eff", sel_bg: "#333333", sel_fg: "#ffffff", err: "#ff0000", ok: "#00ff00", warn: "#ffff00", pad_h: 0, pad_v: 0 }
+}
+
+fn s1x(a: Str) -> List[Str] {
+    var l = List[Str]()
+    l.push(a)
+    return l
+}
+
+fn s2x(a: Str, b: Str) -> List[Str] {
+    var l = List[Str]()
+    l.push(a)
+    l.push(b)
+    return l
+}
+
+fn s3x(a: Str, b: Str, c: Str) -> List[Str] {
+    var l = List[Str]()
+    l.push(a)
+    l.push(b)
+    l.push(c)
+    return l
+}
+
+fn i1x(a: I32) -> List[I32] {
+    var l = List[I32]()
+    l.push(a)
+    return l
+}
+
+fn i2x(a: I32, b: I32) -> List[I32] {
+    var l = List[I32]()
+    l.push(a)
+    l.push(b)
+    return l
+}
+
+fn i3x(a: I32, b: I32, c: I32) -> List[I32] {
+    var l = List[I32]()
+    l.push(a)
+    l.push(b)
+    l.push(c)
+    return l
+}
+
+fn t1x(a: TuiTree) -> List[TuiTree] {
+    var l = List[TuiTree]()
+    l.push(a)
+    return l
+}
+
+fn t2x(a: TuiTree, b: TuiTree) -> List[TuiTree] {
+    var l = List[TuiTree]()
+    l.push(a)
+    l.push(b)
+    return l
+}
+
+fn expect_sizes(got: Result[List[I32], Str], want: List[I32], what: Str) {
+    if got.is_ok() == false {
+        panic("s3: " + what + " errored")
+    }
+    let ls = got.expect("sizes")
+    if ls.len != want.len {
+        panic("s3: " + what + " arity")
+    }
+    var i: I32 = 0
+    while i < want.len {
+        if ls[i] != want[i] {
+            panic("s3: " + what + " size mismatch")
+        }
+        i += 1
+    }
+}
+
+fn main() -> I32 {
+    // 定长+fill:剩余均分
+    expect_sizes(solve_sizes(10, s3x("len", "fill", "len"), i3x(3, 0, 2)), i3x(3, 5, 2), "fill-basic")
+    // pct 截断 + 双 fill 余数左→右(rem 5 → 3,2)
+    expect_sizes(solve_sizes(10, s3x("pct", "fill", "fill"), i3x(50, 0, 0)), i3x(5, 3, 2), "pct-fill-rem")
+    // pct 向零截断:33% of 10 = 3
+    expect_sizes(solve_sizes(10, s1x("pct"), i1x(33)), i1x(3), "pct-trunc")
+    // 静态 E 码(裁决 1 分层口径)
+    if solve_sizes(10, s2x("len", "len"), i2x(6, 6)).is_ok() {
+        panic("s3: E8604 not raised")
+    }
+    if solve_sizes(10, s1x("pct"), i1x(0 - 1)).is_ok() {
+        panic("s3: E8602 not raised")
+    }
+    if solve_sizes(10, s1x("bogus"), i1x(1)).is_ok() {
+        panic("s3: E8603 not raised")
+    }
+    if solve_sizes(10, s1x("len"), i1x(0 - 2)).is_ok() {
+        panic("s3: E8601 not raised")
+    }
+    // render 面:vbox 定高子件行定位(text 在 y=2 起的第二子件)
+    let th = mk_theme()
+    let a = with_h(text("aa"), 2)
+    let b = text("bb")
+    let r = render(vbox(t2x(a, b)), 8, 5, th)
+    if r.is_ok() == false {
+        panic("s3: render errored")
+    }
+    let buf = r.expect("buf")
+    if buf_at(buf, 0, 0) != "a" {
+        panic("s3: row0 missing")
+    }
+    if buf_at(buf, 0, 2) != "b" {
+        panic("s3: row2 missing")
+    }
+    println("s3_layout-probe ok")
+    return 0
+}

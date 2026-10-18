@@ -1,0 +1,376 @@
+// tui_buffer.ct —— 单元格网格:SoA 写面 + 宽字符粗判 + diff/ANSI 序列生成
+// 设计 docs/superpowers/specs/2026-10-09-tui-design.md §3.1/§5。
+// 形状纪律(发射臂,2026-10-17 探针在册):List 元素下标写回经 struct 字段+值参数
+// 可用(List 引用语义,42z 探针双臂绿);TuiBuf 构造后字段不再整体赋值,只写 List 槽。
+
+pub fn buf_new(w: I32, h: I32) -> TuiBuf {
+    var chs = List[Str]()
+    var fg = List[I32]()
+    var bg = List[I32]()
+    var bold = List[Bool]()
+    var under = List[Bool]()
+    var rev = List[Bool]()
+    var wd = List[Bool]()
+    let n = w * h
+    var i: I32 = 0
+    while i < n {
+        chs.push(" ")
+        fg.push(0 - 1)
+        bg.push(0 - 1)
+        bold.push(0)
+        under.push(0)
+        rev.push(0)
+        wd.push(0)
+        i += 1
+    }
+    return TuiBuf { w: w, h: h, chs: chs, fg: fg, bg: bg, bold: bold, under: under, rev: rev, wd: wd }
+}
+
+fn buf_idx(b: TuiBuf, x: I32, y: I32) -> I32 {
+    return y * b.w + x
+}
+
+// 单格写(越界=静默钳除,渲染期宽容 §3.1)
+pub fn buf_put(b: TuiBuf, x: I32, y: I32, ch: Str, fg: I32, bg: I32) {
+    if x < 0 {
+        return
+    }
+    if y < 0 {
+        return
+    }
+    if x >= b.w {
+        return
+    }
+    if y >= b.h {
+        return
+    }
+    let i = buf_idx(b, x, y)
+    b.chs[i] = ch
+    b.fg[i] = fg
+    b.bg[i] = bg
+}
+
+// 属性写(bold/under/rev 具名拆槽,位集禁用)
+pub fn buf_put_attr(b: TuiBuf, x: I32, y: I32, bo: Bool, un: Bool, rv: Bool) {
+    if x < 0 {
+        return
+    }
+    if y < 0 {
+        return
+    }
+    if x >= b.w {
+        return
+    }
+    if y >= b.h {
+        return
+    }
+    let i = buf_idx(b, x, y)
+    if bo {
+        b.bold[i] = 1
+    } else {
+        b.bold[i] = 0
+    }
+    if un {
+        b.under[i] = 1
+    } else {
+        b.under[i] = 0
+    }
+    if rv {
+        b.rev[i] = 1
+    } else {
+        b.rev[i] = 0
+    }
+}
+
+// 宽字符写:主格 + 尾格 wd=true(头less 读断言对尾格透明;跨矩形边界的宽字符整对丢弃 §5)
+pub fn buf_put_wide(b: TuiBuf, x: I32, y: I32, ch: Str, fg: I32, bg: I32) {
+    buf_put(b, x, y, ch, fg, bg)
+    if x + 1 < b.w {
+        let i = buf_idx(b, x + 1, y)
+        b.wd[i] = 1
+    }
+}
+
+// 单格读(headless 断言面;d_cell 的原型;尾随格透明返回)
+pub fn buf_at(b: TuiBuf, x: I32, y: I32) -> Str {
+    if x < 0 {
+        return ""
+    }
+    if y < 0 {
+        return ""
+    }
+    if x >= b.w {
+        return ""
+    }
+    if y >= b.h {
+        return ""
+    }
+    let i = buf_idx(b, x, y)
+    if b.wd[i] == 1 {
+        return ""
+    }
+    return b.chs[i]
+}
+
+pub fn buf_fg_at(b: TuiBuf, x: I32, y: I32) -> I32 {
+    if x < 0 {
+        return 0 - 1
+    }
+    if y < 0 {
+        return 0 - 1
+    }
+    if x >= b.w {
+        return 0 - 1
+    }
+    if y >= b.h {
+        return 0 - 1
+    }
+    return b.fg[buf_idx(b, x, y)]
+}
+
+// 区域填(矩形;越界钳除)
+pub fn buf_fill(b: TuiBuf, x: I32, y: I32, w: I32, h: I32, ch: Str, fg: I32, bg: I32) {
+    var j: I32 = 0
+    while j < h {
+        var i: I32 = 0
+        while i < w {
+            buf_put(b, x + i, y + j, ch, fg, bg)
+            i += 1
+        }
+        j += 1
+    }
+}
+
+// 线写(horiz=true 横线 n 格,否则竖线)
+pub fn buf_line(b: TuiBuf, x: I32, y: I32, n: I32, horiz: Bool, ch: Str, fg: I32, bg: I32) {
+    var i: I32 = 0
+    while i < n {
+        if horiz {
+            buf_put(b, x + i, y, ch, fg, bg)
+        } else {
+            buf_put(b, x, y + i, ch, fg, bg)
+        }
+        i += 1
+    }
+}
+
+// 宽字符粗判(设计 §10 登记债:0x1100 起粗判;emoji 双宽精确表不做)
+pub fn cp_wide(cp: I32) -> I32 {
+    if cp < 0 {
+        return 1
+    }
+    if cp < 0x1100 {
+        return 1
+    }
+    if cp < 0x1160 {
+        return 2
+    }
+    if cp < 0x2E80 {
+        return 1
+    }
+    if cp < 0xA4D0 {
+        return 2
+    }
+    if cp < 0xAC00 {
+        return 1
+    }
+    if cp < 0xD7A4 {
+        return 2
+    }
+    if cp < 0xF900 {
+        return 1
+    }
+    if cp < 0xFB00 {
+        return 2
+    }
+    if cp < 0xFF00 {
+        return 1
+    }
+    if cp < 0xFF61 {
+        return 2
+    }
+    if cp < 0xFFE0 {
+        return 1
+    }
+    if cp < 0xFFE7 {
+        return 2
+    }
+    if cp >= 0x20000 {
+        if cp <= 0x3FFFD {
+            return 2
+        }
+    }
+    return 1
+}
+
+// 字素串显示宽(逐码点粗判求和;cp_at 负值=续字节/越界,按 1 步进兜底)
+pub fn str_w(s: Str) -> I32 {
+    var w: I32 = 0
+    var i: I32 = 0
+    while i < s.len {
+        let cp = cp_at(s, i)
+        if cp >= 0 {
+            w += cp_wide(cp)
+        }
+        if cp >= 0x800 {
+            i += 3
+        } else {
+            if cp >= 0x80 {
+                i += 2
+            } else {
+                i += 1
+            }
+        }
+    }
+    return w
+}
+
+// 24bit 色码(fg;-1=终端默认 39)
+pub fn sgr_fg(v: I32) -> Str {
+    if v < 0 {
+        return "\u{1b}[39m"
+    }
+    let r = v / 65536
+    let g = (v / 256) - r * 256
+    let bl = v - r * 65536 - g * 256
+    return "\u{1b}[38;2;" + r.to_string() + ";" + g.to_string() + ";" + bl.to_string() + "m"
+}
+
+// 24bit 色码(bg;-1=终端默认 49)
+pub fn sgr_bg(v: I32) -> Str {
+    if v < 0 {
+        return "\u{1b}[49m"
+    }
+    let r = v / 65536
+    let g = (v / 256) - r * 256
+    let bl = v - r * 65536 - g * 256
+    return "\u{1b}[48;2;" + r.to_string() + ";" + g.to_string() + ";" + bl.to_string() + "m"
+}
+
+fn cell_eq(front: TuiBuf, back: TuiBuf, i: I32) -> Bool {
+    if front.chs[i] != back.chs[i] {
+        return false
+    }
+    if front.fg[i] != back.fg[i] {
+        return false
+    }
+    if front.bg[i] != back.bg[i] {
+        return false
+    }
+    if front.bold[i] != back.bold[i] {
+        return false
+    }
+    if front.under[i] != back.under[i] {
+        return false
+    }
+    if front.rev[i] != back.rev[i] {
+        return false
+    }
+    return true
+}
+
+// 尺寸变化 = 清屏全帧重画(resize 正规面;逐格 walk)
+fn paint_all(b: TuiBuf) -> Str {
+    var out = "\u{1b}[2J\u{1b}[H"
+    var lfg: I32 = 0 - 2
+    var lbg: I32 = 0 - 2
+    var lbo: Bool = false
+    var lun: Bool = false
+    var lrv: Bool = false
+    var y: I32 = 0
+    while y < b.h {
+        var x: I32 = 0
+        while x < b.w {
+            let i = buf_idx(b, x, y)
+            if b.wd[i] == 0 {
+                let at = y + 1
+                let ax = x + 1
+                out = out + "\u{1b}[" + at.to_string() + ";" + ax.to_string() + "H"
+                if lfg != b.fg[i] || lbg != b.bg[i] || lbo != b.bold[i] || lun != b.under[i] || lrv != b.rev[i] {
+                    out = out + "\u{1b}[0m"
+                    if b.bold[i] {
+                        out = out + "\u{1b}[1m"
+                    }
+                    if b.under[i] {
+                        out = out + "\u{1b}[4m"
+                    }
+                    if b.rev[i] {
+                        out = out + "\u{1b}[7m"
+                    }
+                    out = out + sgr_fg(b.fg[i]) + sgr_bg(b.bg[i])
+                    lfg = b.fg[i]
+                    lbg = b.bg[i]
+                    lbo = b.bold[i]
+                    lun = b.under[i]
+                    lrv = b.rev[i]
+                }
+                out = out + b.chs[i]
+            }
+            x += 1
+        }
+        y += 1
+    }
+    return out
+}
+
+// diff(§5):逐格比较;行内连续段首定位光标顺写;SGR 状态机记 last 避重复发码。
+// 尺寸不同 = 清屏全帧。宽字符尾随格跳过(字节流里它们是主格的一部分)。
+pub fn buf_diff(front: TuiBuf, back: TuiBuf) -> Str {
+    if front.w != back.w {
+        return paint_all(back)
+    }
+    if front.h != back.h {
+        return paint_all(back)
+    }
+    var out = ""
+    var lfg: I32 = 0 - 2
+    var lbg: I32 = 0 - 2
+    var lbo: Bool = false
+    var lun: Bool = false
+    var lrv: Bool = false
+    var y: I32 = 0
+    while y < back.h {
+        var x: I32 = 0
+        var inrun: Bool = false
+        while x < back.w {
+            let i = buf_idx(back, x, y)
+            if back.wd[i] == 1 {
+                x += 1
+                continue
+            }
+            if cell_eq(front, back, i) {
+                inrun = false
+                x += 1
+                continue
+            }
+            if inrun == false {
+                let at = y + 1
+                let ax = x + 1
+                out = out + "\u{1b}[" + at.to_string() + ";" + ax.to_string() + "H"
+                inrun = true
+            }
+            if lfg != back.fg[i] || lbg != back.bg[i] || lbo != back.bold[i] || lun != back.under[i] || lrv != back.rev[i] {
+                out = out + "\u{1b}[0m"
+                if back.bold[i] {
+                    out = out + "\u{1b}[1m"
+                }
+                if back.under[i] {
+                    out = out + "\u{1b}[4m"
+                }
+                if back.rev[i] {
+                    out = out + "\u{1b}[7m"
+                }
+                out = out + sgr_fg(back.fg[i]) + sgr_bg(back.bg[i])
+                lfg = back.fg[i]
+                lbg = back.bg[i]
+                lbo = back.bold[i]
+                lun = back.under[i]
+                lrv = back.rev[i]
+            }
+            out = out + back.chs[i]
+            x += 1
+        }
+        y += 1
+    }
+    return out
+}

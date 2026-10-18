@@ -1,0 +1,726 @@
+// tui_render.ct —— 树 builder(合并式)+ DFS 渲染(折行/边框/对齐/宽字符)
+// 设计 §3.2/§5。builder/ctml 双轨同汇 TuiTree(ctml = W5a);builder 每帧全量重建
+// (O(树大小) 分配税,增量 builder 列优化债,触发=profile 实证)。
+// 登记偏差:builders 暂驻本文件(W4 组件化时随归属再定);超宽单元独占行不拆字
+// (ASCII 长词硬断列切缓,钳除面由 buffer 兜底);cls 令牌 = muted/accent/err/ok/
+// warn/text/border/surface + bold/under/rev(首令牌胜)。
+
+// ---- builder(合并式:子树各表逐 push + 索引偏移;List 引用语义零拷贝) ----
+
+fn tree_new() -> TuiTree {
+    return TuiTree { tag: List[Str](), txt: List[Str](), cls: List[Str](), wmode: List[Str](), wval: List[I32](), hmode: List[Str](), hval: List[I32](), al: List[Str](), nfc: List[I32](), ns: List[I32](), aid: List[Str]() }
+}
+
+fn tree_node(t: TuiTree, tag: Str, txt: Str, cls: Str, wmode: Str, wval: I32, hmode: Str, hval: I32) -> I32 {
+    t.tag.push(tag)
+    t.txt.push(txt)
+    t.cls.push(cls)
+    t.wmode.push(wmode)
+    t.wval.push(wval)
+    t.hmode.push(hmode)
+    t.hval.push(hval)
+    t.al.push("")
+    t.nfc.push(0 - 1)
+    t.ns.push(0 - 1)
+    t.aid.push("")
+    return t.tag.len - 1
+}
+
+fn tree_append(t: TuiTree, sub: TuiTree) -> I32 {
+    let off = t.tag.len
+    var i: I32 = 0
+    while i < sub.tag.len {
+        t.tag.push(sub.tag[i])
+        t.txt.push(sub.txt[i])
+        t.cls.push(sub.cls[i])
+        t.wmode.push(sub.wmode[i])
+        t.wval.push(sub.wval[i])
+        t.hmode.push(sub.hmode[i])
+        t.hval.push(sub.hval[i])
+        t.al.push(sub.al[i])
+        // 结构索引随平移偏移(subtree 相对下标 → 新树绝对下标;-1 保留)
+        if sub.nfc[i] >= 0 {
+            t.nfc.push(sub.nfc[i] + off)
+        } else {
+            t.nfc.push(0 - 1)
+        }
+        if sub.ns[i] >= 0 {
+            t.ns.push(sub.ns[i] + off)
+        } else {
+            t.ns.push(0 - 1)
+        }
+        t.aid.push(sub.aid[i])
+        i += 1
+    }
+    return off
+}
+
+fn merge_kids(t: TuiTree, parent: I32, kids: List[TuiTree]) {
+    var prev: I32 = 0 - 1
+    var k: I32 = 0
+    while k < kids.len {
+        let off = tree_append(t, kids[k])
+        if prev < 0 {
+            t.nfc[parent] = off
+        } else {
+            t.ns[prev] = off
+        }
+        prev = off
+        k += 1
+    }
+}
+
+pub fn vbox(kids: List[TuiTree]) -> TuiTree {
+    var t = tree_new()
+    let me = tree_node(t, "vbox", "", "", "", 0, "", 0)
+    merge_kids(t, me, kids)
+    return t
+}
+
+pub fn hbox(kids: List[TuiTree]) -> TuiTree {
+    var t = tree_new()
+    let me = tree_node(t, "hbox", "", "", "", 0, "", 0)
+    merge_kids(t, me, kids)
+    return t
+}
+
+// 单行文本(不折行)
+pub fn text(s: Str) -> TuiTree {
+    var t = tree_new()
+    tree_node(t, "text", s, "", "", 0, "", 0)
+    return t
+}
+
+// 折行段落(自然高 = 折行数)
+pub fn para(s: Str) -> TuiTree {
+    var t = tree_new()
+    tree_node(t, "para", s, "", "", 0, "", 0)
+    return t
+}
+
+// 顶栏(accent 底 + theme.bg 色 fg,反色由主题算 §5)
+pub fn bar(s: Str) -> TuiTree {
+    var t = tree_new()
+    tree_node(t, "bar", s, "", "", 0, "", 0)
+    return t
+}
+
+// 边框容器(line = "single"/"double"/"round")
+pub fn box(kids: List[TuiTree], line: Str) -> TuiTree {
+    var t = tree_new()
+    let me = tree_node(t, "box", line, "", "", 0, "", 0)
+    merge_kids(t, me, kids)
+    return t
+}
+
+pub fn spacer(w: I32, h: I32) -> TuiTree {
+    var t = tree_new()
+    tree_node(t, "spacer", "", "", "len", w, "len", h)
+    return t
+}
+
+pub fn with_id(t: TuiTree, id: Str) -> TuiTree {
+    t.aid[0] = id
+    return t
+}
+
+// 显式尺寸(len 模式;缺省自然高/拉伸宽 §4)
+pub fn with_h(t: TuiTree, n: I32) -> TuiTree {
+    t.hmode[0] = "len"
+    t.hval[0] = n
+    return t
+}
+
+pub fn with_w(t: TuiTree, n: I32) -> TuiTree {
+    t.wmode[0] = "len"
+    t.wval[0] = n
+    return t
+}
+
+pub fn with_cls(t: TuiTree, c: Str) -> TuiTree {
+    t.cls[0] = c
+    return t
+}
+
+pub fn with_al(t: TuiTree, a: Str) -> TuiTree {
+    t.al[0] = a
+    return t
+}
+
+// box 标题(嵌上边线 §5):暂驻 al 槽——box 不消费交轴对齐,零碰撞;
+// 登记偏差(正式槽位随 W5a ctml 属性面正名)
+pub fn with_title(t: TuiTree, s: Str) -> TuiTree {
+    if t.tag[0] == "box" {
+        t.al[0] = s
+    }
+    return t
+}
+
+// ---- 折行(§5:空格断点 word wrap + CJK 逐字断;宽字符不拆半) ----
+
+pub fn wrap(s: Str, width: I32) -> List[Str] {
+    var lines = List[Str]()
+    if width < 1 {
+        lines.push("")
+        return lines
+    }
+    var cur = ""
+    var curw: I32 = 0
+    var i: I32 = 0
+    while i < s.len {
+        let cp = cp_at(s, i)
+        if cp < 0 {
+            i += 1
+            continue
+        }
+        var blen: I32 = 1
+        if cp >= 0x800 {
+            blen = 3
+        } else {
+            if cp >= 0x80 {
+                blen = 2
+            }
+        }
+        let ch = byte_slice(s, i, i + blen)
+        let cw = cp_wide(cp)
+        i += blen
+        if ch == " " {
+            if curw > 0 {
+                lines.push(cur)
+                cur = ""
+                curw = 0
+            }
+            continue
+        }
+        if curw + cw > width {
+            if curw > 0 {
+                lines.push(cur)
+                cur = ""
+                curw = 0
+            }
+            if cw > width {
+                lines.push(ch)
+                continue
+            }
+        }
+        cur = cur + ch
+        curw += cw
+    }
+    lines.push(cur)
+    return lines
+}
+
+// ---- 色/类解析(parse_color 迁 tui_theme 随 W3d;先驻此供渲染消费) ----
+
+fn hexval(c: I32) -> I32 {
+    if c >= 48 {
+        if c <= 57 {
+            return c - 48
+        }
+    }
+    if c >= 97 {
+        if c <= 102 {
+            return c - 87
+        }
+    }
+    if c >= 65 {
+        if c <= 70 {
+            return c - 55
+        }
+    }
+    return 0
+}
+
+pub fn parse_color(s: Str) -> I32 {
+    if s == "default" {
+        return 0 - 1
+    }
+    if s.len != 7 {
+        return 0 - 1
+    }
+    if byte_at(s, 0) != 35 {
+        return 0 - 1
+    }
+    let r = hexval(byte_at(s, 1)) * 16 + hexval(byte_at(s, 2))
+    let g = hexval(byte_at(s, 3)) * 16 + hexval(byte_at(s, 4))
+    let bl = hexval(byte_at(s, 5)) * 16 + hexval(byte_at(s, 6))
+    return r * 65536 + g * 256 + bl
+}
+
+fn cls_fg(cls: Str, th: Theme) -> I32 {
+    if cls == "muted" {
+        return parse_color(th.muted)
+    }
+    if cls == "accent" {
+        return parse_color(th.accent)
+    }
+    if cls == "err" {
+        return parse_color(th.err)
+    }
+    if cls == "ok" {
+        return parse_color(th.ok)
+    }
+    if cls == "warn" {
+        return parse_color(th.warn)
+    }
+    if cls == "border" {
+        return parse_color(th.border)
+    }
+    return parse_color(th.text)
+}
+
+fn cls_attr(cls: Str) -> I32 {
+    // 0 无 / 1 bold / 2 under / 3 rev
+    var out: I32 = 0
+    var i: I32 = 0
+    while i < cls.len {
+        if byte_at(cls, i) == 32 {
+            i += 1
+            continue
+        }
+        var j = i
+        while j < cls.len {
+            if byte_at(cls, j) != 32 {
+                j += 1
+                continue
+            }
+            break
+        }
+        let tok = byte_slice(cls, i, j)
+        if tok == "bold" {
+            if out == 0 {
+                out = 1
+            }
+        }
+        if tok == "under" {
+            if out == 0 {
+                out = 2
+            }
+        }
+        if tok == "rev" {
+            if out == 0 {
+                out = 3
+            }
+        }
+        i = j + 1
+    }
+    return out
+}
+
+// ---- 自然高(§4:hmode 缺省 = text/bar 1、para 折行数、spacer 0、box 2+内容) ----
+
+fn is_container(tag: Str) -> Bool {
+    if tag == "vbox" {
+        return true
+    }
+    if tag == "hbox" {
+        return true
+    }
+    if tag == "box" {
+        return true
+    }
+    return false
+}
+
+fn natural_h(t: TuiTree, idx: I32, w: I32) -> I32 {
+    let tag = t.tag[idx]
+    if tag == "text" {
+        return 1
+    }
+    if tag == "bar" {
+        return 1
+    }
+    if tag == "spacer" {
+        return 0
+    }
+    if tag == "para" {
+        return wrap(t.txt[idx], w).len
+    }
+    if tag == "box" {
+        return 2 + natural_kids_h(t, t.nfc[idx], w - 2)
+    }
+    // vbox/hbox 缺省走 fill(求解面);此处兜底 0
+    return 0
+}
+
+fn natural_kids_h(t: TuiTree, head: I32, w: I32) -> I32 {
+    // box 内容列 = vbox 语义:子自然高求和(hbox 子取最大——box 内 hbox 罕见,列语义优先)
+    var total: I32 = 0
+    var c = head
+    while c >= 0 {
+        total += natural_h(t, c, w)
+        c = t.ns[c]
+    }
+    return total
+}
+
+// ---- 叶面绘制 ----
+
+fn put_aligned_line(b: TuiBuf, r: LR, row: I32, s: Str, al: Str, fg: I32, attr: I32) {
+    // 行内容按 al 水平偏移;逐字素写(宽字符走 put_wide 配对;越界钳除兜底)
+    var x: I32 = 0
+    if al == "center" {
+        x = (r.w - str_w(s)) / 2
+    }
+    if al == "right" {
+        x = r.w - str_w(s)
+    }
+    var i: I32 = 0
+    while i < s.len {
+        let cp = cp_at(s, i)
+        if cp < 0 {
+            i += 1
+            continue
+        }
+        var blen: I32 = 1
+        if cp >= 0x800 {
+            blen = 3
+        } else {
+            if cp >= 0x80 {
+                blen = 2
+            }
+        }
+        let ch = byte_slice(s, i, i + blen)
+        let px = r.x + x
+        if cp_wide(cp) == 2 {
+            buf_put_wide(b, px, row, ch, fg, 0 - 1)
+            x += 2
+        } else {
+            buf_put(b, px, row, ch, fg, 0 - 1)
+            x += 1
+        }
+        if attr == 1 {
+            buf_put_attr(b, px, row, true, false, false)
+        }
+        if attr == 2 {
+            buf_put_attr(b, px, row, false, true, false)
+        }
+        if attr == 3 {
+            buf_put_attr(b, px, row, false, false, true)
+        }
+        i += blen
+    }
+}
+
+// ---- DFS 渲染 ----
+
+fn paint_node(b: TuiBuf, t: TuiTree, idx: I32, r: LR, th: Theme) -> Result[I32, Str] {
+    let tag = t.tag[idx]
+    if tag == "spacer" {
+        return Ok(0)
+    }
+    if tag == "bar" {
+        buf_fill(b, r.x, r.y, r.w, r.h, " ", parse_color(th.accent), parse_color(th.accent))
+        // bar 面 = accent 底 + theme.bg 色 fg(反色由主题算);逐字素写
+        var i: I32 = 0
+        var x: I32 = r.x
+        let s = t.txt[idx]
+        while i < s.len {
+            if x >= r.x + r.w {
+                break
+            }
+            let cp = cp_at(s, i)
+            if cp < 0 {
+                i += 1
+                continue
+            }
+            var blen: I32 = 1
+            if cp >= 0x800 {
+                blen = 3
+            } else {
+                if cp >= 0x80 {
+                    blen = 2
+                }
+            }
+            let ch = byte_slice(s, i, i + blen)
+            if cp_wide(cp) == 2 {
+                buf_put(b, x, r.y, ch, parse_color(th.bg), parse_color(th.accent))
+                if x + 1 < r.x + r.w {
+                    buf_put(b, x + 1, r.y, " ", parse_color(th.bg), parse_color(th.accent))
+                }
+                x += 2
+            } else {
+                buf_put(b, x, r.y, ch, parse_color(th.bg), parse_color(th.accent))
+                x += 1
+            }
+            i += blen
+        }
+        return Ok(0)
+    }
+    if tag == "text" {
+        let row = r.y
+        put_aligned_line(b, r, row, t.txt[idx], t.al[idx], cls_fg(t.cls[idx], th), cls_attr(t.cls[idx]))
+        return Ok(0)
+    }
+    if tag == "para" {
+        let lines = wrap(t.txt[idx], r.w)
+        var li: I32 = 0
+        while li < lines.len {
+            if li >= r.h {
+                break
+            }
+            let rr = lr(r.x, r.y + li, r.w, r.h)
+            put_aligned_line(b, rr, r.y + li, lines[li], t.al[idx], cls_fg(t.cls[idx], th), cls_attr(t.cls[idx]))
+            li += 1
+        }
+        return Ok(0)
+    }
+    if tag == "box" {
+        paint_box_border(b, t, idx, r, th)
+        let inner = lr(r.x + 1, r.y + 1, r.w - 2, r.h - 2)
+        if r.w >= 3 {
+            if r.h >= 3 {
+                let pr = paint_kids_column(b, t, t.nfc[idx], inner, th)
+                match pr {
+                    Err(m) => {
+                        return Err(m)
+                    }
+                    Ok(_) => {
+                    }
+                }
+            }
+        }
+        return Ok(0)
+    }
+    if tag == "vbox" {
+        let pr = paint_kids_column(b, t, t.nfc[idx], r, th)
+        match pr {
+            Err(m) => {
+                return Err(m)
+            }
+            Ok(_) => {
+            }
+        }
+        return Ok(0)
+    }
+    if tag == "hbox" {
+        let pr = paint_kids_row(b, t, t.nfc[idx], r, th)
+        match pr {
+            Err(m) => {
+                return Err(m)
+            }
+            Ok(_) => {
+            }
+        }
+        return Ok(0)
+    }
+    return Ok(0)
+}
+
+fn paint_box_border(b: TuiBuf, t: TuiTree, idx: I32, r: LR, th: Theme) {
+    let style = t.txt[idx]
+    var tl = "┌"
+    var tr = "┐"
+    var bl = "└"
+    var br = "┘"
+    var hz = "─"
+    var vt = "│"
+    if style == "double" {
+        tl = "╔"
+        tr = "╗"
+        bl = "╚"
+        br = "╝"
+        hz = "═"
+        vt = "║"
+    }
+    if style == "round" {
+        tl = "╭"
+        tr = "╮"
+        bl = "╰"
+        br = "╯"
+    }
+    var fgc = parse_color(th.border)
+    if t.cls[idx] != "" {
+        fgc = cls_fg(t.cls[idx], th)
+    }
+    buf_line(b, r.x + 1, r.y, r.w - 2, true, hz, fgc, 0 - 1)
+    buf_line(b, r.x + 1, r.y + r.h - 1, r.w - 2, true, hz, fgc, 0 - 1)
+    buf_line(b, r.x, r.y + 1, r.h - 2, false, vt, fgc, 0 - 1)
+    buf_line(b, r.x + r.w - 1, r.y + 1, r.h - 2, false, vt, fgc, 0 - 1)
+    buf_put(b, r.x, r.y, tl, fgc, 0 - 1)
+    buf_put(b, r.x + r.w - 1, r.y, tr, fgc, 0 - 1)
+    buf_put(b, r.x, r.y + r.h - 1, bl, fgc, 0 - 1)
+    buf_put(b, r.x + r.w - 1, r.y + r.h - 1, br, fgc, 0 - 1)
+    // 标题嵌上边线:`┌ title ─…`(标题暂驻 al 槽,with_title)
+    let title2 = t.al[idx]
+    if title2.len > 0 {
+        if style != "double" {
+            if style != "round" {
+                if r.w >= 6 {
+                    let tw = str_w(title2)
+                    let tx = r.x + 2
+                    buf_put(b, r.x + 1, r.y, " ", fgc, 0 - 1)
+                    var i: I32 = 0
+                    while i < title2.len {
+                        if tx + i >= r.x + r.w - 2 {
+                            break
+                        }
+                        let cp = cp_at(title2, i)
+                        if cp < 0 {
+                            i += 1
+                            continue
+                        }
+                        var blen: I32 = 1
+                        if cp >= 0x800 {
+                            blen = 3
+                        } else {
+                            if cp >= 0x80 {
+                                blen = 2
+                            }
+                        }
+                        buf_put(b, tx + i, r.y, byte_slice(title2, i, i + blen), fgc, 0 - 1)
+                        i += blen
+                    }
+                    buf_put(b, tx + tw, r.y, " ", fgc, 0 - 1)
+                }
+            }
+        }
+    }
+}
+
+fn al_off_x(al: Str, rx: I32, rw: I32, cw: I32) -> I32 {
+    if al == "center" {
+        return rx + (rw - cw) / 2
+    }
+    if al == "right" {
+        return rx + rw - cw
+    }
+    return rx
+}
+
+fn al_off_y(al: Str, ry: I32, rh: I32, chh: I32) -> I32 {
+    if al == "middle" {
+        return ry + (rh - chh) / 2
+    }
+    if al == "bottom" {
+        return ry + rh - chh
+    }
+    return ry
+}
+
+// vbox 语义列(vbox 与 box 内容共用;al 水平面)
+fn paint_kids_column(b: TuiBuf, t: TuiTree, head: I32, r: LR, th: Theme) -> Result[I32, Str] {
+    var modes = List[Str]()
+    var vals = List[I32]()
+    var kids = List[I32]()
+    var c = head
+    while c >= 0 {
+        kids.push(c)
+        if t.hmode[c] == "" {
+            modes.push("len")
+            vals.push(natural_h(t, c, r.w))
+        } else {
+            modes.push(t.hmode[c])
+            vals.push(t.hval[c])
+        }
+        c = t.ns[c]
+    }
+    let sr = solve_sizes(r.h, modes, vals)
+    var sizes = List[I32]()
+    match sr {
+        Err(m) => {
+            return Err(m)
+        }
+        Ok(_) => {
+            sizes = sr.expect("sizes")
+        }
+    }
+    var y: I32 = r.y
+    var k: I32 = 0
+    while k < kids.len {
+        let ci = kids[k]
+        var cw: I32 = r.w
+        if t.wmode[ci] == "len" {
+            cw = t.wval[ci]
+        }
+        if t.wmode[ci] == "pct" {
+            cw = t.wval[ci] * r.w / 100
+        }
+        let cx = al_off_x(t.al[ci], r.x, r.w, cw)
+        let cr = lr(cx, y, cw, sizes[k])
+        let pr = paint_node(b, t, ci, cr, th)
+        match pr {
+            Err(m) => {
+                return Err(m)
+            }
+            Ok(_) => {
+            }
+        }
+        y += sizes[k]
+        k += 1
+    }
+    return Ok(0)
+}
+
+fn paint_kids_row(b: TuiBuf, t: TuiTree, head: I32, r: LR, th: Theme) -> Result[I32, Str] {
+    var modes = List[Str]()
+    var vals = List[I32]()
+    var kids = List[I32]()
+    var c = head
+    while c >= 0 {
+        kids.push(c)
+        if t.wmode[c] == "" {
+            // 缺省:叶=自然宽,容器=fill(§4 主轴除定长外拉伸满)
+            if is_container(t.tag[c]) {
+                modes.push("fill")
+                vals.push(0)
+            } else {
+                modes.push("len")
+                vals.push(str_w(t.txt[c]))
+            }
+        } else {
+            modes.push(t.wmode[c])
+            vals.push(t.wval[c])
+        }
+        c = t.ns[c]
+    }
+    let sr = solve_sizes(r.w, modes, vals)
+    var sizes = List[I32]()
+    match sr {
+        Err(m) => {
+            return Err(m)
+        }
+        Ok(_) => {
+            sizes = sr.expect("sizes")
+        }
+    }
+    var x: I32 = r.x
+    var k: I32 = 0
+    while k < kids.len {
+        let ci = kids[k]
+        var chh: I32 = r.h
+        if t.hmode[ci] == "len" {
+            chh = t.hval[ci]
+        }
+        if t.hmode[ci] == "pct" {
+            chh = t.hval[ci] * r.h / 100
+        }
+        let cy2 = al_off_y(t.al[ci], r.y, r.h, chh)
+        let cr = lr(x, cy2, sizes[k], chh)
+        let pr = paint_node(b, t, ci, cr, th)
+        match pr {
+            Err(m) => {
+                return Err(m)
+            }
+            Ok(_) => {
+            }
+        }
+        x += sizes[k]
+        k += 1
+    }
+    return Ok(0)
+}
+
+// 渲染入口:整帧 back buffer(静态可知布局错误 = E 码 Err,裁决 1)
+pub fn render(tree: TuiTree, w: I32, h: I32, th: Theme) -> Result[TuiBuf, Str] {
+    var b = buf_new(w, h)
+    let pr = paint_node(b, tree, 0, lr(0, 0, w, h), th)
+    match pr {
+        Err(m) => {
+            return Err(m)
+        }
+        Ok(_) => {
+        }
+    }
+    return Ok(b)
+}

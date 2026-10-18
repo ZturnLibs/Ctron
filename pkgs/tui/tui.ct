@@ -9,6 +9,14 @@
 // 约定:TUI 生命期内应用不依赖 stderr 时序(panic 重放缓冲,§18);终端太小降级屏
 // 随 W3b 渲染面落;Ctrl+C 产事件不默认退(W3c;statusbar 缺省文案必含「q 退出」提示,
 // 裁决 11)。
+//
+// 装载形态(gui 同模型):门面独占 use 行,wholesale 合并为单一名域——子模块裸奔
+// (buffer/layout/render 共享本文件类型与 std 导入);门面 re-export=显式 use 清单。
+
+use std.unicode.{cp_at}
+use tui.tui_buffer.{buf_new, buf_put, buf_put_attr, buf_put_wide, buf_fill, buf_line, str_w, cp_wide, buf_diff, sgr_fg, sgr_bg, buf_at, buf_fg_at}
+use tui.tui_layout.{solve_sizes, LR, lr}
+use tui.tui_render.{render, vbox, hbox, text, para, bar, box, spacer, with_id, with_h, with_w, with_cls, with_al, with_title, wrap, parse_color}
 
 // ---- 窄桥(tui_term.c;发射臂) ----
 
@@ -97,10 +105,10 @@ pub struct TuiBuf {
     var chs: List[Str]      // 每格一字素 UTF-8 子串
     var fg: List[I32]       // -1=终端默认;否则 0xRRGGBB packed
     var bg: List[I32]
-    var bold: List[Bool]
-    var under: List[Bool]
-    var rev: List[Bool]
-    var wd: List[Bool]      // 宽字符尾随格标记(主格=false)
+    var bold: List[I32]     // 0/1(发射臂 List[Bool] 下标写坏 C,整形替身,登记债)
+    var under: List[I32]
+    var rev: List[I32]
+    var wd: List[I32]       // 宽字符尾随格标记(主格=0)
 }
 
 pub struct TuiTree {

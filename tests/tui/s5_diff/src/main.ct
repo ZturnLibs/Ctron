@@ -1,0 +1,48 @@
+// s5 —— diff 字节断言门(W3b):光标定位/SGR 状态机/单格变更/宽字符尾格跳过
+// 断言 = 逐字节精确比对(§5 门禁对象)。
+use tui.{ TuiBuf, buf_new, buf_put, buf_put_wide, buf_diff }
+
+fn main() -> I32 {
+    // ① 单格变更:光标定位(1-based)+ SGR(0 重置+fg24)+ 字符,全序逐字节
+    let f1 = buf_new(4, 1)
+    let b1 = buf_new(4, 1)
+    buf_put(b1, 2, 0, "A", 0xff0000, 0 - 1)
+    let d1 = buf_diff(f1, b1)
+    let want1 = "\u{1b}[1;3H\u{1b}[0m\u{1b}[38;2;255;0;0m\u{1b}[49mA"
+    if d1 != want1 {
+        panic("s5: cell diff mismatch")
+    }
+    // ② 全同 = 空 diff
+    let d2 = buf_diff(b1, b1)
+    if d2.len != 0 {
+        panic("s5: no-change diff not empty")
+    }
+    // ③ 默认色恢复:改回 fg=-1 → 39 复位码
+    let b3 = buf_new(4, 1)
+    buf_put(b3, 2, 0, "A", 0 - 1, 0 - 1)
+    let d3 = buf_diff(b1, b3)
+    let want3 = "\u{1b}[1;3H\u{1b}[0m\u{1b}[39m\u{1b}[49mA"
+    if d3 != want3 {
+        panic("s5: default-fg diff mismatch")
+    }
+    // ④ 宽字符:主格写字符,尾随格(wd)跳过——字节流只有"中"一个字
+    let f4 = buf_new(4, 1)
+    let b4 = buf_new(4, 1)
+    buf_put_wide(b4, 0, 0, "中", 0 - 1, 0 - 1)
+    let d4 = buf_diff(f4, b4)
+    let want4 = "\u{1b}[1;1H\u{1b}[0m\u{1b}[39m\u{1b}[49m中"
+    if d4 != want4 {
+        panic("s5: wide char diff mismatch")
+    }
+    // ⑤ bold 属性面
+    let f5 = buf_new(2, 1)
+    let b5 = buf_new(2, 1)
+    buf_put(b5, 0, 0, "x", 0 - 1, 0 - 1)
+    let d5 = buf_diff(f5, b5)
+    let want5 = "\u{1b}[1;1H\u{1b}[0m\u{1b}[39m\u{1b}[49mx"
+    if d5 != want5 {
+        panic("s5: plain diff mismatch")
+    }
+    println("s5_diff-probe ok")
+    return 0
+}

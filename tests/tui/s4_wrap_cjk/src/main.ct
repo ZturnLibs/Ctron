@@ -1,0 +1,52 @@
+// s4 —— 折行+CJK 门(W3b):空格断点 word wrap/CJK 逐字断/宽字符不拆半/防御钳
+use tui.{ Theme, render, para, wrap, buf_at }
+
+fn mk_theme() -> Theme {
+    return Theme { bg: "default", fg: "#ffffff", surface: "default", border: "#888888", text: "#ffffff", muted: "#888888", accent: "#4a9eff", sel_bg: "#333333", sel_fg: "#ffffff", err: "#ff0000", ok: "#00ff00", warn: "#ffff00", pad_h: 0, pad_v: 0 }
+}
+
+fn expect_line(ls: List[Str], i: I32, want: Str, what: Str) {
+    if i >= ls.len {
+        panic("s4: " + what + " row missing")
+    }
+    if ls[i] != want {
+        panic("s4: " + what + " mismatch")
+    }
+}
+
+fn main() -> I32 {
+    // word wrap:空格断点
+    let w1 = wrap("hello world", 6)
+    expect_line(w1, 0, "hello", "wrap-hello")
+    expect_line(w1, 1, "world", "wrap-world")
+    // CJK 逐字断:每字 2 列,width 6 = 三字
+    let w2 = wrap("中文中文", 6)
+    expect_line(w2, 0, "中文中", "cjk-3")
+    expect_line(w2, 1, "文", "cjk-rest")
+    // 宽字符不拆半:width 4 = 中文恰满,a 换行
+    let w3 = wrap("中文a", 4)
+    expect_line(w3, 0, "中文", "wide-fit")
+    expect_line(w3, 1, "a", "ascii-after-wide")
+    // 行尾容不下整宽字提前换行:width 3,中(2)进,文(2)不进 → 第二行
+    let w4 = wrap("中文", 3)
+    expect_line(w4, 0, "中", "no-half-split")
+    expect_line(w4, 1, "文", "no-half-split-2")
+    // 防御钳:width 0 = 单空行
+    let w5 = wrap("x", 0)
+    expect_line(w5, 0, "", "clamp-zero")
+    // render 面:para 折行落格
+    let th = mk_theme()
+    let r = render(para("aaaa bbbb"), 5, 4, th)
+    if r.is_ok() == false {
+        panic("s4: render failed")
+    }
+    let b = r.expect("buf")
+    if buf_at(b, 0, 0) != "a" {
+        panic("s4: para row0 missing")
+    }
+    if buf_at(b, 0, 1) != "b" {
+        panic("s4: para row1 missing")
+    }
+    println("s4_wrap_cjk-probe ok")
+    return 0
+}

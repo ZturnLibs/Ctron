@@ -1,0 +1,80 @@
+// tui_layout.ct —— 约束布局:三尺寸模式 + 主轴求解器(vbox/hbox 同构)
+// 设计 §4:定长先扣 → pct 按容器尺寸计(向零截断)→ fill 均分剩余(余数从左到右逐格)。
+// 静态可知错误 = E 码 Err(解析/求解期,rc≠0;e8 负例门对象 §4 裁决 1):
+//   E8601 len 负数 / E8602 pct 负数 / E8603 非法模式串 / E8604 定长和超容器且无 fill。
+
+// 主轴尺寸求解:sizes[i] 对应 modes[i]/vals[i](main = 容器主轴长)
+pub fn solve_sizes(main: I32, modes: List[Str], vals: List[I32]) -> Result[List[I32], Str] {
+    var fixed: I32 = 0
+    var fills: I32 = 0
+    var i: I32 = 0
+    while i < modes.len {
+        if modes[i] == "len" {
+            if vals[i] < 0 {
+                return Err("E8601 len 尺寸负数")
+            }
+            fixed += vals[i]
+        } else {
+            if modes[i] == "pct" {
+                if vals[i] < 0 {
+                    return Err("E8602 pct 负数")
+                }
+                fixed += vals[i] * main / 100
+            } else {
+                if modes[i] == "fill" {
+                    fills += 1
+                } else {
+                    return Err("E8603 非法尺寸模式: " + modes[i])
+                }
+            }
+        }
+        i += 1
+    }
+    if fills == 0 {
+        if fixed > main {
+            return Err("E8604 定长和超容器且无 fill")
+        }
+    }
+    var rem: I32 = main - fixed
+    if rem < 0 {
+        rem = 0
+    }
+    var unit: I32 = 0
+    var rrem: I32 = 0
+    if fills > 0 {
+        unit = rem / fills
+        rrem = rem - unit * fills
+    }
+    var out = List[I32]()
+    var j: I32 = 0
+    while j < modes.len {
+        if modes[j] == "len" {
+            out.push(vals[j])
+        } else {
+            if modes[j] == "pct" {
+                out.push(vals[j] * main / 100)
+            } else {
+                var sz = unit
+                if rrem > 0 {
+                    sz += 1
+                    rrem -= 1
+                }
+                out.push(sz)
+            }
+        }
+        j += 1
+    }
+    return Ok(out)
+}
+
+// 矩形(布局产物;DFS 携带)
+pub struct LR {
+    var x: I32
+    var y: I32
+    var w: I32
+    var h: I32
+}
+
+pub fn lr(x: I32, y: I32, w: I32, h: I32) -> LR {
+    return LR { x: x, y: y, w: w, h: h }
+}
