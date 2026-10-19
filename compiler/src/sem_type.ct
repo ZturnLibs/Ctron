@@ -48,6 +48,7 @@ fn prelude_ok(nm: Str) -> Bool {
     if or2(seq2(nm, "dlopen_global"), seq2(nm, "dlerror_str")) { return true }
     if seq2(nm, "errno") { return true }
     if seq2(nm, "ptr_as_view") { return true }
+    if seq2(nm, "downcast") { return true }
     return or2(seq2(nm, "Option"), or2(seq2(nm, "Result"), seq2(nm, "AnyError")))
 }
 

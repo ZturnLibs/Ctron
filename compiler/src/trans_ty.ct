@@ -1411,6 +1411,11 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         var cal = e[1]
         if cal[0] == "TypeArgs" {
             var base = cal[1]
+            // IP-01 W2b:downcast[E](AnyError) → Option[E](R 码;match Some/None 臂
+            // 与 .or 族经 R 通路消费;发射臂魔数+tname 判别同批)
+            if base[0] == "Ident" && seq2(base[1], "downcast") {
+                return "R"
+            }
             if base[0] == "Ident" {
                 // 泛型实例化返回码:TPar 名 → 实参型别
                 var gdecl2 = ct_fn_decl(file, base[1])
@@ -1659,6 +1664,9 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             }
             if or2(m == "reduce", m == "with") { return "i" }
             if or2(m == "is_err", m == "is_ok") { return "b" }
+            // Str/List.contains → Bool(发射臂 strstr/t_contains 同批对齐;缺此臂
+            // typeof 落 i 使 .to_string() 走数字形=1/0,解释臂 true/false 分歧实证)
+            if m == "contains" { return "b" }
             // P0-A:泛型成员调用(UFCS)返回实例化——.middleware(...) 链的接收者
             // 型别贯通:decl 首参 = 接收者型(Router[S])时,返回槽的 TPar 按接收者
             // 实例码尾缀具体化(Router[S] → Router__X);否则链式 .get/.post 的

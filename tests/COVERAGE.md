@@ -1,3 +1,20 @@
+> **IP-01 W2b downcast 落地+contains typeof 分歧销账(2026-10-19;IP-01 自举面收官,状态 IMPL→W1+W2a+W2b 全落,余注册名贯通"枚举.变体"全形在册)。**
+> ①`downcast[E](e: AnyError) -> Option[E]` 四面:sem 前奏双册(sem_calls prel+prelude_ok)/
+> 解释臂(eval TypeArgs 臂;vals 元素=Str 编码值须先 v_unbox——初版直取 .tag 被 Ctron
+> 发射器 Member panic 咬出「解释器值表示=Str cx 非 Val 结构」)+eval_enum_of_variant
+> 变体名反查助手(cc_run 拼装不含 trans 段不得跨段调 ct_enum_of_variant,decl 锁
+> 530→531 随批实测代抬)/发射臂(TypeArgs-Call 特化:魔数+tname strcmp+载荷指针回交
+> ct_res Ok 槽)+typeof "R"(match Some/None 与 .or 族 R 通路消费)。探针 dc1 双臂逐字
+> 一致(downcast[Fail]=hit/downcast[Other]=miss,判别只在调用点)。**宿主差分在册**
+> (种子解释/种子发射缺 downcast 面,ptr_as_view「自举先行」先例); suite 夹具暂缺
+> (宿主列会红),探针在 /tmp/ct_probe/dc1.ct 待宿主补齐后随批转正。
+> ②contains typeof 补 "b"(Member-Call typeof 落 i 使 Bool.to_string 走数字形
+> 1/0 vs 解释 true/false——上批新立分歧即批销账,双臂 true/false 逐字一致)。
+> ③在册新立:**match R 分派臂非块体语义不一致**(SOME/NONE 臂=臂值作函数返回
+> [既有],OK/ERR 臂=W2a 改语句位——四臂两制待统一批);种子 trans 恒不能吃编译器
+> 源(cc_run/cc_emit)= 既有形态非缺口(native.sh 管线是 seed 跑 Ctron 发射器,seed
+> trans 仅服务用户程序,勘定记录)。
+>
 > **IP-01 W2a 错误链发射面落地(2026-10-19,context/擦除物化/trace 追加/变体名表;10_trace 发射臂首次全通)。**
 > 自举发射器 AnyError 物化六件:①`#cerr` env 侧条目(ct_fn 绑定本函数 Result 错误侧
 > 码形,E:名/u:AnyError;#elem 同族,闭包沿用外层=在册近似);②Err 构造位物化

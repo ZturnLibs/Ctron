@@ -1790,6 +1790,68 @@ fn eval_call(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> Flow {
             }
             return e4("k", ar.env, conv_as(ar.v, tgt), ar.out)
         }
+        // IP-01 W2b:downcast[E](e: AnyError) -> Option[E](§5.4;判别只在调用点。
+        // 载荷判型 = 内层变体名反查枚举名与显式 E 比对;AnyError 沿 cause 链取
+        // 最内层载荷,裸载荷(擦除透传形)直判。vals 元素为 Str 编码值,先 v_unbox)
+        if base[0] == "Ident" && seq2(base[1], "downcast") {
+            var dcv = v_unbox(vals[0])
+            var denm2 = ""
+            if cal[2].len > 1 {
+                denm2 = ty_head(cal[2][1])
+            }
+            var dpay = dcv
+            if dcv.tag == 8 {
+                if seq2(cx_of(dcv)[0], "U") {
+                    if seq2(cx_of(dcv)[1], "AnyError") {
+                        var dfound = false
+                        var dci: I32 = 2
+                        while dci + 1 < cx_of(dcv).len {
+                            if seq2(cx_of(dcv)[dci], "cause") {
+                                var dcv2 = v_unbox(cx_of(dcv)[dci + 1])
+                                if dcv2.tag == 8 {
+                                    if seq2(cx_of(dcv2)[0], "T") {
+                                        if seq2(cx_of(dcv2)[1], "Some") {
+                                            if cx_of(dcv2).len == 3 {
+                                                dpay = v_unbox(cx_of(dcv2)[2])
+                                                dfound = true
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            dci += 2
+                        }
+                        if !dfound {
+                            var dn2 = List[Str]()
+                            dn2.push("T")
+                            dn2.push("None")
+                            return e4("k", env2, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(dn2) }, out2)
+                        }
+                    }
+                }
+            }
+            var dhit = false
+            if dpay.tag == 8 {
+                if seq2(cx_of(dpay)[0], "T") {
+                    if denm2.len > 0 {
+                        if seq2(eval_enum_of_variant(file, cx_of(dpay)[1]), denm2) {
+                            dhit = true
+                        }
+                    }
+                }
+            }
+            if dhit {
+                var ds2 = List[Str]()
+                ds2.push("T")
+                ds2.push("Some")
+                ds2.push(v_box(dpay))
+                return e4("k", env2, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(ds2) }, out2)
+            }
+            var dn3 = List[Str]()
+            dn3.push("T")
+            dn3.push("None")
+            return e4("k", env2, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(dn3) }, out2)
+        }
         if base[0] == "Ident" && seq2(base[1], "Channel") {
             var cap = vals[0]
             var q = List[Str]()
@@ -1884,9 +1946,28 @@ fn bit_p2(k: I32) -> Str {
     }
     return r
 }
+// 变体名 → 枚举名(IP-01 W2b downcast 判型用;trans_ty ct_enum_of_variant 的
+// eval 侧孪生——cc_run 拼装不含 trans 段,eval 不得跨段调用)
+fn eval_enum_of_variant(file: List[Str], nm: Str) -> Str {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Enum" {
+            var j: I32 = 1
+            while j < d[3].len {
+                if d[3][j][1] == nm {
+                    return d[1]
+                }
+                j += 1
+            }
+        }
+        i += 1
+    }
+    return ""
+}
+
 // c6divmod 输出 "q|r" 拆解(取商/取余)
-fn bit_quot(qr: Str) -> Str {
-    var i: I32 = 0
+fn bit_quot(qr: Str) -> Str {    var i: I32 = 0
     while i < qr.len {
         if byte_at(qr, i) == 124 {
             return c6can(byte_slice(qr, 0, i))

@@ -600,6 +600,20 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 return ""
             }
             if base[0] == "Ident" && base[1] == "List" { return "ctron_list_new()" }
+            // IP-01 W2b:downcast[E](e: AnyError) -> Option[E](§5.4;判别只在调用点,
+            // 魔数+tname 比对,载荷指针回交 ct_res Ok 槽;未命中 None)
+            if base[0] == "Ident" && base[1] == "downcast" {
+                if ag.len < 2 {
+                    panic("emit:downcast 实参")
+                    return ""
+                }
+                var dcx = ct_expr(ag[1], env, file)
+                var denm = ""
+                if cal[2].len > 1 && cal[2][1][0] == "Named" {
+                    denm = cal[2][1][1]
+                }
+                return "(\{ ct_res _dc; ctron_anyerr* _da = (ctron_anyerr*)(long)(" + dcx + "); if (ct_is_anyerr(_da) && _da->tname && _da->payload && strcmp(_da->tname, \"" + denm + "\") == 0) \{ _dc.variant = 0; _dc.v = (ct_i)(long)_da->payload; } else \{ _dc.variant = 1; _dc.v = 0; } _dc; })"
+            }
             // T41 §6.6:Arena.fixed(n)——n 字节栈上驻留(alloca 不得驻 helper:
             // helper 返回即释放;statement 表达式在调用者帧分配)
             if base[0] == "Member" && base[1][0] == "Ident" && base[1][1] == "Arena" && base[2] == "Nm" && base[3] == "fixed" {

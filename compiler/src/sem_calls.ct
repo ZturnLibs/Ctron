@@ -145,6 +145,7 @@ fn sem_calls_all(file: List[Str], diags: List[Str], prof: Str) {
     prel.push("Option")
     prel.push("Result")
     prel.push("AnyError")
+    prel.push("downcast")
     prel.push("Show")
     prel.push("Eq")
     prel.push("Error")
