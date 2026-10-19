@@ -1,3 +1,15 @@
+> **meta_check 13 红清偿+IP-18 承诺附表门(2026-10-19)。**
+> ①meta_check 13 红(在册债)清零:bench/engine-proxy+steno/soak+tui/s* 三泳道 13 份
+> main 程序族缺泳道 skip(gotcha #17「新泳道=meta_check 加 skip」随批漏课,steno G 批
+> 与 tui W 批引入),补 bench/steno/tui 三 clause(net/src 先例)。②IP-18(P0)兑现:
+> 12 卷规范各卷末「承诺状态」附表(PM-<卷>-<序>,三列 承诺/状态[兑现·部分·志向·证伪]/
+> 退出条件;7 项点名漂移全入表:增量编译 PM-02-1/分代 GC PM-06-1/原生后端志向面/
+> Simd 硬件 PM-03-1/HTTP 契约 PM-11-1~3/json 保真 PM-12-1/debug_assert PM-04-1)
+> +README 冻结面句(「冻结面之外的承诺以附表状态为准」)+meta_check 附表互查门
+> (每卷有节/ID 卷号一致/状态词四值/证伪行登记号须见于 COVERAGE——PM-06-2 WasmGC
+> 证伪随门首登记入 §9 节,T38 触发=多宿主落地)。门:meta_check 全绿(626 文件+
+> 附表门)+std_doc --check 82 页逐字节+sync --check 无漂移(mkdocs=CI 侧门)。
+>
 > **IP-01 W1 错误码面落地(2026-10-19,AnyError.code 双解释宿+spec+夹具)。**
 > AnyError 增 `code`(只读;擦除后仍可读的原始错误码):解释臂 context() 物化点填
 > 载荷自身标识(变体值 ["T",名]→变体名/Str 错误→串;context 链上 payload 已是
@@ -314,7 +326,7 @@ keys() 迭代序不承诺)、`r2a_list_oob.panic`(越界 "index out of bounds")�
 
 ## §9 档位与互操作(6 项:✅1 ❌3 ⛧2)
 
-✅ bare target 标记+arena。❌ `extern "c"`+`#[trusted]` FFI、产物体积口径。⛭ JS 桥、WasmGC(需对应后端)。
+✅ bare target 标记+arena。❌ `extern "c"`+`#[trusted]` FFI、产物体积口径。⛭ JS 桥、~~WasmGC~~(**PM-06-2 证伪登记 2026-10-19**:T38 裁决桥 ABI/WasmGC 不可行——寄存器版 WasmGC 缺宿主锚,JS 桥维持 wasm32 MVP 形;be5f7715 三档落库批;重评估触发=WasmGC 1.0 多宿主落地;互查=docs/spec/06-memory.md PM-06-2)。
 > **T51(2026-10-03)**:§9.5 三残项收口——①异步 IO 统一层 io_uring 后端落库
 > (自检双 NOP 门+响亮回退;reactor 冒烟双臂挂 ci.sh);②NUMA 选项位+拓扑探测
 > (感知分配=志向,多节点靶机触发);③Simd 向量化评估报告落

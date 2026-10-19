@@ -100,3 +100,12 @@ Unix 族句柄(`UnixListener`/`UnixStream`)在本档冻结语义之上,落地面
 - **hostname 匹配默认 opt-out**:`tls_set_hostname` 不调即跳过**名字匹配**;证书链验证(REQUIRED)**保留**不随之关闭。传空串 = 回到 opt-out 态。显式校验 host 名是调用方义务(连接编排层工艺)。
 - **超时为每块(per-record)口径**:`tls_read` 的 `timeout_ms` 经 mbedTLS `conf_read_timeout` + BIO `recv_timeout` 契约生效,**作用于单条记录的到达等待**,非"整记录链总预算"(一条多记录记录链在手时逐记录重置等待);超时返 `rc < 0`(槽 = `SSL_TIMEOUT`)。整读预算(deadline)归 §11.4 上下文参数,门面不设。
 - **EOF 双形同映 0**:对端关闭的两形——BIO 层 fd FIN(mbedTLS fetch_input 收 0 转 `CONN_EOF`)与记录层 close_notify(`PEER_CLOSE_NOTIFY`)——**同映 `tls_read() == 0`**(eof 口径,与 §11.2 read EOF 单形对齐);调用方不区分,亦不得依赖区分。
+
+## 承诺状态(卷 11)
+
+> 承诺 ID = `PM-<卷>-<序>`;状态 ∈ 兑现 / 部分 / 志向 / 证伪。证伪与在册红账以 [`tests/COVERAGE.md`](https://github.com/ZturnLibs/Ctron/blob/main/tests/COVERAGE.md) 登记号互查;冻结面之外的承诺以本附表为准(见 README「冻结面」)。
+| ID | 承诺 | 状态 | 退出条件 / 重评估触发器 |
+|---|---|---|---|
+| PM-11-1 | chunked 请求体解析/EOF 终结 | 部分 | G5-W3 v0 = CL 明长;挂账在册;触发 = http 客户端批次 |
+| PM-11-2 | HTTP/2 | 志向 | P9 志向档;触发 = 服务器泳道 P9 立项 |
+| PM-11-3 | zstd 压缩协商 | 志向 | §11 压缩档;触发 = 生态需求立项 |

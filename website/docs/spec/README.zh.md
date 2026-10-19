@@ -45,6 +45,8 @@
 
 以下**预留(non-normative,不阻塞 P1)**:类型级 comptime(类型产出函数,§8.4)、GPU/`kernel` 块、editions 演进细节、Unicode 标识符、raw 字符串、owned trait object(`Box[&Trait]`)、`&Trait` 动态 Send 位、`debug_assert`。
 
+**承诺状态(IP-18,2026-10-19)**:各卷末「承诺状态」附表(`PM-<卷>-<序>` 三列:承诺/当前状态[兑现·部分·志向·证伪]/退出条件)是卷内前瞻承诺的**唯一状态账**;**冻结面之外的承诺以附表状态为准**。证伪项与在册红账以 [`tests/COVERAGE.md`](https://github.com/ZturnLibs/Ctron/blob/main/tests/COVERAGE.md) 登记号互查(meta_check 附表门值守)。
+
 ## 术语速查
 
 | 术语 | 定义 |

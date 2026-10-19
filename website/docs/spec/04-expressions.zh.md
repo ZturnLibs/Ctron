@@ -110,3 +110,10 @@ match value {
 ## 4.12 与测试集的对应
 
 `tests/01_basics.ct`(运算/控制流/UFCS)、`tests/02_option_result.ct`(match/`?`)、`tests/06_concurrency.ct`(闭包/scope)、`tests/01_overflow.panic.ct`(检查算术)。
+
+## 承诺状态(卷 04)
+
+> 承诺 ID = `PM-<卷>-<序>`;状态 ∈ 兑现 / 部分 / 志向 / 证伪。证伪与在册红账以 [`tests/COVERAGE.md`](https://github.com/ZturnLibs/Ctron/blob/main/tests/COVERAGE.md) 登记号互查;冻结面之外的承诺以本附表为准(见 README「冻结面」)。
+| ID | 承诺 | 状态 | 退出条件 / 重评估触发器 |
+|---|---|---|---|
+| PM-04-1 | `debug_assert` | 志向 | README 预留清单;触发 = 语言评审批次采纳(区分 release 消除语义) |

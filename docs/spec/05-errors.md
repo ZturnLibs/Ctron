@@ -62,3 +62,11 @@ enum HttpError { Timeout(U64) | BadStatus(I32) }
 ## 5.7 与测试集的对应
 
 `tests/02_option_result.ct`(传播/取默认/错误链)、`tests/02_match_exhaustive.neg.ct`(穷尽性)、`tests/07_pure.neg.ct`(能力调用非 pure)。
+
+## 承诺状态(卷 05)
+
+> 承诺 ID = `PM-<卷>-<序>`;状态 ∈ 兑现 / 部分 / 志向 / 证伪。证伪与在册红账以 [`tests/COVERAGE.md`](../../tests/COVERAGE.md) 登记号互查;冻结面之外的承诺以本附表为准(见 README「冻结面」)。
+| ID | 承诺 | 状态 | 退出条件 / 重评估触发器 |
+|---|---|---|---|
+| PM-05-1 | 错误码注册名贯通 + `downcast[E]` | 志向 | IP-01 W2 在册(W1 code 面 2026-10-19 已落库);触发 = 发射臂 AnyError 物化批 |
+| PM-05-2 | `?` 位置链采集(两段式) | 部分 | 解释臂/种子臂兑现;自举发射臂无采集(错误链 ABI 缺口在册);触发 = 同 IP-01 W2 发射批 |

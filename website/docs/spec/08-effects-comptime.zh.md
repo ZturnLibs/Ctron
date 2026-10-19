@@ -55,3 +55,10 @@ fn handler(req: &Request, clock: &Clock) -> Result[Response, HttpError]
 ## 8.6 与测试集的对应
 
 `tests/07_capabilities.ct`(能力注入)、`tests/07_pure.neg.ct`(E4020)、`tests/04_generics_comptime.ct`(comptime/const)。
+
+## 承诺状态(卷 08)
+
+> 承诺 ID = `PM-<卷>-<序>`;状态 ∈ 兑现 / 部分 / 志向 / 证伪。证伪与在册红账以 [`tests/COVERAGE.md`](https://github.com/ZturnLibs/Ctron/blob/main/tests/COVERAGE.md) 登记号互查;冻结面之外的承诺以本附表为准(见 README「冻结面」)。
+| ID | 承诺 | 状态 | 退出条件 / 重评估触发器 |
+|---|---|---|---|
+| PM-08-1 | 类型级 comptime | 志向 | 同 PM-03-2(§8.4 预留);触发 = 类型产出函数立项 |

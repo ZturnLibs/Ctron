@@ -79,3 +79,10 @@ extern "c" fn ctron_add(a: I64, b: I64) -> I64     // 无函数体;定义在 C �
 ## 9.8 与测试集的对应
 
 `tests/08_bare.ct`(bare 显式 arena)、`tests/08_bare_alloc.neg.ct`(bare E3040);FFI 多文件用例 P1 起由 `tests/ffi/` 承载(v0.6 已落地:行为四件 + 负例/lint 七件,`tests/ffi/run.sh` 与 suite.py `ffi/` 小节双通道验收)。
+
+## 承诺状态(卷 09)
+
+> 承诺 ID = `PM-<卷>-<序>`;状态 ∈ 兑现 / 部分 / 志向 / 证伪。证伪与在册红账以 [`tests/COVERAGE.md`](../../tests/COVERAGE.md) 登记号互查;冻结面之外的承诺以本附表为准(见 README「冻结面」)。
+| ID | 承诺 | 状态 | 退出条件 / 重评估触发器 |
+|---|---|---|---|
+| PM-09-1 | FFI 余债(C 宿主对齐/解引用原语/const 标注/多级指针/class 字面量发射) | 部分 | 核心通道(extern/cdylib/dyn_so/CBox)兑现(G2/G4/T45);余债在册;触发 = FFI 余债批 |

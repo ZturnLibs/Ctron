@@ -65,3 +65,11 @@ own (arena) {
 ## 6.8 与测试集的对应
 
 `tests/03_values_refs.ct`(值/引用/Box)、`tests/03_shallow_copy.lint.ct`(W8010)、`tests/05_own.ct`(own 正例)、`tests/05_own_alloc.neg.ct`(E3040)、`tests/05_own_move.neg.ct`(E3050)、`tests/08_bare.ct` 与 `tests/08_bare_alloc.neg.ct`(bare 档)。
+
+## 承诺状态(卷 06)
+
+> 承诺 ID = `PM-<卷>-<序>`;状态 ∈ 兑现 / 部分 / 志向 / 证伪。证伪与在册红账以 [`tests/COVERAGE.md`](https://github.com/ZturnLibs/Ctron/blob/main/tests/COVERAGE.md) 登记号互查;冻结面之外的承诺以本附表为准(见 README「冻结面」)。
+| ID | 承诺 | 状态 | 退出条件 / 重评估触发器 |
+|---|---|---|---|
+| PM-06-1 | 并发分代 GC(P99 < 0.5ms) | 部分 | 现状 = 精确帧槽 GC(S1–S4)+ 自适应阈值 + GC 默认翻面已落库;分代与停顿钉证未动;触发 = M2 分代立项 |
+| PM-06-2 | WasmGC 后端 | 证伪 | T38 裁决(桥 ABI 不可行,寄存器版 WasmGC 缺宿主锚);tests/COVERAGE.md T38 节 + 仓库内部设计文档;重评估触发 = WasmGC 1.0 多宿主落地 |

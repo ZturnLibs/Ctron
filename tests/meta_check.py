@@ -175,6 +175,13 @@ def check_file(path: Path) -> list[str]:
         # 构建驱动器 parity 语料(drv_parity/run.sh 黄金对照驱动;
         # 非 test 块语义,dist/ 泳道先例)。
         return errors
+    for lane_dir in ("bench", "steno", "tui"):
+        if relparts0 and relparts0[0] == lane_dir and "src" in relparts0:
+            # bench/engine-proxy(引擎代理基准,bench.sh 驱动)+ steno/soak(G 批浸 soak 门,
+            # TaskPool 三臂 digest 钉)+ tui/s*(W 批阶梯夹具,全阶梯 run.sh 双跑驱动):
+            # main 程序族,非 test 块语义(net/src 泳道先例;gotcha #17 补课——
+            # 三泳道随批漏加 skip 曾致 meta_check 13 红)。
+            return errors
     kind = kind_of(path)
     if kind is None:
         return errors
@@ -324,6 +331,44 @@ def check_script_cache_cleanup() -> list[str]:
     return errs
 
 
+def check_spec_promise_tables() -> list[str]:
+    """IP-18(2026-10-19):12 卷规范各卷末「承诺状态」附表互查门。
+
+    检查:①每卷有 `## 承诺状态` 节;②承诺 ID 形如 PM-<卷>-<序> 且卷号与所在卷一致;
+    ③状态词 ∈ {兑现, 部分, 志向, 证伪};④证伪行的触发器格须含至少一个登记号 token
+    且该 token 出现于 tests/COVERAGE.md(红账互查)。
+    """
+    import re
+    errs: list[str] = []
+    cov = ""
+    cov_path = ROOT / "COVERAGE.md"
+    if cov_path.exists():
+        cov = cov_path.read_text(encoding="utf-8")
+    spec_files = sorted((ROOT.parent / "docs" / "spec").glob("[0-9][0-9]-*.md"))
+    for fp in spec_files:
+        vol = fp.name[:2]
+        text = fp.read_text(encoding="utf-8")
+        if "## 承诺状态" not in text:
+            errs.append(f"{fp.name}: 缺「承诺状态」附表")
+            continue
+        sec = text.split("## 承诺状态", 1)[1]
+        for m in re.finditer(r"^\| (PM-[0-9]{2}-[0-9]+) \|", sec, re.M):
+            pid = m.group(1)
+            if not pid.startswith(f"PM-{vol}-"):
+                errs.append(f"{fp.name}: {pid} 卷号与所在卷 {vol} 不一致")
+            row = sec[m.start():sec.find("\n", m.start()) + 400]
+            status_ok = any(f"| {w} |" in row for w in ("兑现", "部分", "志向", "证伪"))
+            if not status_ok:
+                errs.append(f"{fp.name}: {pid} 状态词不在 兑现/部分/志向/证伪")
+            if "| 证伪 |" in row:
+                tokens = [t for t in re.findall(r"\b(T[0-9]+|[A-Z]+-[0-9]+)\b", row) if not t.startswith("PM-")]
+                if not tokens:
+                    errs.append(f"{fp.name}: {pid} 证伪行缺登记号")
+                elif cov and not any(t in cov for t in tokens):
+                    errs.append(f"{fp.name}: {pid} 登记号 {tokens} 未见于 COVERAGE.md 红账")
+    return errs
+
+
 def main() -> int:
     all_files = sorted(p for p in ROOT.rglob("*.ct") if p.is_file())
     stats: dict[str, int] = {}
@@ -348,6 +393,10 @@ def main() -> int:
     for err in check_script_cache_cleanup():
         failures += 1
         print(f"[FAIL] {err}")
+
+    for err in check_spec_promise_tables():
+        failures += 1
+        print(f"[FAIL] spec 承诺附表: {err}")
 
     print()
     print(f"测试文件: {len(all_files)} 个 " + " ".join(f"{k}={v}" for k, v in sorted(stats.items())))

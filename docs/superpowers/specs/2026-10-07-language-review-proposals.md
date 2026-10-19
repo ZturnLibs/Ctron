@@ -27,7 +27,7 @@
 | IP-15 | raw 字符串与块注释转正 | E 类型一致性 | P2 | — | TODO |
 | IP-16 | web 档 Send 放口的 safe 收窄声明 | F 护栏诚实化 | P0 | — | TODO |
 | IP-17 | 能力间接传递判定规则 | F 护栏诚实化 | P1 | — | TODO |
-| IP-18 | 规范降级诚实标注机制 | F 护栏诚实化 | P0 | — | TODO |
+| IP-18 | 规范降级诚实标注机制 | F 护栏诚实化 | P0 | — | DONE(2026-10-19:12 卷承诺状态附表+README 冻结面句+meta_check 互查门,PM-06-2 WasmGC 证伪首登记) |
 | IP-19 | 模块摘要缓存：增量检查 + LSP 跨文件 | G 工具链 | P0 | — | TODO |
 | IP-20 | `ctron fix --apply`：fix-it 消费闭环 | G 工具链 | P2 | IP-19 | TODO |
 | IP-21 | 可复现构建证明（内容寻址扩展） | G 工具链 | P3 | — | TODO |

@@ -222,3 +222,11 @@ Type        = "&" Type                  (* 共享只读引用 / trait 对象 *)
 ## 1.9 与测试集的对应
 
 词法/语法的可执行样例:`tests/01_basics.ct`(字面量/运算/循环)、`tests/04_generics_comptime.ct`(泛型与 comptime 语法)。
+
+## 承诺状态(卷 01)
+
+> 承诺 ID = `PM-<卷>-<序>`;状态 ∈ 兑现 / 部分 / 志向 / 证伪。证伪与在册红账以 [`tests/COVERAGE.md`](https://github.com/ZturnLibs/Ctron/blob/main/tests/COVERAGE.md) 登记号互查;冻结面之外的承诺以本附表为准(见 README「冻结面」)。
+| ID | 承诺 | 状态 | 退出条件 / 重评估触发器 |
+|---|---|---|---|
+| PM-01-1 | raw 字符串与块注释转正 | 志向 | IP-15 评审裁决;触发 = 语言评审批次采纳 |
+| PM-01-2 | Unicode 标识符 | 志向 | README 预留清单;触发 = 国际化需求立项 |
