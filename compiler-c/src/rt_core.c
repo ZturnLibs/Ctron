@@ -524,7 +524,14 @@ int pat_bind(rt* R, cpat* p, val s) {
         if (s.k == V_BOOL && p->lkind == PLIT_BOOL) return s.i == (p->lb ? 1 : 0);
         return 0;
     }
-    case PAT_TUPLE: return 0; // 本域不涉
+    case PAT_TUPLE: {
+        /* 元组模式 match(镜像 AG_TUPLE 载荷绑定;let 位 bind_value 已有同构,
+           match 位此前为桩 → 语句位裸元组 match 恒「无匹配臂」) */
+        if (s.k != V_TUPLE || p->nelems != s.nitems) return 0;
+        for (size_t i = 0; i < p->nelems; i++)
+            if (!pat_bind(R, p->elems[i], s.items[i])) return 0;
+        return 1;
+    }
     case PAT_AGG: {
         if (p->agg == AG_STRUCT) {
             if (s.k == V_BOX && s.bx) s = s.bx->inner;

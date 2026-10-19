@@ -42,3 +42,20 @@ test "enum unit variants and nested match arms" {
         None    => assert(false)
     }
 }
+
+fn mk_pair() -> (I32, Str) {
+    return (7, "ok")
+}
+
+test "tuple pattern destructure (statement match, dual-arm parity)" {
+    match mk_pair() {
+        (n, s) => {
+            assert_eq(n, 7)
+            assert_eq(s, "ok")
+        }
+    }
+    let t = (1, 2)
+    match t {
+        (a, b) => assert_eq(a + b, 3)
+    }
+}

@@ -1,3 +1,16 @@
+> **s23 销账+元组 match 双宿补齐(2026-10-19,gui 阶梯 101/0 首次全绿)。**
+> ①s23_sk_native 段错误根修:gui_sk_load 烘焙(driver_emit β3 段)只填 SoA 16 槽,
+> t_GuiTree 其余 11 字段(vreg_*/vc_*/props_dflt/env_n/env_v)裸声明栈垃圾返回——
+> 消费端 gui_list_ns/ni 的 NULL 门控被击穿(lldb 单帧 gui_list_ni 入参=二进制静态
+> 段地址实证)。修=`t_GuiTree t; memset(&t,0,sizeof(t))` 全零初始化(新字段自动
+> 覆盖,契约 NULL 语义正合消费端注释)。复现配方/调试法随前批 COVERAGE 在案。
+> ②裸元组模式 match 语句三宿补齐(前批在册缺口):发射器 trans_stmt 加 TP 分派路
+> (旁观式求值一次入临时+PatTup 按 TP 元素码解箱,镜像 Member t.<k;v0=单臂解构,
+> 多臂/守卫/嵌套模式响亮失败)+种子 rt_core.c pat_bind PAT_TUPLE 桩补齐(镜像
+> AG_TUPLE 载荷绑定;let 位 bind_value 早已同构,唯 match 位缺)。探针 sp4/sp9
+> (I32,Str 混合槽)双臂逐字一致;夹具 02e_match_patterns 加双断言块(语句位元组
+> 解构+直值旁观式)。
+>
 > **CC1 判别宇宙×前奏双名册并集(2026-10-19,gui 阶梯三债清偿)。**
 > `ct_sym_resolvable` 前奏面补并 `sem_type.ct prelude_ok`(权威册):pkg_is_prelude_sym
 > (T17 use 判定)长期滞后(env_get/env_set/utf8_enc/str_byte/ctron_exe_path/dlopen 族/

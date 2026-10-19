@@ -1112,7 +1112,10 @@ println("static const char* ctron_bytes_to_str(ctron_bytes* b) \{ int64_t n = 0;
                 println("static ctron_list* gui_sk_ls(int n, const char** v) \{ ctron_list* l = ctron_list_new(); int i; for (i = 0; i < n; i++) \{ ctron_list_push(l, v[i]); } return l; }")
                 println("static ctron_list* gui_sk_li(int n, const int32_t* v) \{ ctron_list* l = ctron_list_new(); int i; for (i = 0; i < n; i++) \{ ctron_list_push(l, (const char*)(long)v[i]); } return l; }")
                 println("static t_GuiTree gui_sk_load(void) \{")
-                println("t_GuiTree t;")
+                // 全零初始化:骨架树只填 SoA 16 槽,vreg_*/vc_*/props_dflt/env_* 等
+                // 字段本契约=NULL(消费端 gui_list_ns/ni NULL 门控)——此前裸声明
+                // 未赋槽返回栈垃圾,s23_sk_native gui_list_ni 段错误实证
+                println("t_GuiTree t; memset(&t, 0, sizeof(t));")
                 println(gui_sk_emit_str_arr(0, ntag))
                 println(gui_sk_emit_str_arr(1, nflag))
                 println(gui_sk_emit_str_arr(2, ncls))

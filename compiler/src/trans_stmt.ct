@@ -1552,6 +1552,55 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             }
             return env
         }
+        // 元组模式 match(裸 (a,b) 臂):旁观式求值一次入临时;TP 元素码解箱镜像
+        // Member t.<k>(装箱 list:Str 直存/标量 long 解箱/u: 堆盒解引用;浮点槽
+        // 沿用构造点 fail-closed)。v0=单臂解构(元组无变体,穷尽=单臂全盖);
+        // 守卫/嵌套模式在册
+        var mtc = ct_typeof(st[1], env, file)
+        if mtc.len > 3 && byte_slice(mtc, 0, 3) == "TP:" {
+            var muq = nline(st)
+            var mtv = "t_mt" + muq
+            eln("ctron_list* " + mtv + " = (ctron_list*)(" + ct_expr(st[1], env, file) + ");", env)
+            var mt_arms = st[2]
+            if mt_arms.len != 2 {
+                panic("emit:元组 match 多臂未支持(v0 单臂解构)")
+                return env
+            }
+            var mta = mt_arms[1]
+            var mtp = mta[1]
+            if mtp[0] != "PatTup" {
+                panic("emit:元组 match 臂须 PatTup")
+                return env
+            }
+            var tenv = env
+            var tk: I32 = 1
+            while tk < mtp.len {
+                var tsp = mtp[tk]
+                if tsp[0] == "PatId" && tsp[1] != "_" {
+                    var tec = ct_tp_elem(mtc, (tk - 1).to_string())
+                    if tec == "s" {
+                        eln("const char* t_" + tsp[1] + " = (const char*)" + mtv + "->items[" + (tk - 1).to_string() + "];", env)
+                    } else if tec.len > 2 && byte_slice(tec, 0, 2) == "u:" {
+                        eln(ct_ctype(tec) + " t_" + tsp[1] + " = (*(" + ct_ctype(tec) + "*)" + mtv + "->items[" + (tk - 1).to_string() + "]);", env)
+                    } else if or2(tec == "f", tec == "g") {
+                        panic("emit:元组浮点槽未支持(登记债)")
+                        return env
+                    } else {
+                        eln(ct_ctype(tec) + " t_" + tsp[1] + " = (" + ct_ctype(tec) + ")(long)" + mtv + "->items[" + (tk - 1).to_string() + "];", env)
+                    }
+                    tenv = env_bind(tenv, tsp[1], tec)
+                }
+                tk += 1
+            }
+            var mtb = mta[2]
+            if mtb[0] == "BlockExpr" {
+                ct_block(mtb[1], tenv, file, hreg)
+            } else {
+                panic("ct_stmt:元组 match arm body")
+                return env
+            }
+            return env
+        }
         // Option[Str] 模型:read_file → char*(NULL=None);单 match 每函数(t_mv)
         eln("const char* t_mv = (const char*)(" + ct_expr(st[1], env, file) + ");", env)
         var arms = st[2]
