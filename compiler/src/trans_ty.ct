@@ -173,6 +173,17 @@ fn ct_variant_pcodes(file: List[Str], enm: Str, vnm: Str) -> List[Str] {
 
 // Named 类型节点 → 类型码;用户 struct → u:<名>(v4)
 fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
+    // R1(Str? NULL 模型族):`T?` 糖 = Optional 节点(parse_expr 576;非 Named 形,
+    // 须先于 Named 闸)——Str?/String? = "s"(char* NULL 模型,read_file 族同形),
+    // 此前落 "i" 塌缩 int32(扁平 R 族);其余 T? 仍 "R"(R2 批)
+    if nt[0] == "Optional" && nt.len > 1 {
+        if nt[1][0] == "Named" {
+            if or2(seq2(nt[1][1], "Str"), seq2(nt[1][1], "String")) {
+                return "s"
+            }
+        }
+        return "R"
+    }
     if nt[0] == "FnType" {
         // F<arity>=返回标量;G<arity>=返回 fn 值(闭包)——返回型维度入码
         var fa = nt[1].len - 1
@@ -283,6 +294,12 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
         return "J"
     }
     if nt[1] == "ISize" { return "6" }
+    // R1 补:显式 Option[Str] 拼写同落 NULL 模型(糖形 Optional 已在函数头)
+    if nt[1] == "Option" && nt.len > 2 && nt[2].len > 1 {
+        if seq2(ct_ty_code(nt[2][1], file), "s") {
+            return "s"
+        }
+    }
     if or2(nt[1] == "Result", nt[1] == "Option") { return "R" }
     if nt[0] == "Named" && nt.len > 2 && nt[2].len > 1 {
         // 泛型 struct 实例化注解:Pair[I32, Str] → u:Pair__I_S(实参限标量/Str)

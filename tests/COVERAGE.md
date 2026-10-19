@@ -1,3 +1,22 @@
+> **R1 Str? NULL 模型族落地(2026-10-19,R 码 ABI 设计轮批 1;扁平 R 族成员一二三销账)。**
+> ①`ct_ty_code` 翻面:`Str?`/`String?`(parse=Optional 节点,**非 Named-Option**——初版
+> 翻 Named 臂被签名 int32 咬出,Optional 检查须先于 Named 闸)+显式 `Option[Str]` 拼写
+> → "s"(char* NULL 模型,read_file 族同形;该形态原塌缩 int32=破的,无存量依赖)。
+> ②`ct_optstr_unr` prelude 适配器:ct_res 构造(Some/None 恒产 ct_res)→ char*,三消费
+> 位接入=注解 let(ty=s 且 init R)/return(#fnret=s 且值 R)/let-初值 match 值位
+> (新 s 分支:t_mv NULL 模型值位形,json.ct write_json 消费实证)。③`?` on char*:
+> Str? 返回 fn 内 NULL 传播(三臂:表达式/Let+Try/语句位),域外响亮拒绝(旧静默按
+> ct_res 解包=错位)。④s 模型(match 语句位 Option[Str])非块臂=return 位(**勘定回滚**
+> :R1 一度改语句位,fx_optstr name_or 尾值臂被丢弃零输出——与 R 分支 SOME/NONE 同约
+> 定,**尾判定统一批债再次确证**);t_mv 随 nline 唯一化(原单 match 每函数限制)。
+> ⑤`.or/.expect/is_some` 对 char* 接收者补 NULL 模型形(std 包 strip_suffix/hex_
+> decode/b64_decode 消费面)。
+> **消灭**:扁平 R 族成员一(形参塌缩)/二(注解 let 塌缩)/三(Str? fn 返回不配)+
+> std 发射臂 json 新红。**余**(R2 批):Option/Result 其余载荷(仍 R→int32)、
+> Option[Str] 直构实参位(Some(x) 直传 Str? 形参)、尾判定统一。
+> 门:r1 探针全链双臂逐字一致(注解本地/None/调用/`?` 传播+拼接)+fx_optstr/std 包/
+> json 模块矩阵全绿+suite 119/120·120/120(07a 在册零分歧)+smoke --full 237/0+w7 3/3。
+>
 > **R 码 ABI 设计轮落库(2026-10-19,specs/2026-10-19-r-code-abi-design.md;扁平 R 族专门批前置)。**
 > 勘定沉淀:表示分裂三族地图(NULL 模型 s/ct_res R/通道 hR——read_file typeof 一路是
 > "s",NULL 模型族从来不在 R 码里)+已有可复用机制清单(#elem/#cerr 侧条目族/ct_err_

@@ -965,6 +965,8 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             }
             if or2(m == "is_some", m == "is_ok") {
                 if objt == "R" { return "(" + obj + ".variant == 0)" }
+                // R1:Option[Str] 翻面后接收者=char*(NULL 模型)
+                if objt == "s" { return "((" + obj + ") != 0)" }
             }
             if m == "is_err" {
                 if objt == "R" { return "(" + obj + ".variant != 0)" }
@@ -983,6 +985,11 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 if ag.len < 2 {
                     panic("emit:or 实参")
                     return ""
+                }
+                // R1:Option[Str] 翻面后接收者=char* → NULL 模型三目
+                if objt == "s" {
+                    var dflts = ct_expr(ag[1], env, file)
+                    return "((const char*)(" + obj + ") ? (const char*)(" + obj + ") : (const char*)(" + dflts + "))"
                 }
                 var dflt = ct_expr(ag[1], env, file)
                 var dt = ct_typeof(ag[1], env, file)
@@ -1074,6 +1081,11 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if m == "expect" {
                 var emsg = "\"expect failed\""
                 if ag.len > 1 { emsg = ct_expr(ag[1], env, file) }
+                // R1:Option[Str] 翻面后接收者=char* → NULL 模型(NULL 即 panic)
+                var exs = ct_typeof(cal[1], env, file)
+                if exs == "s" {
+                    return "((const char*)(" + obj + ") ? (const char*)(" + obj + ") : (ctron_panic(" + emsg + "), (const char*)0))"
+                }
                 // T53:载荷码经接收者恢复(#elem 侧条目/被调声明 Result[..] 首参)——
                 // f 位型双关回读(与 ct_res_wrap f 臂配对;旧 _r.v 裸值消费位直转双向失真);
                 // 非 f 码 _r.v 直槽(int 族整宽;Str/聚合码回落旧行为,聚合消费走 match 臂)
@@ -1899,6 +1911,18 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         }
         if ec == "f" {
             return "(\{ ct_res " + qv + " = " + ct_expr(e[1], env, file) + "; if (" + qv + ".variant != 0) \{ return " + retw + "; } ((union \{ double _d; ct_i _i; })\{ ._i = (ct_i)(" + qv + ".v) })._d; })"
+        }
+        // R1(Str? NULL 模型族):? on char*(read_file 族)——Str? 返回 fn 内 =
+        // NULL 传播(空指针即 return 0);否则响亮拒绝(旧静默按 ct_res 解包=错位)
+        var opsc = ct_typeof(e[1], env, file)
+        if opsc == "s" {
+            if ct_env_has(env, "#fnret") {
+                if seq2(ct_env_ty(env, "#fnret"), "s") {
+                    return "(\{ const char* " + qv + " = (const char*)(" + ct_expr(e[1], env, file) + "); if (!" + qv + ") \{ return 0; } " + qv + "; })"
+                }
+            }
+            panic("emit:? on Str? 需 Str? 返回函数(R1 族;NULL 传播面)")
+            return ""
         }
         // u: struct 载荷解引用(盒装写侧配对)
         if ec.len > 2 && byte_slice(ec, 0, 2) == "u:" {

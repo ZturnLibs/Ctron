@@ -636,6 +636,59 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         }
         // P0-G:let x/_ = match R { Ok(v) => v, Err(m) => {…} } —— ANF,目标即临时
         if or2(pat[0] == "PatId", pat[0] == "PatWild") && st[4][0] == "Match" {
+            // R1:Option[Str] 值位 match(t_mv NULL 模型;Some 臂值=t_mv,None 臂值
+            // 直赋/块体;json.ct write_json 消费形实证)
+            if seq2(ct_typeof(st[4][1], env, file), "s") {
+                var dn9 = "_d" + nline(st)
+                if pat[0] == "PatId" {
+                    dn9 = pat[1]
+                }
+                var mvq9 = "t_mv" + nline(st)
+                eln("const char* " + mvq9 + " = (const char*)(" + ct_expr(st[4][1], env, file) + ");", env)
+                eln("const char* t_" + dn9 + ";", env)
+                var marms9 = st[4][2]
+                var mi9: I32 = 1
+                var mfirst9 = true
+                while mi9 < marms9.len {
+                    var ma9 = marms9[mi9]
+                    var mpt9 = ma9[1]
+                    var mb9 = ma9[2]
+                    var mhead9 = "if (" + mvq9 + " != NULL) \{"
+                    if !mfirst9 {
+                        mhead9 = "else \{"
+                    }
+                    eln(mhead9, env)
+                    var menv9 = env
+                    if mpt9[0] == "PatAgg" && mpt9[1] == "Some" {
+                        if mpt9[2].len > 1 && mpt9[2][1][0] == "PatId" && mpt9[2][1][1] != "_" {
+                            eln("const char* t_" + mpt9[2][1][1] + " = " + mvq9 + ";", env)
+                            menv9 = env_bind(menv9, mpt9[2][1][1], "s")
+                        }
+                        if mb9[0] == "BlockExpr" {
+                            ct_block(mb9[1], menv9, file, hreg)
+                        } else {
+                            eln("t_" + dn9 + " = " + ct_expr(mb9, menv9, file) + ";", menv9)
+                        }
+                    } else {
+                        // None 臂(值/块体;块体含 return 形直发)
+                        if mb9[0] == "BlockExpr" {
+                            ct_block(mb9[1], menv9, file, hreg)
+                        } else {
+                            var nvs9 = ct_expr(mb9, menv9, file)
+                            if ct_typeof(mb9, menv9, file) == "R" {
+                                nvs9 = "ct_optstr_unr(" + nvs9 + ")"
+                            }
+                            eln("t_" + dn9 + " = " + nvs9 + ";", menv9)
+                        }
+                    }
+                    eln("}", env)
+                    mfirst9 = false
+                    mi9 += 1
+                }
+                var rl9 = ct_reg_line(dn9, "s")
+                if rl9.len > 0 { eln(rl9, env) }
+                return env_bind(env, dn9, "s")
+            }
             if ct_typeof(st[4][1], env, file) == "R" {
                 var dn7 = "_d" + nline(st)
                 if pat[0] == "PatId" {
@@ -726,6 +779,20 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         if pat[0] == "PatId" && st[4][0] == "Try" {
             var qv = "t_q" + nline(st)
             var ec2 = ct_try_elem(file, st[4], env)
+            // R1:? on char*(read_file 族)——Str? 返回 fn 内 NULL 传播
+            if seq2(ct_typeof(st[4][1], env, file), "s") {
+                if ct_env_has(env, "#fnret") {
+                    if seq2(ct_env_ty(env, "#fnret"), "s") {
+                        var qs1 = "t_q" + nline(st)
+                        eln("const char* " + qs1 + " = (const char*)(" + ct_expr(st[4][1], env, file) + ");", env)
+                        eln("if (!" + qs1 + ") \{ return 0; }", env)
+                        eln(ct_ctype("s") + " t_" + pat[1] + " = " + qs1 + ";", env)
+                        return env_bind(env, pat[1], "s")
+                    }
+                }
+                panic("emit:? on Str? 需 Str? 返回函数(R1 族;Let+Try)")
+                return env
+            }
             eln("ct_res " + qv + " = " + ct_expr(st[4][1], env, file) + ";", env)
             var rqt = ct_reg_line("q" + nline(st), "R")
             if rqt.len > 0 { eln(rqt, env) }
@@ -1048,6 +1115,14 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             }
             if or2(ty == "L", ct_is_tlcode(ty)) { rhs = "(ctron_list*)(" + rhs + ")" }
             if ty == "A" { rhs = "(ctron_cell*)(" + rhs + ")" }
+            // R1(Str? NULL 模型族):注解 s + ct_res 构造初值(Some/None)→ unr 适配
+            // 落 char*(构造臂恒产 ct_res;init 已是 char* 直通)
+            if ty == "s" {
+                var rts = ct_typeof(st[4], env, file)
+                if rts == "R" {
+                    rhs = "ct_optstr_unr(" + rhs + ")"
+                }
+            }
             eln(ct_ctype(ty) + " t_" + pat[1] + " = " + rhs + ";", env)
             // T31 M1.5:通用绑定位 GC 槽注册(标量族经谓词空返回跳过)
             var rlg2 = ct_reg_line(pat[1], ty)
@@ -1624,8 +1699,10 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             }
             return env
         }
-        // Option[Str] 模型:read_file → char*(NULL=None);单 match 每函数(t_mv)
-        eln("const char* t_mv = (const char*)(" + ct_expr(st[1], env, file) + ");", env)
+        // Option[Str] 模型:read_file → char*(NULL=None);t_mv 随 nline 唯一化
+        //(R1 前单 match 每函数限制,多 Option[Str] match 重定义实证)
+        var mvq = "t_mv" + nline(st)
+        eln("const char* " + mvq + " = (const char*)(" + ct_expr(st[1], env, file) + ");", env)
         var arms = st[2]
         var someIx: I32 = -1
         var noneIx: I32 = -1
@@ -1645,23 +1722,21 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             var armS = arms[someIx]
             var pt = armS[1]
             var be = armS[2]
-            eln("if (t_mv != NULL) \{", env)
+            eln("if (" + mvq + " != NULL) \{", env)
             var env3 = env
             if pt[2][0] == "SubTup" {
                 var b0 = pt[2][1]
                 if b0[0] == "PatId" {
-                    eln("const char* t_" + b0[1] + " = t_mv;", env)
+                    eln("const char* t_" + b0[1] + " = " + mvq + ";", env)
                     env3 = env_bind(env3, b0[1], "s")
                 }
             }
             if be[0] == "BlockExpr" {
                 ct_block(be[1], env3, file, hreg)
             } else {
-                // 非块臂体 = 合成 Expr 语句委派 ct_stmt(assert 族专道复用)
-                var be1 = List[Str]()
-                be1.push("Expr")
-                be1.push(be)
-                ct_stmt(be1, env3, file, hreg)
+                // 非块臂体 = return 值(尾位 match 值臂的发射实现;fx_optstr name_or
+                // 金源实证——R1 翻面后 s 模型接管,与 R 分支 SOME/NONE 同约定)
+                eln("return " + ct_expr(be, env3, file) + ";", env3)
             }
             eln("}", env)
         }
@@ -1671,16 +1746,13 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             if someIx >= 0 {
                 eln("else \{", env)
             } else {
-                eln("if (t_mv == NULL) \{", env)
+                eln("if (" + mvq + " == NULL) \{", env)
             }
             if be2[0] == "BlockExpr" {
                 ct_block(be2[1], env, file, hreg)
             } else {
-                // 非块臂体 = 合成 Expr 语句委派 ct_stmt(assert 族专道复用)
-                var be21 = List[Str]()
-                be21.push("Expr")
-                be21.push(be2)
-                ct_stmt(be21, env, file, hreg)
+                // 非块臂体 = return 值(尾位 match 值臂同上)
+                eln("return " + ct_expr(be2, env, file) + ";", env)
             }
             eln("}", env)
         }
@@ -1916,6 +1988,17 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 return env
             }
         }
+        // R1(Str? NULL 模型族):#fnret="s" 且返回值表达式为 ct_res 构造(Some/None)
+        // → ct_optstr_unr 适配落 char*(注解翻转后 fn 签名=char*,构造臂仍产 ct_res)
+        if ct_env_has(env, "#fnret") {
+            if seq2(ct_env_ty(env, "#fnret"), "s") {
+                var rt9 = ct_typeof(st[1], renv, file)
+                if rt9 == "R" {
+                    eln("return ct_optstr_unr(" + ct_expr(st[1], renv, file) + ");", env)
+                    return env
+                }
+            }
+        }
         eln("return " + ct_expr(st[1], renv, file) + ";", env)
         return env
     }
@@ -1938,6 +2021,17 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         }
         if e[0] == "Try" {
             var qv2 = "t_q" + nline(st)
+            // R1:? on char*(read_file 族)——Str? 返回 fn 内 NULL 传播(语句位)
+            if seq2(ct_typeof(e[1], env, file), "s") {
+                if ct_env_has(env, "#fnret") {
+                    if seq2(ct_env_ty(env, "#fnret"), "s") {
+                        eln("\{ const char* " + qv2 + " = (const char*)(" + ct_expr(e[1], env, file) + "); if (!" + qv2 + ") \{ return 0; } }", env)
+                        return env
+                    }
+                }
+                panic("emit:? on Str? 需 Str? 返回函数(R1 族;语句位)")
+                return env
+            }
             eln("ct_res " + qv2 + " = " + ct_expr(e[1], env, file) + ";", env)
             // IP-01 W2:? 传播位 AnyError 物化——外层 #cerr=u:AnyError 且操作数错误侧
             // 为枚举/Str 时包 ctron_anyerr(枚举=名表取码;直通形态余面在册)
