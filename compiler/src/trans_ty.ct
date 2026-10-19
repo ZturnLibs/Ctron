@@ -1830,17 +1830,17 @@ fn ct_opt_elem_of(file: List[Str], nt: List[Str]) -> Str {
 }
 
 // Result 错误侧元素码(IP-01 W2):ct_opt_elem_of 的 E 侧孪生——返回型节点为
-// Result[T, E] 时给 E 侧码形("E:<枚举名>" / AnyError → "u:AnyError"),否则空串
+// Result[T, E] 时给 E 侧码形(ct_ty_code 正形:s/E:名/u:AnyError 标记),否则空串
 fn ct_err_elem_of(file: List[Str], nt: List[Str]) -> Str {
     if nt[0] == "Named" {
         if seq2(nt[1], "Result") {
             if nt[2].len > 2 {
-                var ec = nt[2][2]
-                if ec[0] == "Named" {
-                    if seq2(ec[1], "AnyError") {
+                var ecn = nt[2][2]
+                if ecn[0] == "Named" {
+                    if seq2(ecn[1], "AnyError") {
                         return "u:AnyError"
                     }
-                    return "E:" + ec[1]
+                    return ct_ty_code(ecn, file)
                 }
             }
         }

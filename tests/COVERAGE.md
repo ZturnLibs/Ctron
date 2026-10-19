@@ -1,3 +1,17 @@
+> **错误链收尾批:ct_err_elem_of Str 码形真修+match R 臂语义勘定(2026-10-19)。**
+> ①ct_err_elem_of 改 ct_ty_code 正形(初版手拼 "E:"+名 对 Str 载荷产 "E:Str" 幻影码
+> → ? 包装臂拉 ct_vnames_Str 未定义编译错;正形 s/E:名/u:AnyError 三态)。②match R
+> 分派臂语义**勘定并回滚**:SOME/NONE 非块臂=return 位是**尾位 match 值臂的发射实现**
+> (fx_optstr name_or `Some(s)=>s` 金源实证,conc_optstr smoke 咬出依赖;解释臂值语义
+> 与发射臂 return 语义在尾值形态可观测等价)——本批一度改语句位致 conc_optstr 段错误,
+> 即批回滚;现态=OK/ERR 语句位(W2a,曾为 panic 无存量依赖)/SOME/NONE return 位(既有);
+> **债精确化**:语句位 match 的非块值臂=提前返回误用面 + 尾判定统一批(需 ct_stmts 尾
+> 标志穿线,值臂落 t_mv 暂存形)。③新立在册(uni1 探针连环勘定):Option/Result 作用户
+> fn 形参=塌缩 int32;注解 Option[Str] 本地位 let=塌缩 int32;Str? 用户 fn 返回=ct_res
+> 构造对 NULL 模型不配——扁平 R 族三成员,统一待 R 码携带 E/Ok 码的 ABI 批。
+> 门:dc1/uni1/ok1 三探针双臂逐字一致+10_trace 发射 rc=0+suite 119/120·120/120(07a
+> 在册零分歧)+smoke --full 237/0+w7 3/3。
+>
 > **IP-01 W2b downcast 落地+contains typeof 分歧销账(2026-10-19;IP-01 自举面收官,状态 IMPL→W1+W2a+W2b 全落,余注册名贯通"枚举.变体"全形在册)。**
 > ①`downcast[E](e: AnyError) -> Option[E]` 四面:sem 前奏双册(sem_calls prel+prelude_ok)/
 > 解释臂(eval TypeArgs 臂;vals 元素=Str 编码值须先 v_unbox——初版直取 .tag 被 Ctron

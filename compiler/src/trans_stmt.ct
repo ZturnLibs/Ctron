@@ -1364,6 +1364,8 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 if sbe[0] == "BlockExpr" {
                     ct_block(sbe[1], senv, file, hreg)
                 } else {
+                    // 非块臂体 = return 值(尾位 match 值臂的发射实现——fx_optstr
+                    // name_or 实证;语句位值臂误用=提前返回,债在册待尾判定统一批)
                     eln("return " + ct_expr(sbe, senv, file) + ";", env)
                 }
                 eln("}", env)
@@ -1375,6 +1377,7 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 if nbe[0] == "BlockExpr" {
                     ct_block(nbe[1], env, file, hreg)
                 } else {
+                    // 非块臂体 = return 值(尾位 match 值臂同上;债在册)
                     eln("return " + ct_expr(nbe, env, file) + ";", env)
                 }
                 eln("}", env)
