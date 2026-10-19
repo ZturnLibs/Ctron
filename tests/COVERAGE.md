@@ -1,3 +1,12 @@
+> **R 码 ABI 设计轮落库(2026-10-19,specs/2026-10-19-r-code-abi-design.md;扁平 R 族专门批前置)。**
+> 勘定沉淀:表示分裂三族地图(NULL 模型 s/ct_res R/通道 hR——read_file typeof 一路是
+> "s",NULL 模型族从来不在 R 码里)+已有可复用机制清单(#elem/#cerr 侧条目族/ct_err_
+> elem_of/R-branch 全臂)。三方案:A=R 码复合化 R<ok>,<err>(7 处精确比对+10 处码面
+> 触点,回归面最大)/B=侧表+节点解析分期(推荐:ct_ctype_of_node+期望型线程,Str? 族
+> 先行)/C=ct_res 统一(否决,read_file extern 直返)。分期:R1=Str? 族(形参/注解 let/
+> 返回值/#cret 线程/? on char* 传播臂),R2=其余载荷+尾判定统一。执行前必读三锚在档。
+> 状态:设计稿未排期,新会话满预算执行 R1。
+>
 > **错误链收尾批:ct_err_elem_of Str 码形真修+match R 臂语义勘定(2026-10-19)。**
 > ①ct_err_elem_of 改 ct_ty_code 正形(初版手拼 "E:"+名 对 Str 载荷产 "E:Str" 幻影码
 > → ? 包装臂拉 ct_vnames_Str 未定义编译错;正形 s/E:名/u:AnyError 三态)。②match R

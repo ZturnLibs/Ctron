@@ -10,7 +10,7 @@
 
 | 编号 | 标题 | 分组 | 优先级 | 依赖 | 状态 |
 |---|---|---|---|---|---|
-| IP-01 | AnyError 保留错误码 + downcast | A 错误处理 | P0 | — | IMPL(W1+W2a+W2b=code/物化/trace/downcast 自举全落 1019;余=注册名贯通"枚举.变体"全形+宿主 downcast 差分 在册) |
+| IP-01 | AnyError 保留错误码 + downcast | A 错误处理 | P0 | — | IMPL(W1+W2a+W2b=code/物化/trace/downcast 自举全落 1019;余=注册名贯通"枚举.变体"全形+宿主 downcast 差分+扁平 R 族(R 码 ABI 设计轮已落库,specs/2026-10-19) 在册) |
 | IP-02 | Error 链 source() 迭代协议 | A 错误处理 | P1 | IP-01 | TODO |
 | IP-03 | &Ctx 能力对象：取消与 deadline 统一 | B 并发 | P0 | — | TODO |
 | IP-04 | resolve 可取消性裁决 | B 并发 | P1 | IP-03 | TODO |
