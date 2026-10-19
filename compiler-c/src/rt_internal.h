@@ -63,7 +63,7 @@ typedef struct val {
 
 struct vfld { const char* name; val v; };
 struct boxval { val inner; };
-struct errval { char* msg; val cause; char* trace; };
+struct errval { char* msg; val cause; char* trace; char* code; }; /* code=IP-01 W1:擦除后原始错误码(变体名/消息串) */
 struct listnode { struct val* items; size_t n; size_t cap; };
 struct atomcell { __int128 v; int bits; int us; };
 struct chan_t { int cap; struct listnode q; size_t head; };
@@ -189,7 +189,8 @@ val v_bool(int b);
 val v_box(rt* R, val inner);
 val v_chan(rt* R, int cap);
 val v_closure(const cexpr* ce, struct env* cap);
-val v_err_t(rt* R, const char* msg, val cause, const char* trace);
+val v_err_t(rt* R, const char* msg, val cause, const char* trace, const char* code);
+const char* ctron_err_code_of(val payload);
 val v_flt(double f);
 val v_fn(const cdecl* d);
 val v_int(__int128 x, int bits, int us);

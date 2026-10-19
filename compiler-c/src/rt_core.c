@@ -77,15 +77,27 @@ val v_box(rt* R, val inner) {
     return v;
 }
 val v_str_own(rt* R, const char* s) { val v = {0}; v.k = V_STR; v.s = ctron_arena_strndup(R->a, s, strlen(s)); return v; }
-val v_err_t(rt* R, const char* msg, val cause, const char* trace) {
+val v_err_t(rt* R, const char* msg, val cause, const char* trace, const char* code) {
     val v = {0};
     v.k = V_ERR;
     errval* e = (errval*)ctron_arena_alloc(R->a, sizeof(errval));
     e->msg = ctron_arena_strndup(R->a, msg, strlen(msg));
     e->cause = cause;
     e->trace = trace ? ctron_arena_strndup(R->a, trace, strlen(trace)) : NULL;
+    e->code = code ? ctron_arena_strndup(R->a, code, strlen(code)) : NULL;
     v.err = e;
     return v;
+}
+/* 错误载荷→原始码(IP-01 W1):V_ERR 保留最内层 code,否则回退其 msg;V_STR/V_TAG 取自身标识 */
+const char* ctron_err_code_of(val payload) {
+    if (payload.k == V_ERR && payload.err) {
+        if (payload.err->code) return payload.err->code;
+        if (payload.err->msg) return payload.err->msg;
+        return "";
+    }
+    if (payload.k == V_STR && payload.s) return payload.s;
+    if (payload.k == V_TAG) return payload.tag ? payload.tag : "";
+    return "";
 }
 
 // ================= 字符串缓冲 / 格式化 =================
@@ -492,7 +504,7 @@ int option_builtin(rt* R, val recv, const char* m, cexpr* call) {
             val* cause_payload = (val*)ctron_arena_alloc(R->a, sizeof(val));
             cause_payload[0] = payload;
             val* one = (val*)ctron_arena_alloc(R->a, sizeof(val));
-            one[0] = v_err_t(R, txt, v_tag("Some", cause_payload, 1), tr);
+            one[0] = v_err_t(R, txt, v_tag("Some", cause_payload, 1), tr, ctron_err_code_of(payload));
             R->opt_result = v_tag("Err", one, 1);
             R->has_opt = 1;
             return 1;

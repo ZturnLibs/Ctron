@@ -295,6 +295,7 @@ ty emit_expr(tc* c, cexpr* e, sb* o) {
         if (ot.k == T_ERR) {
             // AnyError 链节点属性(C10-i):message/cause/trace(rt EX_MEMBER V_ERR 语义)
             if (!strcmp(m, "message")) { sb_f(o, "(%s)->message", ov); sb_free(&ob); return ty_str(); }
+            if (!strcmp(m, "code")) { sb_f(o, "(%s)->code ? (%s)->code : \"\"", ov, ov); sb_free(&ob); return ty_str(); }
             if (!strcmp(m, "trace")) { sb_f(o, "(%s)->trace", ov); sb_free(&ob); return ty_str(); }
             if (!strcmp(m, "cause")) {
                 use_sum(c, "typedef struct { int tag; union { ctron_anyerr* some; } as; } ctron_opt_err;\n"
@@ -1001,6 +1002,7 @@ ty emit_expr(tc* c, cexpr* e, sb* o) {
                             "    n->message = strdup(msg ? msg : \"\");\n"
                             "    n->cause = v.as.err;\n"
                             "    n->trace = strdup(v.as.err && v.as.err->trace ? v.as.err->trace : \"main:1\");\n"
+                            "    n->code = strdup(v.as.err && v.as.err->code ? v.as.err->code : (v.as.err && v.as.err->message ? v.as.err->message : \"\"));\n"
                             "    r.tag = CTRON_RES_ERR; r.as.err = n; return r;\n}\n",
                             outn, hn, ctype_of(rt4), outn);
                     else
@@ -1014,6 +1016,7 @@ ty emit_expr(tc* c, cexpr* e, sb* o) {
                             "    n->message = strdup(msg ? msg : \"\");\n"
                             "    n->cause = leaf;\n"
                             "    n->trace = strdup(\"main:1\");\n"
+                            "    n->code = strdup(\"\");\n"
                             "    r.tag = CTRON_RES_ERR; r.as.err = n; return r;\n}\n",
                             outn, hn, ctype_of(rt4), outn);
                     use_sum(c, hbody);

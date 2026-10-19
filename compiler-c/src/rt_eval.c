@@ -681,6 +681,7 @@ val eval_expr(rt* R, cexpr* e) {
         }
         if (o.k == V_ERR) {
             if (strcmp(m, "message") == 0) return v_str_own(R, o.err->msg);
+            if (strcmp(m, "code") == 0) return v_str_own(R, o.err->code ? o.err->code : "");
             if (strcmp(m, "cause") == 0) return o.err->cause;
             if (strcmp(m, "trace") == 0) {
                 // 两段式位置链:自环向上找最近一次 ? 记录(§5.4)
@@ -725,7 +726,8 @@ val eval_expr(rt* R, cexpr* e) {
                     fmt_val(R, inner, &b);
                     val* cause_payload = (val*)ctron_arena_alloc(R->a, sizeof(val));
                     cause_payload[0] = inner;
-                    errv = v_err_t(R, b.d ? b.d : "", v_tag("Some", cause_payload, 1), "main:1");
+                    errv = v_err_t(R, b.d ? b.d : "", v_tag("Some", cause_payload, 1), "main:1",
+                                   ctron_err_code_of(inner));
                     free(b.d);
                 } else {
                     errv = inner; // 已是 AnyError,原样传播

@@ -1,3 +1,20 @@
+> **IP-01 W1 错误码面落地(2026-10-19,AnyError.code 双解释宿+spec+夹具)。**
+> AnyError 增 `code`(只读;擦除后仍可读的原始错误码):解释臂 context() 物化点填
+> 载荷自身标识(变体值 ["T",名]→变体名/Str 错误→串;context 链上 payload 已是
+> AnyError 时保留最内层码,不随包装漂移);种子 errval 增 code 槽(v_err_t 五参化
+> +ctron_err_code_of 载荷提码:V_ERR 内层保留/V_STR 串/V_TAG 变体名)+成员读
+> `.code`;种子发射器 ctron_anyerr 增 code 字段+.code 成员+ctxres 链臂保留内层码。
+> spec §5.4 错误码契约成文(derive(Error) 注册名贯通+downcast=IP-01 W2 在册);
+> 10_trace.ct 增两测试(擦除可读+链保留,断言 e.code=="Bad"/message 取最近上下文)。
+> **坑与发现**:①解释臂枚举变体值=["T",名] cx(tag8)非裸串——初版按 tag5 判载荷
+> 臂空码,探针 ec1 当场咬出;②**`ctron-cc test` 子命令恒空转 rc0(不执行 test 块,
+> run 子命令才是真执行面)**——必败断言探针实锤,套件 protocol 用 run 故无恙,
+> 用户面 `ctron test` 尚未接线(README 为期票),在册;
+> ③发射臂错误链 ABI 缺口升级立案(自举发射器无 AnyError 物化:context() 无
+> typeof 臂致 10_trace emit 不通;扁平 ct_res 不带 E 码=E 恢复结构性限制;
+> 种子发射器已有每型单态化 ctron_res_*_Err+ctron_anyerr 形可参照)——IP-01 W2
+> 主战场;擦除助手 code 暂空(变体名表 W2)。
+>
 > **s23 销账+元组 match 双宿补齐(2026-10-19,gui 阶梯 101/0 首次全绿)。**
 > ①s23_sk_native 段错误根修:gui_sk_load 烘焙(driver_emit β3 段)只填 SoA 16 槽,
 > t_GuiTree 其余 11 字段(vreg_*/vc_*/props_dflt/env_n/env_v)裸声明栈垃圾返回——
