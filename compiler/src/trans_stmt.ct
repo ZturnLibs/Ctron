@@ -729,7 +729,20 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             eln("ct_res " + qv + " = " + ct_expr(st[4][1], env, file) + ";", env)
             var rqt = ct_reg_line("q" + nline(st), "R")
             if rqt.len > 0 { eln(rqt, env) }
-            eln("if (" + qv + ".variant != 0) \{ return " + qv + "; }", env)
+            // IP-01 W2:? 传播位 AnyError 物化(Let+Try 专用臂同批;语句/表达式位同款)
+            var retl = qv
+            if ct_env_has(env, "#cerr") {
+                if seq2(ct_env_ty(env, "#cerr"), "u:AnyError") {
+                    var iecl = ct_err_elem_expr(file, st[4][1], env)
+                    if iecl.len > 2 && byte_slice(iecl, 0, 2) == "E:" {
+                        var enl = byte_slice(iecl, 2, iecl.len)
+                        retl = "(ct_res)\{ 1, (ct_i)ct_anyerr_wrap_e((void*)(long)(" + qv + ".v), \"" + enl + "\", ct_vnames_" + enl + ", 0) }"
+                    } else if iecl == "s" {
+                        retl = "(ct_res)\{ 1, (ct_i)ct_anyerr_wrap_s((const char*)(long)(" + qv + ".v)) }"
+                    }
+                }
+            }
+            eln("if (" + qv + ".variant != 0) \{ return " + retl + "; }", env)
             var vx6 = "(" + ct_ctype(ec2) + ")" + qv + ".v"
             if ec2 == "f" {
                 vx6 = "((union \{ double _d; ct_i _i; })\{ ._i = (ct_i)(" + qv + ".v) })._d"
@@ -1417,8 +1430,12 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 if obe[0] == "BlockExpr" {
                     ct_block(obe[1], oenv, file, hreg)
                 } else {
-                    panic("ct_stmt:match R arm body")
-                    return env
+                    // 非块臂体 = 合成 Expr 语句委派 ct_stmt(match 语句位丢弃臂值;
+                    // assert/assert_eq 族复用语句位专道;IP-01 W2 随批解锁)
+                    var obe1 = List[Str]()
+                    obe1.push("Expr")
+                    obe1.push(obe)
+                    ct_stmt(obe1, oenv, file, hreg)
                 }
                 eln("}", env)
             }
@@ -1489,8 +1506,11 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                         if ebe[0] == "BlockExpr" {
                             ct_block(ebe[1], eenv, file, hreg)
                         } else {
-                            panic("ct_stmt:match R arm body")
-                            return env
+                            // 非块臂体 = 合成 Expr 语句委派 ct_stmt(assert 族专道复用)
+                            var ebe1 = List[Str]()
+                            ebe1.push("Expr")
+                            ebe1.push(ebe)
+                            ct_stmt(ebe1, eenv, file, hreg)
                         }
                         eln("}", env)
                         firstE = false
@@ -1634,8 +1654,11 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             if be[0] == "BlockExpr" {
                 ct_block(be[1], env3, file, hreg)
             } else {
-                panic("ct_stmt:match arm body")
-                return env
+                // 非块臂体 = 合成 Expr 语句委派 ct_stmt(assert 族专道复用)
+                var be1 = List[Str]()
+                be1.push("Expr")
+                be1.push(be)
+                ct_stmt(be1, env3, file, hreg)
             }
             eln("}", env)
         }
@@ -1650,8 +1673,11 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             if be2[0] == "BlockExpr" {
                 ct_block(be2[1], env, file, hreg)
             } else {
-                panic("ct_stmt:match arm body")
-                return env
+                // 非块臂体 = 合成 Expr 语句委派 ct_stmt(assert 族专道复用)
+                var be21 = List[Str]()
+                be21.push("Expr")
+                be21.push(be2)
+                ct_stmt(be21, env, file, hreg)
             }
             eln("}", env)
         }
@@ -1910,7 +1936,21 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         if e[0] == "Try" {
             var qv2 = "t_q" + nline(st)
             eln("ct_res " + qv2 + " = " + ct_expr(e[1], env, file) + ";", env)
-            eln("if (" + qv2 + ".variant != 0) \{ return " + qv2 + "; }", env)
+            // IP-01 W2:? 传播位 AnyError 物化——外层 #cerr=u:AnyError 且操作数错误侧
+            // 为枚举/Str 时包 ctron_anyerr(枚举=名表取码;直通形态余面在册)
+            var retx = qv2
+            if ct_env_has(env, "#cerr") {
+                if seq2(ct_env_ty(env, "#cerr"), "u:AnyError") {
+                    var iec = ct_err_elem_expr(file, e[1], env)
+                    if iec.len > 2 && byte_slice(iec, 0, 2) == "E:" {
+                        var en1 = byte_slice(iec, 2, iec.len)
+                        retx = "(ct_res)\{ 1, (ct_i)ct_anyerr_wrap_e((void*)(long)(" + qv2 + ".v), \"" + en1 + "\", ct_vnames_" + en1 + ", 0) }"
+                    } else if iec == "s" {
+                        retx = "(ct_res)\{ 1, (ct_i)ct_anyerr_wrap_s((const char*)(long)(" + qv2 + ".v)) }"
+                    }
+                }
+            }
+            eln("if (" + qv2 + ".variant != 0) \{ return " + retx + "; }", env)
             return env
         }
         if e[0] == "Call" {

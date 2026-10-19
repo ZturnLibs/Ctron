@@ -248,6 +248,13 @@ fn ct_fn(d: List[Str], file: List[Str], pass: Str) {
         }
         env = env_bind(env, "#retfn", racc)
     }
+    // IP-01 W2:#cerr 侧条目 = 本函数 Result 错误侧元素码("u:AnyError" 标记/空)
+    //(Err 构造与 ? 传播位的 AnyError 物化判据;env 侧条目随作用域自然贯穿,
+    // #elem:#fret 同族。闭包体沿用外层 #cerr = v0 近似,在册)
+    var cec = ct_err_elem_of(file, d[4])
+    if cec.len > 0 {
+        env = env_bind(env, "#cerr", cec)
+    }
     if seq2(pass, "2") {
         // P9 栈面全量:序言机器直出(门=CTRON_MORESTACK;main 除外)
         var mspro = ct_ms_pre("t_" + d[1], d, file, rc)

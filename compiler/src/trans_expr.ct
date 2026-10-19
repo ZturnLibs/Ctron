@@ -382,6 +382,15 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         return tp9 + " t_tpl; })"
     }
     if t == "Member" {
+        // IP-01 W2:错误链字段读(message/code/trace)——R 分派 Err 臂以 char* 槽绑定
+        //(扁平 ct_res 不带 E 码的结构性 wart,在册);AnyError 物化值经 ct_err_fld
+        // 魔数判型取字段,非 anyerr 载荷安全落空串
+        if or2(e[3] == "message", or2(e[3] == "code", e[3] == "trace")) {
+            var ee9 = ct_typeof(e[1], env, file)
+            if or2(ee9 == "s", ee9 == "N") {
+                return "ct_err_fld((long)(" + ct_expr(e[1], env, file) + "), \"" + e[3] + "\")"
+            }
+        }
         // FB-9:元组数字成员(t.0)——TP 码静态元素型解箱(镜像 LI/L6 惯例)
         var otr9 = ct_typeof(e[1], env, file)
         if otr9.len > 2 && byte_slice(otr9, 0, 3) == "TP:" && e[3].len > 0 && byte_at(e[3], 0) >= 48 && byte_at(e[3], 0) <= 57 {
@@ -945,6 +954,15 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             }
             if m == "is_err" {
                 if objt == "R" { return "(" + obj + ".variant != 0)" }
+            }
+            if m == "context" {
+                // IP-01 W2:context(msg) → ct_ctxres(Err 物化 ctron_anyerr,message=msg,
+                // 链上保留最内层 code/trace;Ok 直通)(§5.4;typeof 侧 "R" 同批)
+                if ag.len < 2 {
+                    panic("emit:context 实参")
+                    return ""
+                }
+                return "ct_ctxres(" + obj + ", " + ct_expr(ag[1], env, file) + ")"
             }
             if m == "or" {
                 // Option/Result.or(默认值)(P0-G):variant 0 取载荷,否则默认(ct_i 槽往返)
@@ -1583,6 +1601,27 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 var vx = ct_res_wrap(rcode, ct_expr(ag[1], env, file))
                 var vr = "0"
                 if cal[1] == "Err" { vr = "1" }
+                // IP-01 W2:Err 构造位 AnyError 物化——外层函数错误型=#cerr 侧条目,
+                // 为 "u:AnyError" 且载荷非 AnyError 时包 ctron_anyerr(枚举载荷=变体名/
+                // 名表取码;Str 载荷=串即码;其余码 v0 直通,在册)
+                if seq2(cal[1], "Err") {
+                    if ct_env_has(env, "#cerr") {
+                        if seq2(ct_env_ty(env, "#cerr"), "u:AnyError") {
+                            if rcode.len > 2 && byte_slice(rcode, 0, 2) == "E:" {
+                                var en0 = byte_slice(rcode, 2, rcode.len)
+                                var vname0 = "0"
+                                if ag[1][0] == "Ident" {
+                                    if ct_enum_of_variant(file, ag[1][1]).len > 0 {
+                                        vname0 = "\"" + ag[1][1] + "\""
+                                    }
+                                }
+                                vx = "(ct_i)ct_anyerr_wrap_e((void*)(long)(" + vx + "), \"" + en0 + "\", ct_vnames_" + en0 + ", " + vname0 + ")"
+                            } else if rcode == "s" {
+                                vx = "(ct_i)ct_anyerr_wrap_s((const char*)(long)(" + vx + "))"
+                            }
+                        }
+                    }
+                }
                 return "(\{ ct_res _r; _r.variant = " + vr + "; _r.v = " + vx + "; _r; })"
             }
         }
@@ -1831,14 +1870,27 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         // T53:f 载荷位型双关回读(旧 (double) 直转双向失真)
         var ec = ct_try_elem(file, e, env)
         var qv = "t_q" + nline(e)
+        // IP-01 W2:? 传播位 AnyError 物化(语句位同批;操作数错误侧枚举/Str 包 anyerr)
+        var retw = qv
+        if ct_env_has(env, "#cerr") {
+            if seq2(ct_env_ty(env, "#cerr"), "u:AnyError") {
+                var iec2 = ct_err_elem_expr(file, e[1], env)
+                if iec2.len > 2 && byte_slice(iec2, 0, 2) == "E:" {
+                    var en2 = byte_slice(iec2, 2, iec2.len)
+                    retw = "(ct_res)\{ 1, (ct_i)ct_anyerr_wrap_e((void*)(long)(" + qv + ".v), \"" + en2 + "\", ct_vnames_" + en2 + ", 0) }"
+                } else if iec2 == "s" {
+                    retw = "(ct_res)\{ 1, (ct_i)ct_anyerr_wrap_s((const char*)(long)(" + qv + ".v)) }"
+                }
+            }
+        }
         if ec == "f" {
-            return "(\{ ct_res " + qv + " = " + ct_expr(e[1], env, file) + "; if (" + qv + ".variant != 0) \{ return " + qv + "; } ((union \{ double _d; ct_i _i; })\{ ._i = (ct_i)(" + qv + ".v) })._d; })"
+            return "(\{ ct_res " + qv + " = " + ct_expr(e[1], env, file) + "; if (" + qv + ".variant != 0) \{ return " + retw + "; } ((union \{ double _d; ct_i _i; })\{ ._i = (ct_i)(" + qv + ".v) })._d; })"
         }
         // u: struct 载荷解引用(盒装写侧配对)
         if ec.len > 2 && byte_slice(ec, 0, 2) == "u:" {
-            return "(\{ ct_res " + qv + " = " + ct_expr(e[1], env, file) + "; if (" + qv + ".variant != 0) \{ return " + qv + "; } (*(" + ct_ctype(ec) + "*)(long)" + qv + ".v); })"
+            return "(\{ ct_res " + qv + " = " + ct_expr(e[1], env, file) + "; if (" + qv + ".variant != 0) \{ return " + retw + "; } (*(" + ct_ctype(ec) + "*)(long)" + qv + ".v); })"
         }
-        return "(\{ ct_res " + qv + " = " + ct_expr(e[1], env, file) + "; if (" + qv + ".variant != 0) \{ return " + qv + "; } (" + ct_ctype(ec) + ")(" + qv + ".v); })"
+        return "(\{ ct_res " + qv + " = " + ct_expr(e[1], env, file) + "; if (" + qv + ".variant != 0) \{ return " + retw + "; } (" + ct_ctype(ec) + ")(" + qv + ".v); })"
     }
     if t == "BlockExpr" {
         // 裸块值位(§4.6;R 线 trans.rs 同口径):临时变量在花括号外声明,

@@ -10,7 +10,7 @@
 
 | 编号 | 标题 | 分组 | 优先级 | 依赖 | 状态 |
 |---|---|---|---|---|---|
-| IP-01 | AnyError 保留错误码 + downcast | A 错误处理 | P0 | — | IMPL(W1=code 双解释宿+spec 已落库 1019;W2=downcast+注册名贯通+发射臂物化 在册) |
+| IP-01 | AnyError 保留错误码 + downcast | A 错误处理 | P0 | — | IMPL(W1+W2a=code/物化/trace/变体名发射面 1019 已落库,10_trace 发射臂首通;W2b=downcast(四宿注册)+注册名贯通 在册) |
 | IP-02 | Error 链 source() 迭代协议 | A 错误处理 | P1 | IP-01 | TODO |
 | IP-03 | &Ctx 能力对象：取消与 deadline 统一 | B 并发 | P0 | — | TODO |
 | IP-04 | resolve 可取消性裁决 | B 并发 | P1 | IP-03 | TODO |

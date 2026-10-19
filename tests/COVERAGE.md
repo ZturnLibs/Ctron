@@ -1,3 +1,21 @@
+> **IP-01 W2a 错误链发射面落地(2026-10-19,context/擦除物化/trace 追加/变体名表;10_trace 发射臂首次全通)。**
+> 自举发射器 AnyError 物化六件:①`#cerr` env 侧条目(ct_fn 绑定本函数 Result 错误侧
+> 码形,E:名/u:AnyError;#elem 同族,闭包沿用外层=在册近似);②Err 构造位物化
+> (#cerr=u:AnyError 且载荷枚举/Str → ct_anyerr_wrap_e/s,Ident 真变体验定后直带名);
+> ③`?` 三臂物化(Let+Try 专用臂/语句位/表达式位——初版漏 Let+Try 专用臂被探针咬出);
+> ④context() 通路(typeof "R" + ct_ctxres:Ok 直通/anyerr 链保留 code+trace/trace_join
+> 追加 "ctx:<msg>" 与解释臂语义对齐);⑤错误字段读 ct_err_fld(message/code/trace,
+> 魔数判型安全落空;typeof 侧同步 s——初版只加发射未加 typeof 被分脑咬出);⑥枚举
+> 变体名表 ct_vnames_* 随 typedef 直出。附带:R 分派臂非块体解锁(合成 Expr 语句委派
+> ct_stmt,assert 族专道复用,四处 panic 撤销);种子发射器 ctron_anyerr code 填充在
+> W1 已带,其擦除助手变体名仍空=在册分歧。**PM-05-1/PM-05-2 翻部分兑现**(spec 附表
+> 状态不变,downcast=IP-01 W2b:需 sem/解释/种子四宿注册,在册)。坑:①Bool.to_string()
+> 发射=数字形(1/0)vs 解释=true/false——新立在册分歧;②码形纪律=ct_err_elem 家族
+> 返 "E:<名>" 码形(初版裸名被消费端前缀查咬空)。
+> 门:10_trace 双臂 rc=0(夹具发射臂首次通过)+w2a 探针双臂逐字一致(code=Bad/链保留
+> /trace)+suite 119/120·120/120(07a 在册零分歧)+smoke --full 237/0+gui 100/1(唯一红
+> =对端在飞新夹具 w4_ctml_reload 时序 flake,单独复跑 PASS rc=0 非回归)。
+>
 > **meta_check 13 红清偿+IP-18 承诺附表门(2026-10-19)。**
 > ①meta_check 13 红(在册债)清零:bench/engine-proxy+steno/soak+tui/s* 三泳道 13 份
 > main 程序族缺泳道 skip(gotcha #17「新泳道=meta_check 加 skip」随批漏课,steno G 批

@@ -1295,6 +1295,14 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         if e[3] == "char_len" { return "i" }
         if e[3] == "len" { return "i" }
         if e[3] == "to_string" { return "s" }
+        // IP-01 W2:错误链字段读型别 = s(发射臂 ct_err_fld 同批;char* 槽绑定的
+        // message/code/trace 三名,含 .len/.contains 下游方法分派)
+        if or2(e[3] == "message", or2(e[3] == "code", e[3] == "trace")) {
+            var ef9 = ct_typeof(e[1], env, file)
+            if or2(ef9 == "s", ef9 == "N") {
+                return "s"
+            }
+        }
         if e[3] == "lane" {
             var qrt = ct_typeof(e[1], env, file)
             if qrt.len > 1 && byte_at(qrt, 0) == 113 {
@@ -1550,6 +1558,11 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     if m == "free" { return "v" }
                     if or2(m == "get", m == "set") { return byte_slice(djt, 1, djt.len) }
                 }
+            }
+            if m == "context" {
+                // IP-01 W2:context() 静态型别 = Result[T, AnyError] → R(match 语句位
+                // ct_res 分派/元素码族由此贯通;发射臂 ct_ctxres 同批)
+                return "R"
             }
             if m == "or" {
                 // .or 型别 = 接收者元素码优先(盒装/整宽载荷贯通);回落默认实参型
@@ -1808,8 +1821,41 @@ fn ct_opt_elem_of(file: List[Str], nt: List[Str]) -> Str {
     return "i"
 }
 
+// Result 错误侧元素码(IP-01 W2):ct_opt_elem_of 的 E 侧孪生——返回型节点为
+// Result[T, E] 时给 E 侧码形("E:<枚举名>" / AnyError → "u:AnyError"),否则空串
+fn ct_err_elem_of(file: List[Str], nt: List[Str]) -> Str {
+    if nt[0] == "Named" {
+        if seq2(nt[1], "Result") {
+            if nt[2].len > 2 {
+                var ec = nt[2][2]
+                if ec[0] == "Named" {
+                    if seq2(ec[1], "AnyError") {
+                        return "u:AnyError"
+                    }
+                    return "E:" + ec[1]
+                }
+            }
+        }
+    }
+    return ""
+}
+
 fn ct_try_elem(file: List[Str], e: List[Str], env: List[Str]) -> Str {
     return ct_opt_elem_expr(file, e[1], env)
+}
+
+// ? 操作数的错误侧元素码(IP-01 W2):Call 形直查被调签名;其余形 v0 空(直通在册)
+fn ct_err_elem_expr(file: List[Str], inner: List[Str], env: List[Str]) -> Str {
+    if inner[0] == "Call" {
+        var cal = inner[1]
+        if cal[0] == "Ident" {
+            var gd = ct_fn_decl(file, cal[1])
+            if gd.len > 0 {
+                return ct_err_elem_of(file, gd[4])
+            }
+        }
+    }
+    return ""
 }
 
 fn ct_opt_elem_expr(file: List[Str], inner: List[Str], env: List[Str]) -> Str {

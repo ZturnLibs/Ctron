@@ -355,6 +355,18 @@ println("static ctron_list* ctron_list_new(void) \{ ctron_list* l = (ctron_list*
             // 补 .0;界内 long long 试探防 1e300 级 UB 转换(≥2^63 双精度恒整数,
             // 直落 %.1f)。512B 容 %.1f 全量位(1.8e308 → 309 位 + .0)
             println("static const char* ctron_f64_to_string(double v) \{ char* r = (char*)ct_gc_alloc(512); double t = (v >= -9.22e18 && v <= 9.22e18) ? (double)(long long)v : v; if (v == t) \{ snprintf(r, 512, \"%.1f\", v); } else \{ snprintf(r, 512, \"%g\", v); } return r; }")
+            // IP-01 W2 错误链发射面(§5.4):ctron_anyerr 物化结构 + 判型/字段/包装助手。
+            // 布点=ct_res typedef(line~201)之后;枚举统一视图读 variant(布局同
+            // ct_enum_* {int variant; ct_i p[2]})。code/变体名表见 ct_vnames_* 发射点
+            println("typedef struct ctron_anyerr ctron_anyerr;")
+            println("struct ctron_anyerr \{ unsigned long long magic; char* message; ctron_anyerr* cause; char* trace; char* code; void* payload; char* tname; };")
+            println("static int ct_is_anyerr(const void* p) \{ const ctron_anyerr* e = (const ctron_anyerr*)p; return e && e->magic == 0x4354414E59455252ULL; }")
+            println("static const char* ct_err_fld(long v, const char* f) \{ ctron_anyerr* e = (ctron_anyerr*)v; if (ct_is_anyerr(e)) \{ if (f[0] == 109) return e->message ? e->message : \"\"; if (f[0] == 99 && f[1] == 111) return e->code ? e->code : \"\"; if (f[0] == 116) return e->trace ? e->trace : \"\"; } return \"\"; }")
+            println("struct ct_enum_gen \{ int variant; ct_i p[2]; };")
+            println("static long ct_anyerr_wrap_e(void* p, const char* tn, const char** vn, const char* vname) \{ ctron_anyerr* n = (ctron_anyerr*)ct_gc_alloc(sizeof(ctron_anyerr)); n->magic = 0x4354414E59455252ULL; n->message = 0; n->cause = 0; n->trace = 0; n->payload = p; n->tname = (char*)tn; n->code = 0; if (vname) \{ n->code = (char*)vname; } else if (vn && p) \{ n->code = (char*)vn[((struct ct_enum_gen*)p)->variant]; } return (long)n; }")
+            println("static long ct_anyerr_wrap_s(const char* s) \{ ctron_anyerr* n = (ctron_anyerr*)ct_gc_alloc(sizeof(ctron_anyerr)); n->magic = 0x4354414E59455252ULL; n->message = 0; n->cause = 0; n->trace = 0; n->code = (char*)s; n->payload = 0; n->tname = 0; return (long)n; }")
+            println("static char* ct_trace_join(const char* old, const char* msg) \{ char* r = (char*)ct_gc_alloc((old ? strlen(old) : 0) + (msg ? strlen(msg) : 0) + 12); if (old && old[0]) \{ sprintf(r, \"%s; ctx:%s\", old, msg ? msg : \"\"); } else \{ sprintf(r, \"ctx:%s\", msg ? msg : \"\"); } return r; }")
+            println("static ct_res ct_ctxres(ct_res v, const char* msg) \{ if (v.variant == 0) \{ return v; } ctron_anyerr* o = (ctron_anyerr*)(long)v.v; ctron_anyerr* n = (ctron_anyerr*)ct_gc_alloc(sizeof(ctron_anyerr)); n->magic = 0x4354414E59455252ULL; n->message = (char*)(msg ? msg : \"\"); if (ct_is_anyerr(o)) \{ n->cause = o; n->trace = ct_trace_join(o->trace, msg); n->code = o->code; n->payload = o->payload; n->tname = o->tname; } else \{ n->cause = 0; n->trace = ct_trace_join(0, msg); n->code = 0; n->payload = (void*)o; n->tname = 0; } ct_res r; r.variant = 1; r.v = (ct_i)(long)n; return r; }")
             // Phase 4 并发运行时(函数部):任务 trampoline/spawn/join/Channel/parallel
             println("static void* ct_shim_tramp(void* p) \{ ct_task* t = (ct_task*)p; if (!ct_rt_active()) \{ ct_arn* ta = (ct_arn*)calloc(1, sizeof(ct_arn)); ta->cur = (ct_ablk*)ct_ablk_new((size_t)16384); ct_tls_arn = ta; t->arn = ta; } *ct_tls_slot() = t; if (setjmp(t->jmp) == 0) \{ t->shim(t->env); t->state = 1; } ct_fp = 0; pthread_mutex_lock(&t->done_mu); t->done = 1; pthread_cond_broadcast(&t->done_cv); pthread_mutex_unlock(&t->done_mu); if (ct_rt_active()) ctron_rt_notify_done((void*)t); return 0; }")
             println("static ct_task* ct_spawn(void* (*shim)(void*), void* env, ct_scope* sc) \{ ct_task* t = (ct_task*)calloc(1, sizeof(ct_task)); pthread_mutex_init(&t->done_mu, 0); pthread_cond_init(&t->done_cv, 0); t->shim = shim; t->env = env; t->scope = sc; if (sc) \{ if (sc->tail) \{ sc->tail->snext = t; } else \{ sc->head = t; } sc->tail = t; } if (ct_rt_active() || ct_rt_env_coro()) \{ ct_gc_conc = 1; } if (!ct_rt_active() && ct_rt_env_coro()) ctron_rt_init(0); if (ct_rt_active()) \{ ctron_rt_run((void (*)(void*))ct_shim_tramp, t, (void*)t); return t; } pthread_attr_t _sa; pthread_attr_init(&_sa); pthread_attr_setstacksize(&_sa, 8u << 20); pthread_create(&t->th, &_sa, ct_shim_tramp, t); return t; }")
@@ -874,6 +886,20 @@ println("static const char* ctron_bytes_to_str(ctron_bytes* b) \{ int64_t n = 0;
                     println(line)
                 } else if sd[0] == "Enum" {
                     println("typedef struct \{ int variant; ct_i p[2]; } ct_enum_" + sd[1] + ";")
+                    // IP-01 W2:变体名表(AnyError 物化 code=变体名,与解释臂 v0 对齐)
+                    var vn = "static const char* ct_vnames_" + sd[1] + "[] = \{"
+                    var vi2: I32 = 1
+                    var vfirst = true
+                    while vi2 < sd[3].len {
+                        if !vfirst {
+                            vn = vn + ","
+                        }
+                        vn = vn + "\"" + sd[3][vi2][1] + "\""
+                        vfirst = false
+                        vi2 += 1
+                    }
+                    vn = vn + ", 0};"
+                    println(vn)
                 }
                 si += 1
             }
