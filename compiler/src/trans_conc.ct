@@ -64,7 +64,28 @@ fn ct_wrap_i(code: Str, x: Str) -> Str {
         var bt = ct_ctype(code)
         return "(\{ " + bt + "* _cb = (" + bt + "*)ctron_amalloc(sizeof(" + bt + ")); *_cb = (" + x + "); (ct_i)(long)_cb; })"
     }
+    // R2c:浮点载荷位双关(枚举/槽位存 ct_i 的位保真;值截断曾致 Flt(3.5)→3)
+    if code == "f" {
+        return "((union \{ double _d; ct_i _i; })\{ ._d = (" + x + ") })._i"
+    }
+    if code == "g" {
+        return "((union \{ float _f; ct_i _i; })\{ ._f = (" + x + ") })._i"
+    }
     return "(ct_i)(" + x + ")"
+}
+
+// ct_wrap_i 逆:槽值 → 载荷码读取(f/g 位双关回读;镜像 T53 ct_res_wrap 配对纪律)
+fn ct_unwrap_i(code: Str, x: Str) -> Str {
+    if or2(code == "f", code == "g") {
+        if code == "f" {
+            return "((union \{ double _d; ct_i _i; })\{ ._i = (ct_i)(" + x + ") })._d"
+        }
+        return "((union \{ float _f; ct_i _i; })\{ ._i = (ct_i)(" + x + ") })._f"
+    }
+    if code.len > 2 && byte_slice(code, 0, 2) == "u:" {
+        return "(*(" + ct_ctype(code) + "*)(long)(" + x + "))"
+    }
+    return "(" + ct_ctype(code) + ")(" + x + ")"
 }
 
 // shim 内捕获解包声明

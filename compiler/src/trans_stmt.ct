@@ -1569,7 +1569,7 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                                     if nsp[0] == "PatId" && nsp[1] != "_" {
                                         var pct = npcs[nk - 1]
                                         var pc = ct_ctype(pct)
-                                        eln(pc + " t_" + nsp[1] + " = (" + pc + ")t_mn->p[" + (nk - 1).to_string() + "];", env)
+                                        eln(pc + " t_" + nsp[1] + " = " + ct_unwrap_i(pct, "t_mn->p[" + (nk - 1).to_string() + "]") + ";", env)
                                         eenv = env_bind(eenv, nsp[1], pct)
                                     }
                                     nk += 1
@@ -1630,9 +1630,9 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                             var pct = vpcs2[sk - 1]
                             var pc = ct_ctype(pct)
                             if !or2(pct == "i", or2(pct == "b", pct == "6")) {
-                                eln(pc + " t_" + sp[1] + " = (" + pc + ")(long)" + me + ".p[" + (sk - 1).to_string() + "];", env)
+                                eln(pc + " t_" + sp[1] + " = " + ct_unwrap_i(pct, me + ".p[" + (sk - 1).to_string() + "]") + ";", env)
                             } else {
-                                eln(pc + " t_" + sp[1] + " = (" + pc + ")" + me + ".p[" + (sk - 1).to_string() + "];", env)
+                                eln(pc + " t_" + sp[1] + " = " + ct_unwrap_i(pct, me + ".p[" + (sk - 1).to_string() + "]") + ";", env)
                             }
                             aenv = env_bind(aenv, sp[1], pct)
                         }

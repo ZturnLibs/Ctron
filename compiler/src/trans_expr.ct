@@ -1247,6 +1247,9 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 if objt == "s" { return "ctron_byte_slice((const char*)(" + obj + "), 0, (int)strlen((const char*)(" + obj + ")))" }
                 if objt == "N" { return "ctron_sb_str((const void*)(" + obj + "))" }
                 if objt == "6" { return "ctron_i64_to_string(" + obj + ")" }
+                if objt == "7" { return "ctron_u64_to_string(" + obj + ")" }
+                // f/g 臂=F64 写出钉子(IP-23 23a-2)地盘:解释臂对推断形/注解形两制
+                //(fx_conc_spawn "32" vs 注解 F64 "32.0" 实证),未钉前不落臂
                 return "ctron_i32_to_string((int32_t)(" + obj + "))"
             }
             if or2(m == "set_title", or2(m == "title", or2(m == "set_body", m == "body"))) {
