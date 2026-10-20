@@ -206,7 +206,7 @@ fn dls_reject_unhoisted(body: List[Str], env: List[Str], file: List[Str], hl: Li
             if !inhl {
                 var ty = ""
                 if st[3][0] != "None" {
-                    ty = ct_ty_code(st[3], file)
+                    ty = ct_ty_code(ct_targ_env(st[3], env), file)
                 } else {
                     ty = ct_typeof(st[4], env, file)
                 }
@@ -606,7 +606,7 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                             var rc4 = "t_" + pat[1]
                             var ty4 = "i"
                             if st[3][0] != "None" {
-                                ty4 = ct_ty_code(st[3], file)
+                                ty4 = ct_ty_code(ct_targ_env(st[3], env), file)
                             }
                             var obj4 = ct_expr(st[4][1][1], env, file)
                             var renv4 = ct_emit_with_stmt(st[4], obj4, objt4, st[4][2][1], env, file, false, rc4, hreg, "1")
@@ -838,7 +838,7 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                                 var rcode = "h"
                                 if st[4][1][2].len > 1 {
                                     if st[4][1][2][1][0] == "Named" {
-                                        var ec14 = ct_ty_code(st[4][1][2][1], file)
+                                        var ec14 = ct_ty_code(ct_targ_env(st[4][1][2][1], env), file)
                                         if ec14.len > 2 && byte_slice(ec14, 0, 2) == "u:" {
                                             rcode = "hR" + ec14
                                         }
@@ -1134,7 +1134,9 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 }
             }
             if ty.len > 2 && byte_slice(ty, 0, 2) == "B:" {
-                if has_drop_impl(file, byte_slice(ty, 2, ty.len)) {
+                var bnm = byte_slice(ty, 2, ty.len)
+                if bnm.len > 2 && byte_slice(bnm, 0, 2) == "u:" { bnm = ct_struct_name_of(bnm) }
+                if has_drop_impl(file, bnm) {
                     panic("emit:类引用 Drop 未支持(§6.4 类引用不触发;eval 统一 U 分歧挂账):" + pat[1])
                 }
             }

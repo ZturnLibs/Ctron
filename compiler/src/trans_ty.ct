@@ -240,7 +240,8 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
         if seq2(nt[1], "Box") {
             if ct_struct_tps(file, "Box").len == 0 {
                 if nt[2][1][0] == "Named" {
-                    return "B:" + nt[2][1][1]
+                    // 批C-2:B: 码携全内码(泛型实例 u:<名>__<enc> 不再丢实参)
+                    return "B:" + ct_ty_code(nt[2][1], file)
                 }
             }
         }
@@ -392,8 +393,9 @@ fn ct_ctype(code: Str) -> Str {
         return "ct_obj"
     }
     if code.len > 2 && byte_slice(code, 0, 2) == "B:" {
-        // Box[T]:堆单值指针(t_P*);自动解引用由 Member/Assign 位处理
-        return "t_" + byte_slice(code, 2, code.len) + "*"
+        // Box[T]:堆单值指针;内码自指(u:<名>__<enc> → t_<名>__<enc>*,
+        // 批C-2 B: 码携全内码)
+        return ct_ctype(byte_slice(code, 2, code.len)) + "*"
     }
     if code == "s" { return "const char*" }
     if code == "Q" { return "ct_arena" }
@@ -1355,18 +1357,19 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             return ct_field_ty(file, byte_slice(oft, 2, oft.len), e[3])
         }
         if oft.len > 2 && byte_slice(oft, 0, 2) == "B:" {
-            // Box 自动解引用字段读:载荷 struct 的字段码
+            // Box 自动解引用字段读:载荷 struct 的字段码(批C-2:内码携实例)
+            var binner = byte_slice(oft, 2, oft.len)
             if e[3] == "v" {
-                // §6.1 Box[T].v = 载荷值本身(显式解引用;旧按字段 v 查表→""→i,
-                // 嵌套读 box.v.field 全链塌成 i 即批C 泛型 TuiTest[M] 发射根因)。
-                // 内槽=类型名(B:<名>)→ Named 节点过 ct_ty_code 归一(结构→u:<名>,
-                // 标量→域码)
-                var bnn = mk("Named")
-                bnn.push(byte_slice(oft, 2, oft.len))
-                bnn.push(mk("TArgs"))
-                return ct_ty_code(bnn, file)
+                // §6.1 Box[T].v = 载荷值本身(显式解引用;内码即值码)
+                return binner
             }
-            return ct_field_ty(file, byte_slice(oft, 2, oft.len), e[3])
+            if binner.len > 2 && byte_slice(binner, 0, 2) == "u:" {
+                if ct_struct_tps(file, ct_struct_name_of(binner)).len > 0 {
+                    return ct_field_ty_inst(file, binner, e[3])
+                }
+                return ct_field_ty(file, ct_struct_name_of(binner), e[3])
+            }
+            return ct_field_ty(file, binner, e[3])
         }
         // Phase 4 并发成员
         if e[3] == "spawn" { return "k" }
@@ -1470,7 +1473,7 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     // Box[P](v) → B:P(堆单值指针;载荷 v0 限值类型)
                     if cal[2].len > 1 {
                         if cal[2][1][0] == "Named" {
-                            return "B:" + cal[2][1][1]
+                            return "B:" + ct_ty_code(cal[2][1], file)
                         }
                     }
                     return "B:V"
@@ -2469,6 +2472,47 @@ fn ct_call_infer_tys(file: List[Str], env: List[Str], ag: List[Str], callee: Str
                     }
                 }
             }
+            } else if pty[0] == "Named" && seq2(pty[1], "Box") && pty[2].len > 1 && pty[2][1][0] == "Named" && pty[2][1].len > 2 && ct_struct_tps(file, pty[2][1][1]).len > 0 {
+                // 批C-2:Box[泛型struct[TPar]] 形参——实参码 B:<内码> 拆实例映射 tps
+                //(旧无分支落缺省 I32 → 单态化 __i 与构造面 __U5_Model 分叉)
+                var vc3 = ct_typeof(ag[pj], env, file)
+                if vc3.len > 2 && byte_slice(vc3, 0, 2) == "B:" {
+                    var inner3 = byte_slice(vc3, 2, vc3.len)
+                    if inner3.len > 2 && byte_slice(inner3, 0, 2) == "u:" && seq2(ct_struct_name_of(inner3), pty[2][1][1]) {
+                        var info3 = ct_struct_inst_split(inner3)
+                        var bar3: I32 = 0
+                        var q3: I32 = 0
+                        while q3 < info3.len {
+                            if byte_at(info3, q3) == 124 {
+                                bar3 = q3
+                            }
+                            q3 += 1
+                        }
+                        var codes3 = ct_inst_arg_codes(byte_slice(info3, bar3 + 1, info3.len))
+                        var stps3 = ct_struct_tps(file, pty[2][1][1])
+                        var j3b: I32 = 1
+                        while j3b < pty[2][1][2].len {
+                            if pty[2][1][2][j3b][0] == "Named" {
+                                var k3b: I32 = 0
+                                while k3b < tpsn.len {
+                                    if seq2(pty[2][1][2][j3b][1], tpsn[k3b]) {
+                                        var s3: I32 = 0
+                                        while s3 < stps3.len {
+                                            if seq2(stps3[s3], pty[2][1][2][j3b][1]) {
+                                                if s3 < codes3.len {
+                                                    tys[k3b] = ct_inst_ty_node(codes3[s3])
+                                                }
+                                            }
+                                            s3 += 1
+                                        }
+                                    }
+                                    k3b += 1
+                                }
+                            }
+                            j3b += 1
+                        }
+                    }
+                }
         }
         pj += 1
     }

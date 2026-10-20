@@ -142,8 +142,8 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     if cbp5.len > 2 && byte_slice(cbp5, 0, 2) == "u:" {
                         acall = acall + "*(t_" + byte_slice(cbp5, 2, cbp5.len) + "*)(long)_cbp" + ai.to_string()
                     } else if cbp5.len > 2 && byte_slice(cbp5, 0, 2) == "B:" {
-                        // Box[T] 形参 = 堆单值指针直传(t_P*;与 u: 按值解引用异构)
-                        acall = acall + "(t_" + byte_slice(cbp5, 2, cbp5.len) + "*)(long)_cbp" + ai.to_string()
+                        // Box[T] 形参 = 堆单值指针直传(批C-2:内码携实例,ct_ctype 归一)
+                        acall = acall + ct_ctype(cbp5) + "(long)_cbp" + ai.to_string()
                     } else if cbp5.len > 1 && byte_at(cbp5, 0) == 112 {
                         // 裸指针形参(v0.9·五):ct_i → T* 显式 cast(同 ct_cb_ref 侧)
                         acall = acall + "(" + ct_abi_ctype(cbp5) + ")_cbp" + ai.to_string()
@@ -2427,6 +2427,13 @@ fn ct_spec_call_emit(file: List[Str], env: List[Str], ag: List[Str], callee: Str
             }
             gk2 += 1
         }
+        // 批C-2:型参本名入 genv——体内 Box[泛型struct[M]] 注解/嵌套实例的 M
+        // 旧无绑定 → ct_targ_env 找不到 → ct_ty_code 兜底塌 i(TuiTest__I 错实例)
+        var tk2: I32 = 0
+        while tk2 < tpsn.len {
+            genv = env_bind(genv, tpsn[tk2], ct_ty_code(tys[tk2], file))
+            tk2 += 1
+        }
         // P0-A:闭包命名前缀——特化体 genv 旧无 #clofn,体内闭包 shim
         // 取 ct_env_ty 默认 "i" → ct_clo_i_L<行> 跨特化撞名重定义
         genv = env_bind(genv, "#clofn", mg)
@@ -2639,8 +2646,8 @@ fn ct_fval_emit(file: List[Str], nm: Str, tag: Str) -> Str {
                 acc31 = "*(t_" + byte_slice(pc31, 2, pc31.len) + "*)(long)_p" + ai31.to_string()
             } else {
                 if pc31.len > 2 && byte_slice(pc31, 0, 2) == "B:" {
-                    // Box[T] 形参 = 堆单值指针直传(t_P*;与 u: 按值解引用异构)
-                    acc31 = "(t_" + byte_slice(pc31, 2, pc31.len) + "*)(long)_p" + ai31.to_string()
+                    // Box[T] 形参 = 堆单值指针直传(批C-2:内码携实例,ct_ctype 归一)
+                    acc31 = ct_ctype(pc31) + "(long)_p" + ai31.to_string()
                 } else {
                     if pc31.len > 1 && byte_at(pc31, 0) == 112 {
                         // P0-A:&T 形参(pu: 码)——ct_i 槽指针直传

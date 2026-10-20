@@ -2606,3 +2606,27 @@ smoke --full:**237/0 rc=0 无回归确证**(自举固定点/std 种子包/deep �
 `ct_struct_inst_split` → 按形参 TArgs 映射 tpsn);④`CT_TDEF`/函数单态化统一以该实例码
 命名。回归面警示:`B:` 码格式变化波及全部 `Box[T]` 存量(typeof/emit/调用点/field),
 须全量 smoke --full + suite 双列 + gui/tui 阶梯。
+
+### 批C-2 W1–W3 落库(2026-10-20 三;泛型实例码贯通,残余一处深水)
+
+计划 `2026-10-20-batchc2-box-generic-mono-plan.md` 前三 Wave 落库:
+- **W1** `B:` 码携全内码:产码点两处(trans_ty.ct 注解/构造)改 `B:` + `ct_ty_code(内型节点)`
+  (`Box[TuiTest[Model]]` → `B:u:TuiTest__U5_Model`,实例实参不再丢);`ct_ctype` B: 臂改
+  `ct_ctype(内码) + "*"`(`B:u:Point` → `t_Point*` 与旧同果)。
+- **W2** 消费点内码归一:trans_ty Member B: 臂(内码 `u:` 前缀→实例字段替换
+  `ct_field_ty_inst`/基名字段查;`.v` 直返内码)/ trans_expr 两处 `t_<名>*` cast 改
+  `ct_ctype(内码)` / trans_stmt Drop 登记名 `ct_struct_name_of`(内码基名)。
+- **W3** `ct_call_infer_tys` 增第四分支:`Named Box` + 载荷泛型 struct 形参——实参码
+  `B:<内码>` 拆 `ct_struct_inst_split` → `ct_inst_arg_codes` → 按内层 tps 位置映射 tpsn
+  (旧落缺省 I32)。
+- **加映**:单态化体 `genv` 补绑**型参本名**(`ct_spec_call_emit`,tys 码)——体内
+  `ct_targ_env(M)` 旧找不到 → 注解塌 `__I`。
+
+**门**:decls=531 不变;trans_v0-v6 往返 7/7 逐字;fx 子集同基线(boxalias/optstr 两
+DIFF=既有指纹);Box 探针(boxmem/fnfield)emit 绿。
+
+**残余(深水,W4 未落)**:单态化体内 `Box[TuiTest[M]]` 注解仍有路径未经 `ct_targ_env`
+代入(trans_stmt hoist/with_mut 位已补,emit 免声明链残余)→ 生成 C 仍偶发
+`t_TuiTest__I`。注:批C 复现件 emit 已 rc=0(构造面 `__U5_Model` 正确),仅声明位
+错配;W4 需定位该残余产码点(嫌疑:ct_emit_inst_typedef 的 `ct_inst_of_ty` 无 env)
+后回填 test/d_* 家族。
