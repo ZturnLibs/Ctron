@@ -59,9 +59,9 @@ Option/Result 作用户形参/本地位/返回值三位置获得正确 C 表示;
 ## 4. 推荐
 
 **B 先行,分两批**:
-- **批 R1(Str? 族)**:`ct_ctype_of_node`(Option[Str]→char*,Result/Option 其余→ct_res)+形参/注解 let/返回值三位置接入+#cret 构造线程+`?` on char* NULL 传播臂。验收:Str? fn 全链(构造/传递/match/?)双臂探针+fx_optstr 不动。
-- **批 R2(其余载荷)**:ct_res 形参/本地/返回全量;match R 臂尾判定统一(语句位值臂暂存形)同批。验收:扁平 R 族三成员销账探针。
-- 方案 A 作为 R2 后的码形清整理想态,**非前置**。
+- **批 R1(Str? 族)**:✅ 已落地(ca79e556,2026-10-19)。实现与设计有二偏离:①翻面点=ct_ty_code(`Str?` 解析为 **Optional 节点**非 Named-Option,检查先于 Named 闸);②构造线程以 `ct_optstr_unr` 适配器替代(#cerr 同族侧标记免穿线)。
+- **批 R2(其余载荷)**:✅ **R2a 零码改完成(2026-10-20 验证)**——R1 的 Optional 臂(`非 Str → "R"`)使 `I32?`/`Result[T,E]` 取码 "R",而 `ct_ctype("R")` 本就返回 `ct_res`(塌缩真身=Optional 节点无臂落 "i",非 ctype)。形参/注解 let/返回/直构实参/`.or`/`?` 传播全链双臂逐字一致;fx 语料转正=fx_opti32/fx_opti32b(smoke 名单随批)。**余 R2b=尾判定统一**(语句位 match 非块值臂提前返回误用面;需 ct_stmts 尾标志穿线,值臂落暂存形),设计裁决项:尾/语句位两制是否保留(尾值臂 return 位=fx_optstr 依赖,语句位=解释臂语义)。
+- 方案 A 作为码形清整理想态,**非前置**。
 
 ## 5. 关联
 

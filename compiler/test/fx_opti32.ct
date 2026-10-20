@@ -1,0 +1,42 @@
+fn take_opt(o: I32?) -> Str {
+    match o {
+        Some(v) => { println("got=" + v.to_string()) }
+        None => { println("got-none") }
+    }
+    return "ok"
+}
+
+fn make_opt(f: Bool) -> I32? {
+    if f {
+        return Some(42)
+    }
+    return None
+}
+
+fn take_res(r: Result[I32, Str]) -> Str {
+    match r {
+        Ok(v) => { println("res-ok=" + v.to_string()) }
+        Err(m) => { println("res-err=" + m) }
+    }
+    return "ok"
+}
+
+fn main() -> I32 {
+    var x: I32? = Some(9)
+    var s1 = take_opt(x)
+    println(s1)
+    var s2 = take_opt(make_opt(true))
+    println(s2)
+    var n: I32? = None
+    var s3 = take_opt(n)
+    println(s3)
+    var r: Result[I32, Str] = Ok(5)
+    var s4 = take_res(r)
+    println(s4)
+    var loc: I32? = Some(3)
+    match loc {
+        Some(q) => { println("loc=" + q.to_string()) }
+        None => { println("loc-none") }
+    }
+    return 0
+}

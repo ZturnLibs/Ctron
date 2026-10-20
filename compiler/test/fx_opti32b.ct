@@ -1,0 +1,33 @@
+fn take_opt(o: I32?) -> I32 {
+    return o.or(0)
+}
+
+fn relay(f: Bool) -> I32? {
+    let v = make(f)?
+    return Some(v + 1)
+}
+
+fn make(f: Bool) -> I32? {
+    if f {
+        return Some(10)
+    }
+    return None
+}
+
+fn main() -> I32 {
+    var a = take_opt(Some(7))
+    println("a=" + a.to_string())
+    var b = take_opt(None)
+    println("b=" + b.to_string())
+    var c = relay(true)
+    match c {
+        Some(v) => { println("c=" + v.to_string()) }
+        None => { println("c-none") }
+    }
+    var d = relay(false)
+    match d {
+        Some(v) => { println("d-some") }
+        None => { println("d-none") }
+    }
+    return 0
+}

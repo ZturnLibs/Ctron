@@ -1,3 +1,12 @@
+> **R2a 零码改完成+fx 语料转正(2026-10-20;R 码 ABI 批 2 前半)。**
+> R1 的 Optional 臂(`非 Str → "R"`)顺带修齐全族:`I32?`/`Result[T,E]` 形参/注解 let/
+> 返回/直构实参(Some 构造直传)/`.or`/`?` 传播全链双臂逐字一致(r2/r2b 探针)——塌缩
+> 真身勘定=Optional 节点无臂落 "i"(码层)而非 ctype(其 "R"→ct_res 映射本就在)。
+> fx 语料转正两件(fx_opti32/fx_opti32b,smoke 名单随批,金源=解释臂运行时对比):
+> Option[I32] 形参+None 实参+直构实参/`.or` 缺省/`?` 传播+再包装全形态常设哨。
+> **余 R2b=尾判定统一**(设计裁决项:尾值臂 return 位[fx_optstr 依赖]vs 语句位
+> [解释臂语义],需 ct_stmts 尾标志穿线)——设计文档 §4 已更新二偏离实录。
+>
 > **R1 Str? NULL 模型族落地(2026-10-19,R 码 ABI 设计轮批 1;扁平 R 族成员一二三销账)。**
 > ①`ct_ty_code` 翻面:`Str?`/`String?`(parse=Optional 节点,**非 Named-Option**——初版
 > 翻 Named 臂被签名 int32 咬出,Optional 检查须先于 Named 闸)+显式 `Option[Str]` 拼写
