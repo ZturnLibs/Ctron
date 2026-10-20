@@ -1,3 +1,16 @@
+> **R2b 尾判定勘定收束(2026-10-20;非块臂语义全图定案)。**
+> 尝试统一(语句位合成 Expr)被 clo1 闭包尾段错误咬回——**全图定案**:①fn 体尾槽
+> match=ct_match_value 值形(ct_is_value(Match)=false 设计注释「臂内 return 负责退出」);
+> ②闭包/子块尾(经 ct_prescan_tail→ct_stmt)= R 分支/s 模型臂 **return 位即闭包返回**
+> (clo1 `||{ match … {Some(s)=>s}}` 依赖实证);③中位语句 match 非块值臂=提前返回
+> 误用面(**在册债定稿**:解释臂=丢弃,发射臂=提前返回——**写法纪律=语句位 match 用
+> 块臂**,idiom 清单随批);四臂回无条件 return 位(#tail 标记方案试过即撤——尾槽判定
+> 依赖 NL 折叠空白,标记不可达)。R 分支 OK/ERR 语句位(W2a)与 SOME/NONE return 位
+> 并存口径不变。尾判定的健壮解=解析层尾分类(p_block 尾槽 NL 折叠规则显式化),
+> 归 R 码 ABI 批后续。
+> 门:dc1/r1/r2/r2b 四探针双臂逐字一致+10_trace 发射 rc=0+clo1 闭包尾恢复+mid1 中位
+> 勘定探针(分歧面留档)+smoke --full 239/0(新增 fx_opti32/b 两件)+suite 119/120·120/120。
+>
 > **R2a 零码改完成+fx 语料转正(2026-10-20;R 码 ABI 批 2 前半)。**
 > R1 的 Optional 臂(`非 Str → "R"`)顺带修齐全族:`I32?`/`Result[T,E]` 形参/注解 let/
 > 返回/直构实参(Some 构造直传)/`.or`/`?` 传播全链双臂逐字一致(r2/r2b 探针)——塌缩

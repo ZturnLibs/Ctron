@@ -283,7 +283,9 @@ fn ct_bound_b(b: List[Str], out: List[Str]) {
 fn ct_prescan_tail(tl: List[Str], penv: List[Str], file: List[Str]) {
     if tl[0] == "None" { return }
     if or2(tl[0] == "Match", tl[0] == "If") {
-        ct_stmt(tl, penv, file, List[Str]())
+        // R2b:闭包/子块尾位 match = 值位(#tail 标记)——臂体 return 位语义经此
+        // 保留;中位语句 match 无标记走语句位(R2b 统一)
+        ct_stmt(tl, env_bind(penv, "#tail", "1"), file, List[Str]())
         return
     }
     if tl[0] == "BlockExpr" {

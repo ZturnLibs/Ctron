@@ -1439,8 +1439,9 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 if sbe[0] == "BlockExpr" {
                     ct_block(sbe[1], senv, file, hreg)
                 } else {
-                    // 非块臂体 = return 值(尾位 match 值臂的发射实现——fx_optstr
-                    // name_or 实证;语句位值臂误用=提前返回,债在册待尾判定统一批)
+                    // 非块臂体 = return 值(恒 return 位:尾槽 match 按语句发射时臂内
+                    // return 即 fn 返回[ct_is_value(Match)=false 设计];中位语句 match
+                    // 值臂=提前返回误用面,在册债——写法纪律=语句位用块臂)
                     eln("return " + ct_expr(sbe, senv, file) + ";", env)
                 }
                 eln("}", env)
@@ -1452,7 +1453,7 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 if nbe[0] == "BlockExpr" {
                     ct_block(nbe[1], env, file, hreg)
                 } else {
-                    // 非块臂体 = return 值(尾位 match 值臂同上;债在册)
+                    // 非块臂体 = return 值(同上)
                     eln("return " + ct_expr(nbe, env, file) + ";", env)
                 }
                 eln("}", env)
@@ -1734,9 +1735,8 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             if be[0] == "BlockExpr" {
                 ct_block(be[1], env3, file, hreg)
             } else {
-                // 非块臂体 = return 值(尾位 match 值臂的发射实现;fx_optstr name_or
-                // 金源实证——R1 翻面后 s 模型接管,与 R 分支 SOME/NONE 同约定)
-                eln("return " + ct_expr(be, env3, file) + ";", env3)
+                // 非块臂体 = return 值(同上)
+                eln("return " + ct_expr(be, env3, file) + ";", env)
             }
             eln("}", env)
         }
@@ -1751,7 +1751,7 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             if be2[0] == "BlockExpr" {
                 ct_block(be2[1], env, file, hreg)
             } else {
-                // 非块臂体 = return 值(尾位 match 值臂同上)
+                // 非块臂体 = return 值(同上)
                 eln("return " + ct_expr(be2, env, file) + ";", env)
             }
             eln("}", env)
