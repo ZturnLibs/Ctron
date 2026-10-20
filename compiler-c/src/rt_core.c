@@ -89,14 +89,30 @@ val v_err_t(rt* R, const char* msg, val cause, const char* trace, const char* co
     return v;
 }
 /* 错误载荷→原始码(IP-01 W1):V_ERR 保留最内层 code,否则回退其 msg;V_STR/V_TAG 取自身标识 */
-const char* ctron_err_code_of(val payload) {
+/* 变体名 → "枚举名.变体名"(IP-01 注册名贯通;镜像 is_variant 走查;未命中回退原名) */
+static const char* ctron_enum_full_of(const rt* R, const char* vname) {
+    if (!vname) return "";
+    for (size_t i = 0; i < R->f->ndecls; i++) {
+        const cdecl* d = &R->f->decls[i];
+        if (d->kind != D_ENUM) continue;
+        for (size_t j = 0; j < d->en.nvariants; j++)
+            if (strcmp(d->en.variants[j].name, vname) == 0) {
+                char* r = (char*)ctron_arena_alloc(R->a, strlen(d->en.name) + strlen(vname) + 2);
+                sprintf(r, "%s.%s", d->en.name, vname);
+                return r;
+            }
+    }
+    return vname;
+}
+
+const char* ctron_err_code_of(const rt* R, val payload) {
     if (payload.k == V_ERR && payload.err) {
         if (payload.err->code) return payload.err->code;
         if (payload.err->msg) return payload.err->msg;
         return "";
     }
     if (payload.k == V_STR && payload.s) return payload.s;
-    if (payload.k == V_TAG) return payload.tag ? payload.tag : "";
+    if (payload.k == V_TAG) return payload.tag ? ctron_enum_full_of(R, payload.tag) : "";
     return "";
 }
 
@@ -504,7 +520,7 @@ int option_builtin(rt* R, val recv, const char* m, cexpr* call) {
             val* cause_payload = (val*)ctron_arena_alloc(R->a, sizeof(val));
             cause_payload[0] = payload;
             val* one = (val*)ctron_arena_alloc(R->a, sizeof(val));
-            one[0] = v_err_t(R, txt, v_tag("Some", cause_payload, 1), tr, ctron_err_code_of(payload));
+            one[0] = v_err_t(R, txt, v_tag("Some", cause_payload, 1), tr, ctron_err_code_of(R, payload));
             R->opt_result = v_tag("Err", one, 1);
             R->has_opt = 1;
             return 1;

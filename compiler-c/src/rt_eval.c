@@ -727,7 +727,7 @@ val eval_expr(rt* R, cexpr* e) {
                     val* cause_payload = (val*)ctron_arena_alloc(R->a, sizeof(val));
                     cause_payload[0] = inner;
                     errv = v_err_t(R, b.d ? b.d : "", v_tag("Some", cause_payload, 1), "main:1",
-                                   ctron_err_code_of(inner));
+                                   ctron_err_code_of(R, inner));
                     free(b.d);
                 } else {
                     errv = inner; // 已是 AnyError,原样传播

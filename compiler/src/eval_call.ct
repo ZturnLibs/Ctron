@@ -1558,15 +1558,21 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
                         cs.push("T")
                         cs.push("Some")
                         cs.push(v_box(p))
-                        // code(IP-01 W1):擦除后仍可读的原始错误码。v0 语义=载荷自身
-                        // 标识(变体值 ["T",名]→变体名;Str 错误→串);context 链上
-                        // payload 已是 AnyError 时保留最内层 code(码不随包装链漂移,§5.4)
+                        // code(IP-01 W1→注册名全形):擦除后仍可读的原始错误码。
+                        // derive(Error) 变体 → "枚举名.变体名"(注册名贯通);Str 错误
+                        // →串;context 链上 payload 已是 AnyError 时保留最内层 code
+                        //(码不随包装链漂移,§5.4)
                         var cd = ""
                         if p.tag == 5 {
                             cd = p.s
                         } else if p.tag == 8 {
                             if seq2(cx_of(p)[0], "T") {
-                                cd = cx_of(p)[1]
+                                var ven = eval_enum_of_variant(file, cx_of(p)[1])
+                                if ven.len > 0 {
+                                    cd = ven + "." + cx_of(p)[1]
+                                } else {
+                                    cd = cx_of(p)[1]
+                                }
                             } else if seq2(cx_of(p)[0], "U") {
                                 if seq2(cx_of(p)[1], "AnyError") {
                                     var pi3: I32 = 2

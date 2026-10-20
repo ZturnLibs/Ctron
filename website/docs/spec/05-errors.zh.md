@@ -43,7 +43,7 @@ enum HttpError { Timeout(U64) | BadStatus(I32) }
 ```
 
 - **`AnyError`**(前奏 class,实现 `Error`)是**错误擦除类型**:`message` = 最近上下文,`cause` = 被包装错误,`trace` = 累积位置链,`code` = 原始错误码(只读;擦除/包装后仍可读,供日志、诊断与 agent 修复循环按码定位)。
-- **错误码(`code`)契约**:`context` 物化与 `?` 擦除时填充,取值 = 原始错误载荷的自身标识(`@derive(Error)` 枚举变体名或 Str 错误消息);`context` 包装链上**保留最内层原始码**(码不随包装漂移)。`derive(Error)` 注册名贯通(枚举全名形态)与 `downcast[E]` 类型恢复见语言评审提案 IP-01 W2。
+- **错误码(`code`)契约**:`context` 物化与 `?` 擦除时填充,取值 = 原始错误载荷的自身标识(`@derive(Error)` 枚举 = **注册名全形 `枚举名.变体名`**,Str 错误 = 消息串);`context` 包装链上**保留最内层原始码**(码不随包装漂移)。`downcast[E]` 类型恢复已落地(自举面);宿主差分与发射臂注册名余项见语言评审提案 IP-01。
 - `result.context(msg) -> Result[T, AnyError]`:包装错误并**物化**位置链(message = msg,cause = 原错误,trace 追加当前 file:line)。
 - `?` 向返回 `AnyError` 的函数传播时,任意 `E: Error` **自动擦除转换**(§5.3 "可转换"的唯一内建形态)。
 - 诊断展示:错误值被 `Show` 时按链输出 `msg … while msg2 … while …(trace)`。

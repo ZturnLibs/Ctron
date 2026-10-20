@@ -1,3 +1,12 @@
+> **IP-01 注册名全形贯通(2026-10-20;code="枚举名.变体名",三面同步)。**
+> 解释臂 context() 物化点(eval_enum_of_variant 反查前缀)/发射臂 ct_anyerr_wrap_e
+> (ct_dot_join 组合 tname+变体名,直构与名表两路全形)/种子 ctron_err_code_of 加 R 参
+> (+ctron_enum_full_of 镜像 is_variant 走查,V_TAG 全名)。spec §5.4 契约升格注册名
+> 全形;10_trace 两断言 "Bad"→"Fail.Bad" 双宿双臂绿。**IP-01 余项仅=宿主 downcast
+> 差分**(种子解释/种子发射 downcast 面+种子发射擦除助手 code 变体名,ptr_as_view
+> 「自举先行」先例);提案状态更新。门:10_trace 三面 rc=0/3-3/0+suite 119/120·120/120
+> (07a 在册零分歧)+smoke --full 239/0+sync_site_spec 13 件随批。
+>
 > **R2b 尾判定勘定收束(2026-10-20;非块臂语义全图定案)。**
 > 尝试统一(语句位合成 Expr)被 clo1 闭包尾段错误咬回——**全图定案**:①fn 体尾槽
 > match=ct_match_value 值形(ct_is_value(Match)=false 设计注释「臂内 return 负责退出」);

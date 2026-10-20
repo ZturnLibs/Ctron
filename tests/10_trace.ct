@@ -31,7 +31,7 @@ test "context materializes the propagation trace" {
 
 test "error code survives erasure (IP-01 W1)" {
     match relay().context("top") {
-        Err(e) => assert_eq(e.code, "Bad")   // 擦除后原始码可读(变体名)
+        Err(e) => assert_eq(e.code, "Fail.Bad")   // 擦除后原始码可读(注册名全形)
         Ok(_) => assert(false)
     }
 }
@@ -39,7 +39,7 @@ test "error code survives erasure (IP-01 W1)" {
 test "context chain keeps the innermost code" {
     match relay2().context("outer") {
         Err(e) => {
-            assert_eq(e.code, "Bad")         // 码不随包装链漂移
+            assert_eq(e.code, "Fail.Bad")    // 码不随包装链漂移
             assert_eq(e.message, "outer")    // message 取最近上下文
         }
         Ok(_) => assert(false)
