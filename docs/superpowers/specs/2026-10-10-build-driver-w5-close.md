@@ -58,6 +58,11 @@
 
 ## 5. 触发件在册(停摆账,诚实分册)
 
+> **2026-10-20 已愈(ba038338)**:`ct_typeof` 对未声明内建落 "i" 兜底(CC1 批2 相容守卫
+> 误报),补 `ctron_gui_entry`/`ctron_embedded`/`ctron_prog_args_at`/`dlerror_str` 四枚
+> Str 返回码后,五任务 emit 全通(9 例受阻样例复验)。**批2 四例收编已解锁**——仍待按
+> 批1 模板执行(本报告其余停摆面不变,下方为治愈前存档)。
+
 **症状**:`emit:实参类型不符:rt_window_loop_d 第2参 形参码=s 实参码=i`——`run(ViewCall)` 编译器合成面(rt_run_anchor→rt_run_d→rt_window_loop_d 链)装配处,检查器在调用位见 int 而前向声明为 `const char*`。
 
 **停摆面**:批1 五任务(ex-gui-dash/snippets/widgets/contacts/themes)停此(六步走位正确,步骤 3 发射位败);批2 四例未启动、任务未建(同触发,启动即撞);连带在库 ex-gui-calc(W2 验绿后回归窗内转败)与 tests/gui 阶梯 25 FAIL/28 ok。

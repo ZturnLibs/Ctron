@@ -9,6 +9,7 @@
 - LSP:**用 Ctron 语言实现**(`lsp/src/main.ct`,`ctronc run` 解释执行;架构与解释器域约束见 `lsp/README.md`)
 - 能力:词法诊断(E1001 族)+ 保存时语义诊断(`ctronc check --format=json`)、大纲、hover、补全、定义、同文件 rename/references/highlight、signatureHelp、形参名 inlay hints、缩进格式化、花括号折叠、快速修复(`;` 删除/`::`→`.` + fixes[] 通道)
 - 运行时(rt.c,跨泳道):I/O 内建 `read_line`/`read_bytes`/`flush_out`;`call_decl` 实参求值修复(详见 compiler-c/README 台账)
+- **2026-10-20 更新**:上述三内建已同步落自举编译器(eval/trans/driver_emit 四面)——`ctronc` 可为 C seed 或自举统一驱动 `compiler/bin/ctron` 皆可跑 LSP;扩展 check 包装参数序同步修正(`check <file> --format=json`);详见 COVERAGE「编辑器 I/O 内建自举化」节
 - 验收:90 文件(语料+selfhosted+自身)全特性回归零 panic;61KB 文档整会话 3.4s(单趟扫描重构,原 256s);LSP 自身零自诊断
 
 原始分析(保留供后续阶段参考):

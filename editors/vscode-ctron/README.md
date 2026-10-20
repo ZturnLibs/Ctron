@@ -1,6 +1,6 @@
 # Ctron VSCode 扩展(ctron-lang)
 
-Ctron 语言的 VSCode 支持:语法高亮 + 智能提示。语言服务器(`lsp/src/main.ct`)**用 Ctron 语言自身实现**,经种子编译器 `ctronc run` 解释运行——与仓库自举路线一致。
+Ctron 语言的 VSCode 支持:语法高亮 + 智能提示。语言服务器(`lsp/src/main.ct`)**用 Ctron 语言自身实现**,经 `ctronc run` 解释运行——与仓库自举路线一致。`ctronc` 可为 C seed(`compiler-c/build/ctronc`)或自举统一驱动(`compiler/bin/ctron`,2026-10-20 起三 I/O 内建已自举化,包装脚本 exec 真身)皆可。
 
 ## 功能
 

@@ -22,7 +22,7 @@ use tui.tui_theme.{theme_default, parse_color, sgr_fg, sgr_bg, color_level, colo
 use tui.tui_event.{poll_ev, ev_none, ev_key, ev_char, ev_mouse, ev_resize, ev_act, ev_tick, k_up, k_down, k_left, k_right, k_home, k_end, k_pgup, k_pgdn, k_ins, k_del, k_enter, k_tab, k_backspace, k_esc}
 use tui.tui_driver.{run_app}
 use tui.tui_parse.{tui_parse}
-// test/d_* 家族持出(合并单元 decl 窗口丢失症,批C 归因;文件存 tui_test.ct)
+// test/d_* 家族持出(批C → 批C-3:合并泄漏已愈,残余=闭包形参无签型,见 tui_driver.ct 头注)
 
 // ---- 窄桥(tui_term.c;发射臂) ----
 

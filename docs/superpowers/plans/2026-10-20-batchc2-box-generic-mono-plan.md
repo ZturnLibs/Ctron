@@ -81,6 +81,13 @@ split→按形参 TArgs 映射 tpsn)。发射 C 文本对**非泛型 Box 存量�
 
 ### Wave 4: 回填 + 收官
 
+> **W4 状态(2026-10-20 勘定,暂挂→批C-3)**:W1–W3 落库后复现件 emit rc=0(构造面
+> `__U5_Model`、`test__u_Model` 体内局部声明均正)。**残余真缺口=闭包字面量形参无签型**
+> ——`ct_emit_clov` 形参槽为无型 `ct_i`,闭包体内泛型调用 `d_*(tt,…)` 的 M 自
+> `ct_typeof(tt)` 推断落 `i` → `d_*` 单态化 `__i` 与传入 `__U5_Model` 错配。
+> 两径待裁:A 期望 fn 签型穿入闭包形参;B TuiTest 去泛型化(`reframe: fn()->TuiBuf`
+> 闭包字段承载重渲染,`d_*` 全非泛型)。详见 COVERAGE「批C-2 W4 勘定」。
+
 **Files:**
 - Modify: `pkgs/tui/tui_driver.ct`(test/d_* 家族原稿回填,批C 批注节摘除)
 - Modify: `pkgs/tui/tui.ct`(facade use 行重挂 test/d_*)

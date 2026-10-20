@@ -1,6 +1,10 @@
 # Ctron 承载秘本引擎 —— 能力补齐设计(G1–G7 批)
 
 - 状态:**裁决已收,按推荐执行**(2026-10-10 用户裁决 J1–J9 全按推荐;§13 各项即为定案。G1 实施计划 = `docs/superpowers/plans/2026-10-10-steno-g1-memory-plan.md`;后续批次随前一批复核各自出计划)。
+- **执行态(2026-10-20 更新)**:G1–G7 全收官(G6 SQLite 批终 80020a20;G7 Windows 批终
+  1fb4f4a3,挂账 proc/并发运行时/宽字符 IO 三 Windows 面;G5 W1–W4 收官,chunked/EOF
+  终结与 2B 尾差在册);Stage 0(steno-verify)与 Stage 2 预埋(engine-proxy+soak)落库。
+  挂账汇总见 COVERAGE 各批终登记节。
 - 日期:2026-10-10。
 - 输入:`ctron-gap-roadmap.md` v0.1(2026-10-10,工作区件 `/Users/zyj/.zcode/workspace/default/ctron-gap-roadmap.md`;本设计 §1 已逐项复核其「现状」列,复核后本文自足)。
 - 方法:五路现状复核(FFI/内存/并发/域包/链接与平台),所有断言过 file:line 实证;**现状以本文 §1 为准,roadmap 的现状列多处已过时**。

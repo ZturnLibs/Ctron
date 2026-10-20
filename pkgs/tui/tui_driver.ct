@@ -93,9 +93,13 @@ pub fn run_app[M](view: fn(M) -> TuiTree, update: fn(M, Event), m: M, theme: The
     return 0
 }
 
-// ---- headless 测试驱动(§9)持出(批C 病灶三次精化 2026-10-18)----
-// test/d_* 家族(TuiTest[M] 泛化稿)持出:fn 形参型引用**同包跨文件泛型 struct**
-// (fn f[M](x: Box[TuiTest[M]]),TuiTest 声明于他文件)→ 合并期**类型名泄漏为顶层
-// decl**(E5030 撞名);struct 同文件共置时泄漏名=参数名;独立单文件无恙;AST 完好
-// (ctc.sh ast dump 逐槽全对)= 合并期 decl 名槽对比泄漏,非 parse。归编译器批C
-// (parse_pkg 合并名槽/sem 泛型实例化 decl 泄漏路径)。修复后本节原稿直接回填。
+// ---- headless 测试驱动(§9)持出(批C → 批C-2 → 批C-3,2026-10-20 三勘)----
+// test/d_* 家族(TuiTest[M] 泛化稿)持出。三勘定案:
+// ①原「合并期 decl 名槽泄漏 E5030」**不再复现**(2026-10-20 以本文件真 context 重建
+//   触发形状,全族 check 绿;详见 COVERAGE「批C 再勘定」)。
+// ②真阻塞=发射面:`B:` 码丢实例实参 + `ct_call_infer_tys` 无 Box 分支已修
+//   (批C-2 W1–W3 f1e0aee3),构造/局部声明 `__U5_Model` 均正确。
+// ③**残余(批C-3 立项)**:闭包字面量形参无签型(`ct_emit_clov` 形参槽=无型 ct_i)
+//   → 闭包体内泛型调用 d_*(tt) 的 M 推断落 i,与传入 __U5_Model 错配。
+//   两径待裁:A 期望 fn 签型穿入闭包形参;B TuiTest 去泛型化(reframe 闭包字段,
+//   d_* 全非泛型)。裁决后本节原稿直接回填。
