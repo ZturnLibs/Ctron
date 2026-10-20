@@ -4,6 +4,11 @@ enum Fail {
     Bad
 }
 
+@derive(Error)
+enum HttpError {
+    Timeout
+}
+
 fn inner() -> Result[I32, Fail] {
     return Err(Bad)
 }
@@ -32,6 +37,22 @@ test "context materializes the propagation trace" {
 test "error code survives erasure (IP-01 W1)" {
     match relay().context("top") {
         Err(e) => assert_eq(e.code, "Fail.Bad")   // 擦除后原始码可读(注册名全形)
+        Ok(_) => assert(false)
+    }
+}
+
+test "downcast recovers the concrete error (IP-01)" {
+    match relay().context("top") {
+        Err(e) => {
+            match downcast[Fail](e) {
+                Some(_) => { assert(true) }
+                None => { assert(false) }
+            }
+            match downcast[HttpError](e) {
+                Some(_) => { assert(false) }
+                None => { assert(true) }
+            }
+        }
         Ok(_) => assert(false)
     }
 }

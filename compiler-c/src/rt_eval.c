@@ -814,6 +814,43 @@ val eval_expr(rt* R, cexpr* e) {
             if (e->nelems != 1) rt_abort(R, RT_ERROR, "Box 实参");
             return v_box(R, eval_expr(R, e->elems[0]));
         }
+        // IP-01 downcast[E](e: AnyError) -> Option[E](判别只在调用点;AnyError 沿
+        // cause 链取最内层载荷,V_TAG 变体全名与显式 E 比对)
+        if (cal && cal->kind == EX_TYPEARGS && cal->obj && cal->obj->kind == EX_IDENT
+            && strcmp(cal->obj->text, "downcast") == 0) {
+            if (e->nelems != 1) rt_abort(R, RT_ERROR, "downcast 实参");
+            val dv = eval_expr(R, e->elems[0]);
+            const char* denm = cal->ntargs > 0 ? head_nm(cal->targs[0]) : NULL;
+            val dpay = dv;
+            if (dv.k == V_ERR && dv.err) {
+                val inner = v_void();
+                int found = 0;
+                val cur = dv.err->cause;
+                for (int d2 = 0; d2 < 8 && cur.k == V_TAG && cur.nitems == 1; d2++) {
+                    if (strcmp(cur.tag, "Some") != 0) break;
+                    inner = cur.items[0];
+                    found = 1;
+                    if (inner.k == V_ERR && inner.err) cur = inner.err->cause; else break;
+                }
+                if (!found) {
+                    val* none = NULL;
+                    return v_tag("None", none, 0);
+                }
+                dpay = inner;
+            }
+            int hit = 0;
+            if (dpay.k == V_TAG && dpay.tag && denm) {
+                const char* enm2 = ctron_enum_name_of(R, dpay.tag);
+                if (enm2 && strcmp(enm2, denm) == 0) hit = 1;
+            }
+            if (hit) {
+                val* one = (val*)ctron_arena_alloc(R->a, sizeof(val));
+                one[0] = dpay;
+                return v_tag("Some", one, 1);
+            }
+            val* none = NULL;
+            return v_tag("None", none, 0);
+        }
         if (cal && cal->kind == EX_TYPEARGS && cal->obj && cal->obj->kind == EX_IDENT
             && strcmp(cal->obj->text, "List") == 0) {
             return v_list(R); // GC List[T]()

@@ -191,6 +191,8 @@ val v_chan(rt* R, int cap);
 val v_closure(const cexpr* ce, struct env* cap);
 val v_err_t(rt* R, const char* msg, val cause, const char* trace, const char* code);
 const char* ctron_err_code_of(const rt* R, val payload);
+const char* ctron_enum_full_of(const rt* R, const char* vname);
+const char* ctron_enum_name_of(const rt* R, const char* vname);
 val v_flt(double f);
 val v_fn(const cdecl* d);
 val v_int(__int128 x, int bits, int us);

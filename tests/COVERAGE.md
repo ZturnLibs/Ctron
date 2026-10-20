@@ -1,3 +1,13 @@
+> **宿主 downcast 差分补齐(2026-10-20;IP-01 宿主面收官,downcast 进套件双宿门控)。**
+> 种子解释臂 downcast[E](e) 臂(rt_eval TypeArgs-Call 族 Box 同款):AnyError 沿 cause
+> 链取最内层载荷(V_TAG 变体名经 ctron_enum_name_of 反查枚举名与显式 E 比对——**全名
+> helper 不适用于判别**(判别比较的是枚举名),ctron_enum_full_of 留作 code 面)+
+> ctron_enum_name_of 导出;10_trace 增 downcast 正反例测试(Fail=hit/HttpError=miss,
+> **块臂形态**——非块臂首版踩 R2b 语句位纪律即改)。套件 behavior 双宿自此门控 downcast。
+> 余=种子发射器 downcast 面(per-type Option 结构合成,登记债;自举发射臂已全形)。
+> 门:10_trace 三面(种子 4-4/0/cc rc=0/发射 rc=0)+suite 119/120·120/120(07a 在册
+> 零分歧)+meta_check 全绿。
+>
 > **IP-01 注册名全形贯通(2026-10-20;code="枚举名.变体名",三面同步)。**
 > 解释臂 context() 物化点(eval_enum_of_variant 反查前缀)/发射臂 ct_anyerr_wrap_e
 > (ct_dot_join 组合 tname+变体名,直构与名表两路全形)/种子 ctron_err_code_of 加 R 参
