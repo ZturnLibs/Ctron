@@ -2566,3 +2566,23 @@ bound()(树 1:1 克隆,txt/al 两面走槽解析;结构索引原样——与 tre
 smoke --full:**237/0 rc=0 无回归确证**(自举固定点/std 种子包/deep 复放/双臂并发/
 黄金对照全节绿)。运行时模板变更 = 全发射面波及,此后模板类变更一律全量 smoke 随批
 (制度口径与 G 型批次合流同规)。
+
+## 2026-10-20 TUI 批C 再勘定 + 两处发射缺口落库(编译器泳道)
+
+按 516a6fbf^ 的 W4 实验块与 W3c 原稿,在 tui_driver 真 context 重建触发形状
+(`TuiTest[M]` 泛型 struct 携 fn 字段 + `Box[TuiTest[M]]` 直参数型 + test/d_* 族):
+- **① 原 E5030 合并期 decl 名槽泄漏不再复现**——全族 `check` 绿(decls=123),名槽 dup
+  面已自愈(intervening 无 parse_pkg 改动,倾向 1011–1020 其它面归一)。
+- **② 真阻塞前移为发射面泛型 struct 单态化内名不一致**:生成 C 中同时出现
+  `t_TuiTest__U5_Model`(构造引用)/`t_TuiTest__I`(typedef 只此一枚)/`t_test__u_Model`
+  (函数单态化)三套 mangling → `cc: use of undeclared identifier 't_TuiTest__U5_Model'`。
+  归泛型实例码(`ct_struct_inst_code`)与 typedef/函数单态化命名统一,深水批(未做)。
+- **③ 顺带修两处发射缺口(本批落库)**:
+  - `trans_ty.ct`: `Box[T].v` 显式解引用旧按字段名 `v` 查表 → ""→"i",嵌套读
+    `box.v.field` 全链塌 i(批C 泛型族发射根因之一);现内槽经 `ct_ty_code` 归一
+    (结构→`u:<名>`,标量→域码)。
+  - `trans_stmt.ct`: struct/Box 字段复合赋值 `field op= rhs` 旧 panic;现镜像 Ident
+    路径(6/W/7 域检查帮手,余 C 复合算符;含 `tt.v.frames += 1` 类)。
+  门:`check cc_run.ct` decls=531 不变;trans_v0-v6 往返逐字一致;fx 子集
+  (gstruct/own/opti32/drop/arr_byval/with_expr 全绿;boxalias/optstr 两 DIFF=基线
+  同指纹,非本批回归)。

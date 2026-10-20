@@ -1212,21 +1212,66 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         if tgt[0] == "Member" {
             // struct 字段赋值(v4 挂账解除,with_mut 体依赖):含 P<内> 解引用接收者
             var oft = ct_strip_p(ct_typeof(tgt[1], env, file))
-            if oft.len > 2 && byte_slice(oft, 0, 2) == "u:" {
-                if st[2] != "Eq" {
-                    panic("ct_stmt:字段复合赋值")
+            var isu = oft.len > 2 && byte_slice(oft, 0, 2) == "u:"
+            var isb = oft.len > 2 && byte_slice(oft, 0, 2) == "B:"
+            if isu || isb {
+                // Box 自动解引用字段写(§6.1):接收者为堆 cell 指针,别名共享可见
+                var lhs = "(" + ct_expr(tgt[1], env, file) + ")." + tgt[3]
+                if isb { lhs = "(" + ct_expr(tgt[1], env, file) + ")->" + tgt[3] }
+                var rhs3 = ct_expr(st[3], env, file)
+                if st[2] == "Eq" {
+                    eln(lhs + " = " + rhs3 + ";", env)
                     return env
                 }
-                eln("(" + ct_expr(tgt[1], env, file) + ")." + tgt[3] + " = " + ct_expr(st[3], env, file) + ";", env)
-                return env
-            }
-            if oft.len > 2 && byte_slice(oft, 0, 2) == "B:" {
-                // Box 自动解引用字段赋值(§6.1):接收者为堆 cell 指针,别名共享可见
-                if st[2] != "Eq" {
-                    panic("ct_stmt:字段复合赋值")
-                    return env
+                // 复合赋值(field op= rhs):镜像 Ident 路径——6/W/7 域走检查帮手
+                var fc = ct_strip_p(ct_typeof(tgt, env, file))
+                var hv = ""
+                if fc == "6" {
+                    if st[2] == "AddEq" { hv = "ctron_i64_add" }
+                    if st[2] == "SubEq" { hv = "ctron_i64_sub" }
+                    if st[2] == "MulEq" { hv = "ctron_i64_mul" }
+                    if st[2] == "DivEq" { hv = "ctron_i64_div" }
+                    if st[2] == "ModEq" { hv = "ctron_i64_mod" }
+                    if hv != "" {
+                        eln(lhs + " = " + hv + "(" + lhs + ", " + rhs3 + ");", env)
+                        return env
+                    }
                 }
-                eln("(" + ct_expr(tgt[1], env, file) + ")->" + tgt[3] + " = " + ct_expr(st[3], env, file) + ";", env)
+                if or2(fc == "7", fc == "z") {
+                    if st[2] == "AddEq" { hv = "ctron_u64_add" }
+                    if st[2] == "SubEq" { hv = "ctron_u64_sub" }
+                    if st[2] == "MulEq" { hv = "ctron_u64_mul" }
+                    if st[2] == "DivEq" { hv = "ctron_u64_div" }
+                    if st[2] == "ModEq" { hv = "ctron_u64_mod" }
+                    if hv != "" {
+                        eln(lhs + " = " + hv + "(" + lhs + ", (uint64_t)(" + rhs3 + "));", env)
+                        return env
+                    }
+                }
+                if fc.len > 2 && byte_at(fc, 0) == 119 {
+                    var wlo = "0"
+                    var whi = "255"
+                    if fc == "w8s" {
+                        wlo = "-128"
+                        whi = "127"
+                    }
+                    if fc == "w16u" {
+                        wlo = "0"
+                        whi = "65535"
+                    }
+                    if fc == "w16s" {
+                        wlo = "-32768"
+                        whi = "32767"
+                    }
+                    if st[2] == "AddEq" { hv = "ctron_w_add" }
+                    if st[2] == "SubEq" { hv = "ctron_w_sub" }
+                    if st[2] == "MulEq" { hv = "ctron_w_mul" }
+                    if hv != "" {
+                        eln(lhs + " = " + hv + "(" + lhs + ", (int32_t)(" + rhs3 + "), " + wlo + ", " + whi + ");", env)
+                        return env
+                    }
+                }
+                eln(lhs + " " + ct_aop(st[2]) + " " + rhs3 + ";", env)
                 return env
             }
             panic("ct_stmt:struct 字段赋值未支持")

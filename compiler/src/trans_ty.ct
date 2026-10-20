@@ -1356,6 +1356,16 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         }
         if oft.len > 2 && byte_slice(oft, 0, 2) == "B:" {
             // Box 自动解引用字段读:载荷 struct 的字段码
+            if e[3] == "v" {
+                // §6.1 Box[T].v = 载荷值本身(显式解引用;旧按字段 v 查表→""→i,
+                // 嵌套读 box.v.field 全链塌成 i 即批C 泛型 TuiTest[M] 发射根因)。
+                // 内槽=类型名(B:<名>)→ Named 节点过 ct_ty_code 归一(结构→u:<名>,
+                // 标量→域码)
+                var bnn = mk("Named")
+                bnn.push(byte_slice(oft, 2, oft.len))
+                bnn.push(mk("TArgs"))
+                return ct_ty_code(bnn, file)
+            }
             return ct_field_ty(file, byte_slice(oft, 2, oft.len), e[3])
         }
         // Phase 4 并发成员
