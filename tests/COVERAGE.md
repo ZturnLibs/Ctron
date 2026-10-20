@@ -2586,3 +2586,23 @@ smoke --full:**237/0 rc=0 无回归确证**(自举固定点/std 种子包/deep �
   门:`check cc_run.ct` decls=531 不变;trans_v0-v6 往返逐字一致;fx 子集
   (gstruct/own/opti32/drop/arr_byval/with_expr 全绿;boxalias/optstr 两 DIFF=基线
   同指纹,非本批回归)。
+
+### 批C 根因闭环(2026-10-20 续,同日二勘;代码级定位)
+
+上条②「三套 mangling」根因定位到两处代码级缺口(均 `trans_ty.ct`,批C 真身):
+1. **`B:` 码丢实例实参**——`ct_ty_code`/`ct_typeof` 对 `Box[泛型struct[实参]]` 产
+   `B:<基名>`(:243/:1463 取 `nt[2][1][1]` 裸名),实例实参整段丢失:`TuiTest[Model]`
+   的 Box 码 = `B:TuiTest`(应为 `B:u:TuiTest__<enc>`),`.v` 解引用无法回推实例码,
+   typedef/字段替换亦无从下手。
+2. **`ct_call_infer_tys` 无 Box 分支**(:2397)——现三分支只覆盖 裸 Named 型参 /
+   `Ref` 型参 / 泛型 struct 直参(:2433);形参 `Box[泛型struct[TPar]]` 全部落到缺省
+   `ct_scalar_ty("I32")`(:2407)→ 单态化名 `__i`。实证:生成 C 同时出现
+   `t_d_expect_text__i(t_TuiTest*…)`(推断落 i)与 `t_TuiTest__U5_Model` 构造引用
+   (构造面 `u:Model` 编码),`t_test__u_Model` 又是第三套(函数名单态化)。
+
+**治法(单独立项,建议 批C-2)**:①`B:` 码携全内码 `B:u:<名>__<enc>`(:243/:1463 两处
+产码点同改);②`.v` 解引用与 `box.field` 自动解引用改走实例字段替换
+(`ct_field_code_inst`,内码 `u:` 直返);③`ct_call_infer_tys` 增 Box 分支(拆 `B:` 内码 →
+`ct_struct_inst_split` → 按形参 TArgs 映射 tpsn);④`CT_TDEF`/函数单态化统一以该实例码
+命名。回归面警示:`B:` 码格式变化波及全部 `Box[T]` 存量(typeof/emit/调用点/field),
+须全量 smoke --full + suite 双列 + gui/tui 阶梯。
