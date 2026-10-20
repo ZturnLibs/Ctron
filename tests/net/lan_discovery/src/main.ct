@@ -1,0 +1,122 @@
+// lan_discovery —— 局域网发现网络原语回环验收(§11.2.2;局域网发现批次)
+// 钉住:① recvfrom_from 带回对端地址("127.0.0.1:<send 端口>",端口与 send 端
+// sockname 回读一致,udp_roundtrip 同款 :0 回读闭环);② 空队超时臂 rc<0 +
+// errno 置位(recvfrom 同口径);③ SO_BROADCAST 开关 on/off 均 rc=0;
+// ④ connect_t 连本机监听端口成功 + 回环读写;⑤ connect_t 连已关闭端口快速
+// 失败 rc=-1(非阻塞 connect + SO_ERROR 判定,不挂死);⑥ 字节序 hton/ntoh
+// 已知值往返(0x01020304 ↔ 0x04030201)。
+// 缓冲 = var U8[] 字节平面(CW1a 现役形态;旧 I64 lane 形态随在飞工作面
+// 漂移,本夹具不依赖)。
+// 超时臂(-2)说明:纯回环下 connect 要么即成要么即拒,无稳定"在途"路径,
+// 不可单测(登记:同 accept_t 拍醒语义的 coro 面测试留待 loom 发现服务臂)。
+// 形态(udp_roundtrip/tcp_echo 同款):免费函数 + net: StdNet 按值首参;
+// 错误面 = rc(0 成/<0 败)+ last_net_error();句柄 Drop RAII。
+// CI 纪律:仅回环、:0、零外联(tests/net/run.sh 同口径)。
+use net.{Net_probe, net_tcp_listen, net_tcp_sockname, net_tcp_accept_t, net_tcp_connect_t, net_read_t, net_write_str, net_close, net_udp_socket, net_udp_bind, net_udp_sendto, net_udp_recvfrom_from, net_udp_last_peer, net_udp_set_broadcast, net_hton_u16, net_ntoh_u16, net_hton_u32, net_ntoh_u32, addr_format, addr_host, addr_port, last_net_error, TcpListener, TcpStream, UdpSock}
+use net.bind.{ctron_net_last_errno, Box64}
+
+test "udp recvfrom_from returns peer addr host:port" {
+    let net = Net_probe()
+
+    // ---- 接收端:绑 :0 → 回读实际端口 ----
+    let rfd_box = Box[Box64](Box64 { v: 0 })
+    assert(net_udp_socket(net, rfd_box) == 0)
+    let rport_box = Box[Box64](Box64 { v: 0 })
+    assert(net_udp_bind(net, rfd_box.v, "127.0.0.1", 0, rport_box) == 0)
+    assert(rport_box.v > 0)
+    let rx = UdpSock { fd: rfd_box.v }
+
+    // ---- 发送端:绑 :0 → 回读实际端口(对端断言的锚) ----
+    let sfd_box = Box[Box64](Box64 { v: 0 })
+    assert(net_udp_socket(net, sfd_box) == 0)
+    let sport_box = Box[Box64](Box64 { v: 0 })
+    assert(net_udp_bind(net, sfd_box.v, "127.0.0.1", 0, sport_box) == 0)
+    assert(sport_box.v > 0)
+    assert(sport_box.v != rport_box.v)
+    let tx = UdpSock { fd: sfd_box.v }
+
+    // ---- 广播开关:on/off 均成功(UDP fd 上 SO_BROADCAST 双态可设) ----
+    assert(net_udp_set_broadcast(net, tx.fd, 1) == 0)
+    assert(net_udp_set_broadcast(net, tx.fd, 0) == 0)
+
+    // ---- tx → rx 单报文,recvfrom_from 带回对端地址 ----
+    var payload: U8[64] = [0]**64
+    payload[0] = 100
+    payload[1] = 105
+    payload[2] = 115
+    let sn = net_udp_sendto(net, tx.fd, "127.0.0.1", rport_box.v, payload, 3)
+    assert(sn == 3)
+
+    var rbuf: U8[64] = [0]**64
+    let rn = net_udp_recvfrom_from(net, rx.fd, rbuf, 64, 1000)
+    assert(rn == 3)
+    assert(rbuf[0] == 100)
+    assert(rbuf[1] == 105)
+    assert(rbuf[2] == 115)
+
+    // ---- 对端地址 = "127.0.0.1:<发送端回读端口>"(与 sockname 闭环一致) ----
+    let peer = net_udp_last_peer(net)
+    let expect = addr_format("127.0.0.1", sport_box.v)
+    assert_eq(peer, expect)
+    assert_eq(addr_host(peer), "127.0.0.1")
+    assert_eq(addr_port(peer), sport_box.v)
+
+    // ---- 空队超时臂:rc<0 + errno 置位(recvfrom 超时同口径) ----
+    var tbuf: U8[64] = [0]**64
+    let tn = net_udp_recvfrom_from(net, rx.fd, tbuf, 64, 50)
+    assert(tn < 0)
+    assert(ctron_net_last_errno() != 0)
+}
+
+test "tcp connect_t loopback ok + closed port fast fail" {
+    let net = Net_probe()
+
+    // ---- 监听 :0 → sockname 回读实际端口 ----
+    let lfd_box = Box[Box64](Box64 { v: 0 })
+    assert(net_tcp_listen(net, "127.0.0.1", 0, lfd_box) == 0)
+    let port_box = Box[Box64](Box64 { v: 0 })
+    assert(net_tcp_sockname(net, lfd_box.v, port_box) == 0)
+    let port = port_box.v
+    assert(port > 0)
+    let ln = TcpListener { fd: lfd_box.v, port: port.as[I32]() }
+
+    // ---- connect_t 连本机监听端口:rc=0,fd 可回环读写(出口阻塞属性已恢复) ----
+    let cfd_box = Box[Box64](Box64 { v: 0 })
+    let rc = net_tcp_connect_t(net, "127.0.0.1", port, 1000, cfd_box)
+    if rc != 0 {
+        panic(last_net_error().message)
+    }
+    let st = TcpStream { fd: cfd_box.v }
+    let afd_box = Box[Box64](Box64 { v: 0 })
+    assert(net_tcp_accept_t(net, ln.fd, 1000, afd_box) == 0)
+    let srv = TcpStream { fd: afd_box.v }
+    assert(net_write_str(net, st.fd, "disc") == 4)
+    var buf: U8[64] = [0]**64
+    assert(net_read_t(net, srv.fd, buf, 64, 1000) == 4)
+    assert(buf[0] == 100)
+    assert(buf[3] == 99)
+
+    // ---- connect_t 连已关闭端口:非阻塞 connect + SO_ERROR → 快速 rc=-1 ----
+    assert(net_close(net, ln.fd) == 0)
+    // 显式 close 后置 -1,作用域出口 Drop 跳过
+    ln.fd = -1
+    let bad_box = Box[Box64](Box64 { v: 0 })
+    let brc = net_tcp_connect_t(net, "127.0.0.1", port, 1000, bad_box)
+    assert(brc == -1)
+    assert(bad_box.v == 0)
+}
+
+test "byte order hton/ntoh known values" {
+    // 0x01020304 → 0x04030201(线序字节 01 02 03 04 方向正确);ntoh 自逆
+    assert_eq(net_hton_u32(16909060), 67305985)
+    assert_eq(net_ntoh_u32(67305985), 16909060)
+    // u16 同形:0x0102 → 0x0201
+    assert_eq(net_hton_u16(258), 513)
+    assert_eq(net_ntoh_u16(513), 258)
+    // 边界与闭合
+    assert_eq(net_hton_u32(0), 0)
+    assert_eq(net_hton_u32(4294967295), 4294967295)
+    assert_eq(net_hton_u16(65535), 65535)
+    assert_eq(net_ntoh_u32(net_hton_u32(305419896)), 305419896)
+    assert_eq(net_ntoh_u16(net_hton_u16(4660)), 4660)
+}

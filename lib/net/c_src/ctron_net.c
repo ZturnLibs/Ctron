@@ -15,6 +15,10 @@
  * P3-E:AF_UNIX listen/accept/connect/unlink 四件(POSIX 专面)与 DNS
  * 异步化(resolve 协程面入 2 线程 helper 池 + done 槽,不再滞留 worker)
  * 见各段头注。
+ * 局域网发现批次(2026-10-20):SO_BROADCAST 开关(ctron_net_udp_set_broadcast)、
+ * 带回对端地址接收(ctron_net_udp_recvfrom_from + last_peer)、带超时 connect
+ * (ctron_net_tcp_connect_t,非阻塞 connect + poll + SO_ERROR)——POSIX/winsock
+ * 双分支同形,rc 惯例与文件内既有件一致(见各函数头注)。
  */
 #include <stdint.h>
 #include <errno.h>
@@ -51,6 +55,7 @@ typedef int ct_ssize_t;
 #else
 #include <time.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <netinet/in.h>
@@ -79,6 +84,20 @@ static CT_TLS int64_t ct_net_errno_v = 0;
  * 首试可能阻塞 worker,移植时须以 O_NONBLOCK 面补齐)。 */
 #ifndef MSG_DONTWAIT
 #define MSG_DONTWAIT 0
+#endif
+
+/* v4 映射 v6(::ffff:x.x.x.x)判定的可移植兜底:winsock2 原生供给
+ * (ws2tcpip.h+in6addr.h),部分 POSIX 组合缺面时按 RFC 4291 定义补齐 */
+#ifndef IN6_IS_ADDR_V4MAPPED
+#define IN6_IS_ADDR_V4MAPPED(a) \
+    ((((const uint8_t*)(a))[0] == 0) && (((const uint8_t*)(a))[1] == 0) && \
+     (((const uint8_t*)(a))[2] == 0) && (((const uint8_t*)(a))[3] == 0) && \
+     (((const uint8_t*)(a))[4] == 0) && (((const uint8_t*)(a))[5] == 0) && \
+     (((const uint8_t*)(a))[6] == 0) && (((const uint8_t*)(a))[7] == 0) && \
+     (((const uint8_t*)(a))[8] == 0xff) && (((const uint8_t*)(a))[9] == 0xff))
+#endif
+#if defined(_WIN32) && defined(_MSC_VER) && _MSC_VER < 1900
+#define snprintf _snprintf
 #endif
 
 /* errno 槽一律经 noinline 访问器读写:darwin/arm64 clang 会把 _Thread_local
@@ -425,6 +444,81 @@ int64_t ctron_net_tcp_connect(const char* host, int64_t port, Box64* out) {
     return 0;
 }
 
+/* 带超时 connect(局域网发现批次;accept_t 对偶):非阻塞 connect + poll 可写 +
+ * getsockopt(SO_ERROR) 判结果。rc 值域与 accept_t 同形:0 = 已连接(fd 经 out);
+ * -2 = 超时;-1 = 失败(槽置 SO_ERROR/errno)。出口恢复阻塞属性(read_t/裸面
+ * 依赖阻塞 fd);NODELAY+KEEPALIVE 默认面在 connect 出口生效(§11.3 同裸版)。
+ * 登记:协程上下文本路径 poll 等待滞留 worker(与裸版阻塞 connect 同口径,
+ * 无回归),停车化列 P2-C 扩面候选。 */
+int64_t ctron_net_tcp_connect_t(const char* host, int64_t port, int64_t timeout_ms, Box64* out) {
+    if (CT_WSA() != 0) return -1;
+    int fd = (int)socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) return ct_err();
+    ct_tcp_defaults(fd); /* §11.3 默认面在 connect 出口生效 */
+    struct sockaddr_in a;
+    memset(&a, 0, sizeof(a));
+    a.sin_family = AF_INET;
+    a.sin_port = htons((uint16_t)port);
+    if (!ct_host4(host, &a.sin_addr)) {
+        ct_close(fd);
+        *ct_err_slot() = EINVAL;
+        return -1;
+    }
+#ifdef _WIN32
+    u_long nb = 1;
+    if (ioctlsocket((ct_sock)fd, FIONBIO, &nb) != 0) { ct_close(fd); return ct_err(); }
+#else
+    int fl = fcntl(fd, F_GETFL, 0);
+    if (fl < 0 || fcntl(fd, F_SETFL, fl | O_NONBLOCK) != 0) { ct_close(fd); return ct_err(); }
+#endif
+    if (connect(fd, (struct sockaddr*)&a, sizeof(a)) != 0) {
+#ifdef _WIN32
+        int werr = WSAGetLastError();
+        if (werr != WSAEWOULDBLOCK) { *ct_err_slot() = (int64_t)werr; ct_close(fd); return -1; }
+#else
+        if (errno != EINPROGRESS) {
+            int e = errno;
+            ct_close(fd);
+            *ct_err_slot() = (int64_t)e;
+            return -1;
+        }
+#endif
+        /* 在途:poll 可写(timeout_ms <= 0 同 poll 口径 = 永久) */
+        struct pollfd p;
+        p.fd = (ct_sock)fd;
+        p.events = POLLOUT;
+        p.revents = 0;
+        for (;;) {
+            int pr = ct_poll(&p, 1, (int)timeout_ms);
+            if (pr < 0) {
+#ifdef _WIN32
+                ct_close(fd); return ct_err();
+#else
+                if (errno == EINTR) continue;
+                ct_close(fd); return ct_err();
+#endif
+            }
+            if (pr == 0) { ct_close(fd); return -2; }
+            break;
+        }
+        int soerr = 0;
+        ct_socklen sl = (ct_socklen)sizeof(soerr);
+        if (getsockopt((ct_sock)fd, SOL_SOCKET, SO_ERROR, (char*)&soerr, &sl) != 0) {
+            ct_close(fd); return ct_err();
+        }
+        if (soerr != 0) { *ct_err_slot() = (int64_t)soerr; ct_close(fd); return -1; }
+    }
+    /* 恢复阻塞属性:fd 读路径(read_t 裸面 poll 门 + 阻塞 recv)依赖阻塞本体 */
+#ifdef _WIN32
+    nb = 0;
+    if (ioctlsocket((ct_sock)fd, FIONBIO, &nb) != 0) { ct_close(fd); return ct_err(); }
+#else
+    if (fcntl(fd, F_SETFL, fl) != 0) { ct_close(fd); return ct_err(); }
+#endif
+    out->v = fd;
+    return 0;
+}
+
 /* 读:poll() 超时门(timeout_ms <= 0 = 永久阻塞)>0 n / 0 eof / <0 err(超时
  * 置 ETIMEDOUT)。字节逐条写入 int64 lane。
  * P2-C 停车点①;P3-A 探针消除:协程上下文 recv 以 MSG_DONTWAIT 直试
@@ -616,17 +710,23 @@ int64_t ctron_net_udp_sendto(int64_t fd, const char* host, int64_t port,
     }
 }
 
-int64_t ctron_net_udp_recvfrom(int64_t fd, ct_view_w8u buf, int64_t cap, int64_t timeout_ms) {
+/* UDP 单报文接收核(recvfrom / recvfrom_from 共用;peer 非 NULL 时带出对端
+ * 地址 —— 两函数除 peer 外逐字节同形,P1 裸面语义不变):
+ * P2-C 停车点⑤;P3-A 探针消除:与 read_t 同形 —— MSG_DONTWAIT 直试 +
+ * EAGAIN 停车重试 + deadline 收敛;裸线程走下方 P1 原路径。 */
+static int64_t ct_udp_recv(int64_t fd, ct_view_w8u buf, int64_t cap, int64_t timeout_ms,
+                           struct sockaddr_storage* peer) {
+    struct sockaddr* pa = peer ? (struct sockaddr*)peer : NULL;
+    ct_socklen plen = (ct_socklen)sizeof(*peer);
+    ct_socklen* pp = peer ? &plen : NULL;
     if (cap > buf.n) cap = buf.n;
     if (cap <= 0) return 0;
-    /* P2-C 停车点⑤;P3-A 探针消除:与 read_t 同形 —— MSG_DONTWAIT 直试 +
-     * EAGAIN 停车重试 + deadline 收敛;裸线程走下方 P1 原路径。 */
     if (ct_rt_parkable()) {
         uint64_t deadline = timeout_ms > 0
             ? (uint64_t)ctron_net_now_ns() + (uint64_t)timeout_ms * 1000000ull : 0;
         for (;;) {
             ct_ssize_t n;
-            n = recvfrom((ct_sock)fd, (char*)buf.d, (size_t)cap, MSG_DONTWAIT, NULL, NULL);
+            n = recvfrom((ct_sock)fd, (char*)buf.d, (size_t)cap, MSG_DONTWAIT, pa, pp);
             if (n < 0) {
                 if (errno == EINTR) continue;
                 if ((errno == EAGAIN || errno == EWOULDBLOCK)) {
@@ -664,7 +764,7 @@ int64_t ctron_net_udp_recvfrom(int64_t fd, ct_view_w8u buf, int64_t cap, int64_t
         }
     }
     for (;;) {
-        ct_ssize_t n = recvfrom((ct_sock)fd, (char*)buf.d, (size_t)cap, 0, NULL, NULL);
+        ct_ssize_t n = recvfrom((ct_sock)fd, (char*)buf.d, (size_t)cap, 0, pa, pp);
         if (n < 0) {
 #ifdef _WIN32
             return ct_err();
@@ -675,6 +775,72 @@ int64_t ctron_net_udp_recvfrom(int64_t fd, ct_view_w8u buf, int64_t cap, int64_t
         }
         return (int64_t)n;
     }
+}
+
+int64_t ctron_net_udp_recvfrom(int64_t fd, ct_view_w8u buf, int64_t cap, int64_t timeout_ms) {
+    return ct_udp_recv(fd, buf, cap, timeout_ms, NULL);
+}
+
+/* ---- UDP 对端地址面(局域网发现批次) ----
+ * 对端 sockaddr → "host:port" 文本(v6 加方括号,与 net.ct addr_host/addr_port
+ * 解析约定同形;v4 映射 v6 按 v4 点分输出)。inet_ntop 失败输出 "??:0"
+ * (地址族外情形不缺面响亮的兜底)。 */
+static void ct_format_peer(const struct sockaddr_storage* ss, char* out, size_t outn) {
+    if (ss->ss_family == AF_INET) {
+        const struct sockaddr_in* a = (const struct sockaddr_in*)(const void*)ss;
+        char h[INET_ADDRSTRLEN];
+        if (!inet_ntop(AF_INET, &a->sin_addr, h, (ct_socklen)sizeof(h))) {
+            snprintf(out, outn, "??:0");
+            return;
+        }
+        snprintf(out, outn, "%s:%u", h, (unsigned)ntohs(a->sin_port));
+    } else if (ss->ss_family == AF_INET6) {
+        const struct sockaddr_in6* a6 = (const struct sockaddr_in6*)(const void*)ss;
+        char h[INET6_ADDRSTRLEN];
+        if (!inet_ntop(AF_INET6, &a6->sin6_addr, h, (ct_socklen)sizeof(h))) {
+            snprintf(out, outn, "??:0");
+            return;
+        }
+        if (IN6_IS_ADDR_V4MAPPED(&a6->sin6_addr)) {
+            /* "::ffff:x.x.x.x" 后 7 字符即点分主体(RFC 4291 映射形定长) */
+            snprintf(out, outn, "%s:%u", h + 7, (unsigned)ntohs(a6->sin6_port));
+        } else {
+            snprintf(out, outn, "[%s]:%u", h, (unsigned)ntohs(a6->sin6_port));
+        }
+    } else {
+        snprintf(out, outn, "??:0");
+    }
+}
+
+/* 最近一次 recvfrom_from 的对端地址文本(thread-local 静态;Ctron 侧
+ * str_from_c 深拷,§9.6 三约定;无对端/失败为空串)。TLS 直读直写同
+ * ctron_net_strerror/resolve 既有先例;协程迁移语义由 recvfrom_from
+ * 「成功后立即取」的调用纪律承载(与 resolve 池槽同口径)。 */
+static CT_TLS char ct_udp_peer_buf[64];
+
+const char* ctron_net_udp_last_peer(void) { return ct_udp_peer_buf; }
+
+/* 带回对端地址的单报文接收(recvfrom 的地址面;原函数保留不动):接收语义
+ * /超时口径与 ctron_net_udp_recvfrom 逐条相同(>0 n / 0 仅 cap<=0 / 到时
+ * -1 槽 ETIMEDOUT / 错 -1);对端 "host:port" 文本经 ctron_net_udp_last_peer
+ * 取(C-owned TLS)。 */
+int64_t ctron_net_udp_recvfrom_from(int64_t fd, ct_view_w8u buf, int64_t cap, int64_t timeout_ms) {
+    struct sockaddr_storage ss;
+    memset(&ss, 0, sizeof(ss));
+    ct_udp_peer_buf[0] = '\0';
+    int64_t n = ct_udp_recv(fd, buf, cap, timeout_ms, &ss);
+    if (n > 0) ct_format_peer(&ss, ct_udp_peer_buf, sizeof(ct_udp_peer_buf));
+    return n;
+}
+
+/* UDP 定向广播开关(SO_BROADCAST;局域网发现批次):on != 0 开 / == 0 关,
+ * 开后方可向 255.255.255.255 定向广播(POSIX/winsock 双分支同形,setsockopt
+ * 签名一致,零分岔)。 */
+int64_t ctron_net_udp_set_broadcast(int64_t fd, int64_t on) {
+    int v = on ? 1 : 0;
+    if (setsockopt((ct_sock)fd, SOL_SOCKET, SO_BROADCAST,
+                   (const char*)&v, sizeof(v)) != 0) return ct_err();
+    return 0;
 }
 
 /* ---- AF_UNIX(P3-E;POSIX 专面,_WIN32 垫显式 EAFNOSUPPORT 哑元) ----

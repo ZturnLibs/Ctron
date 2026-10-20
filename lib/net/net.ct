@@ -18,7 +18,7 @@
 //      以视图容量为上限,EMSGSIZE 守卫列 P2(旧 4096 CT_CHUNK 随 lane
 //      中转退役)。
 // 时钟/睡眠经 bind.ct 外链 ctron_net.c 垫片;TCP/UDP/AF_UNIX/resolve 全量同文件。
-use net.bind.{Box64, ctron_net_now_ns, ctron_net_sleep_ms, ctron_net_sleep_ns, ctron_net_clock_jump, ctron_net_last_errno, ctron_net_strerror, str_from_c, ctron_net_tcp_listen, ctron_net_tcp_sockname, ctron_net_tcp_accept, ctron_net_tcp_accept_t, ctron_net_tcp_connect, ctron_net_read_t, ctron_net_write, ctron_net_write_str, ctron_net_close, ctron_net_shutdown_write, ctron_net_set_nodelay, ctron_net_get_nodelay, ctron_net_udp_socket, ctron_net_udp_bind, ctron_net_udp_sendto, ctron_net_udp_recvfrom, ctron_net_resolve_first, ctron_net_resolve_all, ctron_net_unix_listen, ctron_net_unix_accept, ctron_net_unix_connect, ctron_net_unix_unlink}
+use net.bind.{Box64, ctron_net_now_ns, ctron_net_sleep_ms, ctron_net_sleep_ns, ctron_net_clock_jump, ctron_net_last_errno, ctron_net_strerror, str_from_c, ctron_net_tcp_listen, ctron_net_tcp_sockname, ctron_net_tcp_accept, ctron_net_tcp_accept_t, ctron_net_tcp_connect, ctron_net_tcp_connect_t, ctron_net_read_t, ctron_net_write, ctron_net_write_str, ctron_net_close, ctron_net_shutdown_write, ctron_net_set_nodelay, ctron_net_get_nodelay, ctron_net_udp_socket, ctron_net_udp_bind, ctron_net_udp_sendto, ctron_net_udp_recvfrom, ctron_net_udp_recvfrom_from, ctron_net_udp_last_peer, ctron_net_udp_set_broadcast, ctron_net_resolve_first, ctron_net_resolve_all, ctron_net_unix_listen, ctron_net_unix_accept, ctron_net_unix_connect, ctron_net_unix_unlink}
 
 // ---- 能力 trait(stub 面原样保留;sem 审计锚:E4010 看 &Net 引用形参) ----
 
@@ -227,6 +227,17 @@ pub fn net_tcp_connect(net: StdNet, host: Str, port: I64, out_fd: Box[Box64]) ->
     return rc
 }
 
+// 带超时 connect(局域网发现批次;accept_t 对偶,补裸 connect 无超时缺口):
+// 垫片非阻塞 connect + poll 可写 + SO_ERROR 判定;出口恢复阻塞属性。
+// rc 值域与 net_tcp_accept_t 同形:0 = 已连接(fd 经 out_fd);-2 = 超时;
+// -1 = 失败(last_net_error 取详情)。timeout_ms <= 0 同 poll 口径 = 永久。
+pub fn net_tcp_connect_t(net: StdNet, host: Str, port: I64, timeout_ms: I64, out_fd: Box[Box64]) -> I64 {
+    var cell = Box64 { v: 0 }
+    let rc = ctron_net_tcp_connect_t(host, port, timeout_ms, cell)
+    out_fd.v = cell.v
+    return rc
+}
+
 // 带超时读:timeout_ms <= 0 永久阻塞;>0 到时置 ETIMEDOUT 返 -1。
 // >0 n / 0 eof / <0 err;字节直入视图(无单次上限,头注⑤)。
 pub fn net_read_t(net: StdNet, fd: I64, var buf: U8[], cap: I64, timeout_ms: I64) -> I64 {
@@ -282,6 +293,54 @@ pub fn net_udp_sendto(net: StdNet, fd: I64, host: Str, port: I64, var buf: U8[],
 // 单报文以视图容量为上限(头注⑤)。
 pub fn net_udp_recvfrom(net: StdNet, fd: I64, var buf: U8[], cap: I64, timeout_ms: I64) -> I64 {
     return ctron_net_udp_recvfrom(fd, buf, cap, timeout_ms)
+}
+
+// ---- 局域网发现批次(实现锚 c_src/ctron_net.c 同名片段;夹具 tests/net/lan_discovery) ----
+
+// UDP 定向广播开关(SO_BROADCAST):on != 0 开 / == 0 关;开后方可向
+// 255.255.255.255 定向广播(POSIX/winsock 双分支同形)。rc 0 成 / <0 败。
+pub fn net_udp_set_broadcast(net: StdNet, fd: I64, on: I64) -> I64 {
+    return ctron_net_udp_set_broadcast(fd, on)
+}
+
+// 带回对端地址的单报文接收(recvfrom 的地址面;原函数保留不动):接收/超时
+// 口径与 net_udp_recvfrom 逐条相同(>0 n / 到时 -1 槽 ETIMEDOUT / 错 -1);
+// 对端地址文本经 net_udp_last_peer 取(C-owned TLS → str_from_c 深拷)。
+// 成功接收后应立即取(peer 槽随下一次调用失效)。
+pub fn net_udp_recvfrom_from(net: StdNet, fd: I64, var buf: U8[], cap: I64, timeout_ms: I64) -> I64 {
+    return ctron_net_udp_recvfrom_from(fd, buf, cap, timeout_ms)
+}
+
+// recvfrom_from 的对偶读面:最近一次成功接收的对端 "host:port" 文本
+// (v6 为 "[host]:port",与 addr_host/addr_port 解析约定同形;无对端/失败 "")。
+pub fn net_udp_last_peer(net: StdNet) -> Str {
+    return str_from_c(ctron_net_udp_last_peer())
+}
+
+// ---- 字节序(网络序 = 大端;纯 Ctron 通用件,局域网发现批次) ----
+// 大端编解码:net_hton_u32(0x01020304) = 0x04030201 —— 小端主机(本仓全部
+// 现役靶:darwin/linux/windows)上其结果值的内存布局即线序字节 01 02 03 04;
+// net_ntoh 为逆变换,与 hton 同式(自逆)。移位+掩码(bit.* 命名空间,§4.5)
+// 实现:结果只由数值决定,无需探测主机字节序。入参取无符号值域
+// (u32: [0, 2^32) / u16: [0, 2^16)),负值语义不担保。
+pub fn net_hton_u16(v: I64) -> I64 {
+    return bit.or_i64(bit.and_i64(bit.shr_i64(v, 8), 255), bit.shl_i64(bit.and_i64(v, 255), 8))
+}
+
+pub fn net_ntoh_u16(v: I64) -> I64 {
+    return net_hton_u16(v)
+}
+
+pub fn net_hton_u32(v: I64) -> I64 {
+    let b3 = bit.and_i64(bit.shr_i64(v, 24), 255)
+    let b2 = bit.and_i64(bit.shr_i64(v, 16), 255)
+    let b1 = bit.and_i64(bit.shr_i64(v, 8), 255)
+    let b0 = bit.and_i64(v, 255)
+    return bit.or_i64(bit.or_i64(bit.or_i64(b3, bit.shl_i64(b2, 8)), bit.shl_i64(b1, 16)), bit.shl_i64(b0, 24))
+}
+
+pub fn net_ntoh_u32(v: I64) -> I64 {
+    return net_hton_u32(v)
 }
 
 // ---- AF_UNIX(P3-E;与 TCP 三件同形,差异点) ----
@@ -386,4 +445,21 @@ test "addr format roundtrip" {
     assert_eq(a, "10.0.0.9:443")
     assert_eq(addr_host(a), "10.0.0.9")
     assert_eq(addr_port(a), 443)
+}
+
+test "byte order hton/ntoh roundtrip" {
+    // 0x01020304 → 0x04030201(小端主机上线序字节 01 02 03 04);ntoh 自逆
+    assert_eq(net_hton_u32(16909060), 67305985)
+    assert_eq(net_ntoh_u32(67305985), 16909060)
+    // u16 同形:0x0102 → 0x0201
+    assert_eq(net_hton_u16(258), 513)
+    assert_eq(net_ntoh_u16(513), 258)
+    // 边界:0 恒等;全 1 自逆
+    assert_eq(net_hton_u32(0), 0)
+    assert_eq(net_ntoh_u16(0), 0)
+    assert_eq(net_hton_u32(4294967295), 4294967295)
+    assert_eq(net_hton_u16(65535), 65535)
+    // 往返闭合:任意值两次变换还原
+    assert_eq(net_ntoh_u32(net_hton_u32(305419896)), 305419896)
+    assert_eq(net_ntoh_u16(net_hton_u16(4660)), 4660)
 }

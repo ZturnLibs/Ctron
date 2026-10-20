@@ -1,6 +1,6 @@
 # §11 网络与服务器档
 
-> 状态:**定稿(v0.8.1,2026-09-21)**——随服务器路线 S0 批次并入规范冻结面;后续修订按 v0.8.x 注记。v0.8.1 = P3/P4 终审遗留语义回写(加法式:AF_UNIX 落地面四件入 §11.2、resolve 池语义入 §11.5、TLS 门面语义指针新 §11.9),不改动 v0.8 冻结面。实现锚定:tests/modules/caps_net(E4010)、tests/net/(行为)。
+> 状态:**定稿(v0.8.1,2026-09-21)**——随服务器路线 S0 批次并入规范冻结面;后续修订按 v0.8.x 注记。v0.8.1 = P3/P4 终审遗留语义回写(加法式:AF_UNIX 落地面四件入 §11.2、resolve 池语义入 §11.5、TLS 门面语义指针新 §11.9),不改动 v0.8 冻结面。v0.8.2 = 局域网发现原语四件入 §11.2.2(加法式注记,亦不改动 v0.8 冻结面)。实现锚定:tests/modules/caps_net(E4010)、tests/net/(行为)。
 > 执行模型语义归 §7;本章定网络门面、传输语义、HTTP 档分层。规范性约定(必须/禁止/应当/可以)同规范 README。
 
 ## 11.1 能力键(规范性)
@@ -41,6 +41,15 @@ Unix 族句柄(`UnixListener`/`UnixStream`)在本档冻结语义之上,落地面
 2. **bind 前 unlink 陈旧 socket 文件 = 后绑者赢**:listener 建立时对既有路径先 `unlink`(ENOENT 为常态忽略)——残留文件自愈,不辨活/死(活 listener 被后绑者顶掉的竞态面归调用方编排,垫片不仲裁)。
 3. **Drop 只关 fd,不摘 socket 文件**:句柄 RAII 作用域退出仅确定性关闭描述符;"最后一个 Drop 摘路径"会误摘继任者的活路径(后绑者赢语义下的必然后果),故文件生命周期显式归调用方。
 4. **显式清理 = `net_unix_unlink(path)`**:`ENOENT` 亦返 `rc < 0`(与真失败同形)——幂等清理路径的"已不存在"判别由调用方自决,垫片不设特例。
+
+### 11.2.2 局域网发现原语四件(v0.8.2 注记;实现锚 lib/net/net.ct + c_src/ctron_net.c + tests/net/lan_discovery)
+
+局域网发现(定向广播/对端地址学习/限时连接/线序编解码)所需门面在此钉死(POSIX/winsock 双分支同形,rc 惯例与 §11.2 门面一致:0 成 / <0 败):
+
+1. **广播开关 = `net_udp_set_broadcast(fd, on)`**:`SO_BROADCAST` setsockopt,`on != 0` 开 / `== 0` 关(双态可设);开后 UDP 方可向 `255.255.255.255` 定向广播。
+2. **带回对端地址接收 = `net_udp_recvfrom_from` + `net_udp_last_peer`**:接收/超时口径与 `net_udp_recvfrom` 逐条相同(单报文以视图容量为上限、到时 `rc = -1` 槽 `ETIMEDOUT`);对端地址文本 `"host:port"`(v6 为 `"[host]:port"`,与 `addr_host`/`addr_port` 解析约定同形;v4 映射 v6 按 v4 点分输出)经 `net_udp_last_peer` 取——**C-owned 线程局部缓冲,Ctron 侧 `str_from_c` 深拷**;成功接收后应立即取(缓冲随下一次调用失效)。
+3. **带超时连接 = `net_tcp_connect_t(host, port, timeout_ms, out_fd)`**:非阻塞 `connect` + `poll` 可写 + `getsockopt(SO_ERROR)` 判定,`timeout_ms <= 0` 同 poll 口径 = 永久;**rc 值域与 `net_tcp_accept_t` 同形:`0` = 已连接 / `-2` = 超时 / `-1` = 失败**(裸 `connect` 恒 `-1` 无超时面的缺口自此补齐);出口恢复 fd 阻塞属性(读路径依赖阻塞本体),`TCP_NODELAY`/`SO_KEEPALIVE` 默认面在 connect 出口生效(§11.3 同裸版)。
+4. **字节序编解码 = `net_hton_u16/u32` + `net_ntoh_u16/u32`**:纯 Ctron(`bit.*` 移位+掩码),网络序 = 大端;`hton` 为字节倒序值变换(小端主机上线序字节方向正确),`ntoh` 同式自逆;入参取无符号值域(u32: `[0, 2^32)` / u16: `[0, 2^16)`),负值语义不担保。纯函数,`#[pure]` 许可。
 
 ## 11.3 传输语义默认值(规范性)
 
@@ -89,7 +98,7 @@ Unix 族句柄(`UnixListener`/`UnixStream`)在本档冻结语义之上,落地面
 
 ## 11.8 与测试集的对应
 
-`tests/net/`(回环纪律:`:0` 内核分端口、外部网络零依赖)、`tests/http/`;锚点 `tests/modules/caps_net`(E4010,多文件包负例)、`r7b_pure_net.neg.ct`(E4020)、`r7c_http_caps.neg.ct`;同形兼容不变式夹具(examples/ctecho 源码跨运行时零改动)。
+`tests/net/`(回环纪律:`:0` 内核分端口、外部网络零依赖)、`tests/http/`;锚点 `tests/modules/caps_net`(E4010,多文件包负例)、`r7b_pure_net.neg.ct`(E4020)、`r7c_http_caps.neg.ct`;同形兼容不变式夹具(examples/ctecho 源码跨运行时零改动)。局域网发现四件的行为锚 = `tests/net/lan_discovery`(§11.2.2)。
 
 ## 11.9 TLS 门面语义指针(v0.8.1;P3-C 落地面,实现锚 std/tls.ct + ctron_tls.c)
 

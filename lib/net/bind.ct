@@ -19,7 +19,8 @@
 //   - C-owned 串返回(ctron_net_resolve_first/strerror)为 thread-local 静态,
 //     Ctron 侧 str_from_c 深拷后用(§9.6 三约定)。
 //   - rc 约定:0 成功;<0 失败(错误详情经 ctron_net_last_errno/strerror);
-//     读函数 >0 n / 0 eof / <0 err。peer 地址串 P1 全裁(YAGNI,无夹具需要)。
+//     读函数 >0 n / 0 eof / <0 err。对端地址串 = recvfrom_from 配套
+//     last_peer(C-owned TLS,门面 str_from_c 深拷;局域网发现批次落地)。
 // Box64 struct 声明留本文件:门面堆胞(net.ct)与夹具直接消费面仍用
 // Box[Box64] 值形(非 extern 位,E4046 不触及);typedef 随 use 合并带出。
 // pub(SL-0.7 尾槽):夹具构造 Box64 字面量须显式请求;非 pub 则 E2020.use.priv。
@@ -39,6 +40,7 @@ pub extern "c" fn ctron_net_tcp_sockname(fd: I64, out_port: &Box64) -> I64
 pub extern "c" fn ctron_net_tcp_accept(lfd: I64, out_fd: &Box64) -> I64
 pub extern "c" fn ctron_net_tcp_accept_t(lfd: I64, timeout_ms: I64, out_fd: &Box64) -> I64
 pub extern "c" fn ctron_net_tcp_connect(host: Str, port: I64, out_fd: &Box64) -> I64
+pub extern "c" fn ctron_net_tcp_connect_t(host: Str, port: I64, timeout_ms: I64, out_fd: &Box64) -> I64
 pub extern "c" fn ctron_net_read_t(fd: I64, var buf: U8[], cap: I64, timeout_ms: I64) -> I64
 pub extern "c" fn ctron_net_write(fd: I64, var buf: U8[], n: I64) -> I64
 pub extern "c" fn ctron_net_write_str(fd: I64, s: Str) -> I64
@@ -50,6 +52,9 @@ pub extern "c" fn ctron_net_udp_socket(out_fd: &Box64) -> I64
 pub extern "c" fn ctron_net_udp_bind(fd: I64, host: Str, port: I64, out_port: &Box64) -> I64
 pub extern "c" fn ctron_net_udp_sendto(fd: I64, host: Str, port: I64, var buf: U8[], n: I64) -> I64
 pub extern "c" fn ctron_net_udp_recvfrom(fd: I64, var buf: U8[], cap: I64, timeout_ms: I64) -> I64
+pub extern "c" fn ctron_net_udp_recvfrom_from(fd: I64, var buf: U8[], cap: I64, timeout_ms: I64) -> I64
+pub extern "c" fn ctron_net_udp_last_peer() -> Str
+pub extern "c" fn ctron_net_udp_set_broadcast(fd: I64, on: I64) -> I64
 pub extern "c" fn ctron_net_resolve_first(host: Str) -> Str
 pub extern "c" fn ctron_net_resolve_all(host: Str) -> Str
 pub extern "c" fn ctron_net_unix_listen(path: Str, out_fd: &Box64) -> I64
