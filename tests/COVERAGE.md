@@ -2647,3 +2647,14 @@ B. TuiTest 去泛型化:`reframe: fn() -> TuiBuf` 闭包字段承载重渲染(ca
    `d_*` 全非泛型——绕开闭包内泛型推断,但需验 struct 返回过 `ct_clop` 面。
 **本批落库**:ctor typeof env 代入(trans_ty.ct 构造产码点);门同前(decls=531/
 trans_v0-v6 7/7/boxmem 绿)。
+
+### 批C-2 W4 补充勘定(2026-10-20 五;重复绑定澄清 + FnType typedef 下钻落库)
+
+- **澄清**:单态化体 `genv` 对型参本名的绑定**早已存在**(`ct_spec_call_emit`
+  「型参名 → 实参码」块;批C-2 期间误判缺失所加的重复绑定已撤)。
+- **落库**:`ct_emit_inst_typedef` 增 FnType 下钻——fn 值形参/返回(如
+  `script: fn(Box[TuiTest[M]])->Void`)的载荷实例 typedef 旧不生成 →
+  `cc: use of undeclared t_TuiTest__U5_Model`。门:decls=531 不变、trans_v0-v6
+  7/7 逐字、boxmem 绿。
+- **批C-3(闭包形参签型)仍为 test/d_* 回填的唯一在册阻塞**,两径待裁
+  (A 期望签穿入 / B TuiTest 去泛型化),见上节与本计划 W4 注。
