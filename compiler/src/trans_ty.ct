@@ -1473,7 +1473,8 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     // Box[P](v) → B:P(堆单值指针;载荷 v0 限值类型)
                     if cal[2].len > 1 {
                         if cal[2][1][0] == "Named" {
-                            return "B:" + ct_ty_code(cal[2][1], file)
+                            // 批C-2:显式型实参经 env 代入(单态化体 M→实例码)
+                            return "B:" + ct_ty_code(ct_targ_env(cal[2][1], env), file)
                         }
                     }
                     return "B:V"

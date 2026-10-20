@@ -2630,3 +2630,20 @@ DIFF=既有指纹);Box 探针(boxmem/fnfield)emit 绿。
 `t_TuiTest__I`。注:批C 复现件 emit 已 rc=0(构造面 `__U5_Model` 正确),仅声明位
 错配;W4 需定位该残余产码点(嫌疑:ct_emit_inst_typedef 的 `ct_inst_of_ty` 无 env)
 后回填 test/d_* 家族。
+
+### 批C-2 W4 勘定(2026-10-20 四;真最深缺口=闭包形参无签型)
+
+W1–W3 落库后复跑批C 复现件:emit rc=0——构造面 `__U5_Model` 正确、`test__u_Model`
+体内局部声明亦正(型参本名入 genv 生效)。**残余=d_* 族单态化仍 `__i`**,根因:
+- script 形参 `fn(Box[TuiTest[M]]) -> Void` 的实参为**闭包字面量** `|tt| { … }`;
+  `ct_emit_clov` 形参槽 = 无型 `ct_i`(期望签名未穿入闭包形参 env);
+- 闭包体内 `d_expect_text(tt, …)` 的 M 自 `ct_typeof(tt)` 推断只得 `i`/`N` →
+  `d_expect_text__i`,与 `test__u_Model` 实际传入的 `TuiTest__U5_Model*` 错配。
+- (旁证:ctor typeof 补 env 代入后,构造/局部声明两面 `__U5_Model` 均正确。)
+
+**治法(批C-3 立项,两径待裁)**:
+A. 期望 fn 签型穿入闭包形参(`ct_emit_clov` 增期望签参/调用位 context 传签);
+B. TuiTest 去泛型化:`reframe: fn() -> TuiBuf` 闭包字段承载重渲染(captures ≤8 既有),
+   `d_*` 全非泛型——绕开闭包内泛型推断,但需验 struct 返回过 `ct_clop` 面。
+**本批落库**:ctor typeof env 代入(trans_ty.ct 构造产码点);门同前(decls=531/
+trans_v0-v6 7/7/boxmem 绿)。
