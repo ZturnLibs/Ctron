@@ -1,4 +1,12 @@
-> **宿主 downcast 差分补齐(2026-10-20;IP-01 宿主面收官,downcast 进套件双宿门控)。**
+> **IP-23 23a 设计轮落库(2026-10-20,specs/2026-10-20-ip23-json-numeric-design.md;纯设计批——共享树对端在飞窗口零码零构建)。**
+> 现状勘定(实测):解析=jnum_end RFC 8259 严格扫描+原文存表(无词法分类)/读取=
+> jget_i64(越界→range 非回绕)+jget_f64(量级窗)+jget_bool,缺 jget_u64 与 Big 原文
+> 访问/写出=num_json(I64) 十进制原文,F64 写出未钉(语言级登记)。设计=JNum tagged
+> union 四态(Int/UInt/Big/Flt——Ctron enum 即 tagged union,match/downcast 机制
+> IP-01 直用)+qtag 细分 ni/nu/nb/nf(兼容面=前缀匹配存量零破坏)+三新访问器;写出
+> 分批 23a-2(整数/Big 直出+F64 shortest-roundtrip 钉子,两径待裁)+23b 下游(db/
+> web)。三裁决点在档(F64 规范形径/qtag 拼写/derive Big 映射)。提案 IP-23 TODO→DESIGN。
+>> **宿主 downcast 差分补齐(2026-10-20;IP-01 宿主面收官,downcast 进套件双宿门控)。**
 > 种子解释臂 downcast[E](e) 臂(rt_eval TypeArgs-Call 族 Box 同款):AnyError 沿 cause
 > 链取最内层载荷(V_TAG 变体名经 ctron_enum_name_of 反查枚举名与显式 E 比对——**全名
 > helper 不适用于判别**(判别比较的是枚举名),ctron_enum_full_of 留作 code 面)+

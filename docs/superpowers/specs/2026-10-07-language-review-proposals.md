@@ -32,7 +32,7 @@
 | IP-20 | `ctron fix --apply`：fix-it 消费闭环 | G 工具链 | P2 | IP-19 | TODO |
 | IP-21 | 可复现构建证明（内容寻址扩展） | G 工具链 | P3 | — | TODO |
 | IP-22 | std 正则引擎 | H 标准库 | P1 | — | TODO |
-| IP-23 | JSON 数值保真 | H 标准库 | P0 | — | TODO |
+| IP-23 | JSON 数值保真 | H 标准库 | P0 | — | DESIGN(23a 设计稿落库 specs/2026-10-20-ip23-json-numeric-design.md:JNum tagged union+qtag 细分+写出钉子;三裁决点待裁) |
 | IP-24 | crypto 扩展：HMAC / PBKDF2 | H 标准库 | P2 | — | TODO |
 | IP-25 | s3 包：填充或除名 | H 标准库 | P3 | IP-23, IP-24 | TODO |
 | IP-26 | 错误码注册表分段清理与死码回收纪律 | I 错误码体系 | P1 | — | TODO |
