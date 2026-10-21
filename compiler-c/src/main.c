@@ -4,6 +4,7 @@
 //   {code, severity, message, file, span{line_start,col_start,line_end,col_end}, notes[], fixes[]})。
 // 位置信息诚实输出:词法/解析诊断有行列;语义/模块级诊断当前无位置(span 全 0)。
 #include <dirent.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -553,7 +554,49 @@ static int cmd_fmt(int argc, char** argv) {
     return 0;
 }
 
+/* 大栈执行线程:解释器 eval 递归深度随被编程序规模增长,主线程栈(8MB)在
+ * 深嵌套表达式(如全仓自举 cc_emit 拼装)临界越界——ASLR 使临界点抖动=同源
+ * 忽绿忽红非确定失败。256MB 独立线程栈给足余量(R2c 勘定,2026-10-21)。 */
+typedef int (*ctron_main_fn)(int, char**);
+static int ctron_main_impl(int, char**);
+struct ctron_bigstk {
+    ctron_main_fn fn;
+    int argc;
+    char** argv;
+    int rc;
+};
+static void* ctron_bigtstk_tramp(void* p) {
+    struct ctron_bigstk* a = (struct ctron_bigstk*)p;
+    a->rc = a->fn(a->argc, a->argv);
+    return NULL;
+}
+
 int main(int argc, char** argv) {
+    const char* sub = argc > 1 ? argv[1] : "";
+    if (strcmp(sub, "version") == 0) {
+        printf("ctronc %s (C 实现)\n", VERSION);
+        return 0;
+    }
+    /* run/trans/check/build 走解释/编译深递归路径 → 大栈线程;轻面子命令直跑 */
+    if (strcmp(sub, "run") == 0 || strcmp(sub, "trans") == 0 || strcmp(sub, "build") == 0) {
+        struct ctron_bigstk ba;
+        ba.fn = &ctron_main_impl;
+        ba.argc = argc;
+        ba.argv = argv;
+        ba.rc = 0;
+        pthread_attr_t pa;
+        pthread_attr_init(&pa);
+        pthread_attr_setstacksize(&pa, (size_t)256 << 20);
+        pthread_t th;
+        if (pthread_create(&th, &pa, ctron_bigtstk_tramp, &ba) == 0) {
+            pthread_join(th, NULL);
+            return ba.rc;
+        }
+    }
+    return ctron_main_impl(argc, argv);
+}
+
+static int ctron_main_impl(int argc, char** argv) {
     const char* sub = argc > 1 ? argv[1] : "";
     if (strcmp(sub, "version") == 0) {
         printf("ctronc %s (C 实现)\n", VERSION);

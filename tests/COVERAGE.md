@@ -38,6 +38,22 @@
 > 门:dc1/r1/r2/r2b 四探针双臂逐字一致+10_trace 发射 rc=0+clo1 闭包尾恢复+mid1 中位
 > 勘定探针(分歧面留档)+smoke --full 239/0(新增 fx_opti32/b 两件)+suite 119/120·120/120。
 >
+> **⚠️ 自举发射回归移交(2026-10-21;对端批C-2 致 native.sh 自举失败,证据链完整移交)。**
+> **症状**:d8c4d3b0(main 尖)起 `sh compiler/native.sh` 确定性失败——发射 cc_emit.ct 时
+> `ct_expr:index 目标非 List/数组:i 名:pty 下标:0 节点元数:3 尾槽tag:Int`(gui_parse.ct:4938
+> gui_ds_gen `pty[k]`,env 查 pty 得 "i"=未绑定;崩点 env dump=#clofn:ct_call_infer_tys
+> 的 genv(pass1),pj/gq/tys/tpsn/pgd 在而 pty 缺)。
+> **二分表**:97303043 GREEN/native;f1e0aee3(W1-W3)RED;f1e0aee3−genv hunk RED;
+> f1e0aee3−casts hunk RED;同源复跑恒 RED(非闪烁)。8MB 主栈下曾有 ASLR 抖动形
+> (忽绿忽红),ASAN 实证 eval_expr 栈溢出——**种子大栈修复随批落地**(compiler-c main.c:
+> run/trans/build 三深递归子命令走 256MB 独立线程栈,大栈后确定性复现真错)。
+> **定责**:f1e0aee3 的 W3 分支(ct_call_infer_tys 增第四分支)与 genv 型参绑定组合
+> 触发——单一 hunk 撤除不复原(两 hunk 各自独立 RED)提示**环境链/单态化选择层面**
+> 的扰动,非局部代码错。**对端门缺口**:批C-2 门=decls/trans_v0-v6/fx 子集/Box 探针
+> ——**未含 native.sh 自举**(发射 cc_emit 必走 gui_parse 全量)。
+> **临时工作径**:自举 bin 于 97303043 基线可建(bisect GREEN 实证);对端修复前
+> compiler/bin 沿用绿基线产物。
+>
 > **R2c 枚举浮点/宽载荷位双关+U64 to_string(2026-10-20;IP-23 23a 前置地基)。**
 > JNum tagged union 探针(jn.ct)连环咬出三枚枚举机械通用缺口,全修:①ct_wrap_i 补
 > f/g 位双关(构造侧;值截断曾致 Flt(3.5)→3);②新增 ct_unwrap_i(读侧逆,f/g 双关/
