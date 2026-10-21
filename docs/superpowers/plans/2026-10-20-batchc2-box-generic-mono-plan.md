@@ -81,12 +81,25 @@ split→按形参 TArgs 映射 tpsn)。发射 C 文本对**非泛型 Box 存量�
 
 ### Wave 4: 回填 + 收官
 
-> **W4 状态(2026-10-20 勘定,暂挂→批C-3)**:W1–W3 落库后复现件 emit rc=0(构造面
-> `__U5_Model`、`test__u_Model` 体内局部声明均正)。**残余真缺口=闭包字面量形参无签型**
-> ——`ct_emit_clov` 形参槽为无型 `ct_i`,闭包体内泛型调用 `d_*(tt,…)` 的 M 自
-> `ct_typeof(tt)` 推断落 `i` → `d_*` 单态化 `__i` 与传入 `__U5_Model` 错配。
-> 两径待裁:A 期望 fn 签型穿入闭包形参;B TuiTest 去泛型化(`reframe: fn()->TuiBuf`
-> 闭包字段承载重渲染,`d_*` 全非泛型)。详见 COVERAGE「批C-2 W4 勘定」。
+> **W4 状态(2026-10-21 裁决落库:径A 收口,批C-3 销账)**:2026-10-21 续批勘定
+> 三层真因并落修——
+> ①**W3 的 Box 分支自落地即死码**:`ct_call_infer_tys` Box 分支(f1e0aee3)的
+>   `} else if` 带双前 `}`,错挂到外层 `if pj < ag.len`——`pj < ag.len` 时永不上
+>   链(推断恒缺省 I32),`pj ≥ ag.len` 时越位引用块内 `pty`(块级绑定)→ 解释器
+>   `ct_expr:index 目标非 List/数组:i 名:pty` = native.sh 自举发射确定性崩溃真因
+>   (c9e58977 移交案)。嵌套修复后分支激活,直参面推断即正。
+> ②**径A 实施**:调用位 'F' 码 + StructLit fn 字段位(既有)之外,补第三绑定位——
+>   fn 注解 let + 闭包初值 → `#clcodes`(trans_stmt Let 臂);三面贯通后闭包体内
+>   泛型调用 M 全部正推(探针实证三调用形状全 `d_expect__s`,闭包 shim 形参
+>   `t_TuiCase__S*` 正型 + GC 槽注册;修前 `int32_t t_tt = (int32_t)_p0` 截断)。
+> ③**typedef 声明序**:driver_emit.ct 预扫不钻 FnType 签名(`B:` 内码实例晚到
+>   spec 点惰性直出)→ 原型前置区引用未声明型;预扫增 `ct_ty_node_insts` 下钻
+>   (参数/返回/let 注解三位,B: 剥内码收集)。
+> 追补:注解位 FnType 的 `#fret` 改走 `ct_fsig_code` 全签码(`ct_ty_code` 短码
+> `F<arity>` 无返回维,Str/聚合返回塌 ct_i——strcmp 位裸指针 == 实证)。
+> 回归钉:tests/03o_generic_box_mono.ct(三形状;种子 3/3 + 发射 rc=0)。
+> **Wave 4 回填(tui_driver test/d_* 原稿 + tests/tui/s13 夹具)自此解锁**,待
+> 新 bin 阶梯验证落批。native.sh 自举(bin 刷新债)随批清偿。
 
 **Files:**
 - Modify: `pkgs/tui/tui_driver.ct`(test/d_* 家族原稿回填,批C 批注节摘除)

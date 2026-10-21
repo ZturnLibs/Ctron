@@ -613,6 +613,50 @@ fn gui_view_props(file: List[Str], nm: Str, found: List[Str]) -> Str {
     return ""
 }
 
+// 批C-3 语义面:型参结构化出现(镜像宿主 sem.c ty_has_tp 同名口径)——
+// E2060 只锚「型参在全实参位参数型中零出现」;深位(Box 载荷 TArgs/FnType
+// 签名)出现即可推,值面单化归发射面 ct_call_infer_tys(W3 Box 分支)。
+// 白名单制:逐类节点形下钻(Named 壳内 TArgs items 1../TupleT 直接元素/
+// FnType 形参容器+返回/Ref/Slice),未知形保守 false;禁止无差别 tn[2]
+// 递归——TupleT 元素/名字槽是裸串,混型下钻 = 段错误(04_generics 实证)。
+fn sem_ty_has_tp(tn: List[Str], tp: Str, depth: I32) -> Bool {
+    if depth > 8 { return false }
+    if tn[0] == "Named" || tn[0] == "Ident" {
+        if seq2(tn[1], tp) { return true }
+        if tn.len > 2 && tn[2].len > 1 {
+            var oi: I32 = 1
+            while oi < tn[2].len {
+                if sem_ty_has_tp(tn[2][oi], tp, depth + 1) { return true }
+                oi += 1
+            }
+        }
+        return false
+    }
+    if tn[0] == "TupleT" {
+        var ti: I32 = 1
+        while ti < tn.len {
+            if sem_ty_has_tp(tn[ti], tp, depth + 1) { return true }
+            ti += 1
+        }
+        return false
+    }
+    if tn[0] == "FnType" {
+        var fi: I32 = 1
+        while fi < tn[1].len {
+            if sem_ty_has_tp(tn[1][fi], tp, depth + 1) { return true }
+            fi += 1
+        }
+        if sem_ty_has_tp(tn[2], tp, depth + 1) { return true }
+        return false
+    }
+    if tn[0] == "Ref" || tn[0] == "Slice" || tn[0] == "Optional" {
+        if tn.len > 1 && tn[1].len > 0 {
+            if sem_ty_has_tp(tn[1], tp, depth + 1) { return true }
+        }
+        return false
+    }
+    return false
+}
 fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[Str], retK: List[Str], diags: List[Str]) {
     var t = e[0]
     if t == "Call" {
@@ -758,8 +802,21 @@ fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[
                             var k3: I32 = 1
                             while k3 < tps2.len {
                                 if !in_list(binds, tps2[k3][1]) {
-                                    if miss.len > 0 { miss = miss + ", " }
-                                    miss = miss + tps2[k3][1]
+                                    // 批C-3:结构化出现即视可推(宿主 ty_has_tp
+                                    // 同口径;Box 载荷/FnType 深位出现,值面单化
+                                    // 归发射面推断)——零出现方入 miss
+                                    var occ4 = false
+                                    var pi4: I32 = 1
+                                    while pi4 < ps2.len {
+                                        if ps2[pi4][0] == "Param" {
+                                            if sem_ty_has_tp(ps2[pi4][3], tps2[k3][1], 0) { occ4 = true }
+                                        }
+                                        pi4 += 1
+                                    }
+                                    if !occ4 {
+                                        if miss.len > 0 { miss = miss + ", " }
+                                        miss = miss + tps2[k3][1]
+                                    }
                                 }
                                 k3 += 1
                             }

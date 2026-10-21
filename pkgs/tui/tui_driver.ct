@@ -99,7 +99,10 @@ pub fn run_app[M](view: fn(M) -> TuiTree, update: fn(M, Event), m: M, theme: The
 //   触发形状,全族 check 绿;详见 COVERAGE「批C 再勘定」)。
 // ②真阻塞=发射面:`B:` 码丢实例实参 + `ct_call_infer_tys` 无 Box 分支已修
 //   (批C-2 W1–W3 f1e0aee3),构造/局部声明 `__U5_Model` 均正确。
-// ③**残余(批C-3 立项)**:闭包字面量形参无签型(`ct_emit_clov` 形参槽=无型 ct_i)
-//   → 闭包体内泛型调用 d_*(tt) 的 M 推断落 i,与传入 __U5_Model 错配。
-//   两径待裁:A 期望 fn 签型穿入闭包形参;B TuiTest 去泛型化(reframe 闭包字段,
-//   d_* 全非泛型)。裁决后本节原稿直接回填。
+// ③**批C-3 已收口(2026-10-21,径A 落库)**:期望 fn 签型穿入闭包形参 env——
+//   ①调用位 'F' 码 + ②StructLit fn 字段位(既有)+ ③fn 注解 let 初值位(trans_stmt
+//   新绑 '#clcodes')三面贯通;trans_ty.ct ct_call_infer_tys Box 分支错位嵌套同批
+//   修正(f1e0aee3 引入即死码),driver_emit.ct 预扫 FnType 下钻(实例 typedef 先于
+//   原型前置区)。回归钉:tests/03o_generic_box_mono.ct 三形状(种子 3/3+发射 rc=0)。
+//   本节原稿回填(tui_driver test/d_* 家族 + tests/tui/s13 夹具)自此解锁,待新 bin
+//   阶梯验证后落批。

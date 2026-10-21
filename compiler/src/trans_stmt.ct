@@ -1055,7 +1055,14 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             if or2(chf == 70, chf == 71) {
                 // P0-A:LF 列表元素签名码("F1{…}>u:Resp",Index 读)——返回码随码
                 // 附带,直拆入 #fret(not_found_h[0]/mws[idx] 的 h(…)/mw(…) 即此形)
+                // 批C-3 追补:注解位 FnType 节点走全签码(短码 ct_ty_code 恒
+                // "F<arity>" 无返回维,ct_fsig_ret 落 "" → #fret 不绑 → fn 值
+                // Str/聚合返回塌 ct_i:strcmp 位裸指针 ==/struct 截断);
+                // 镜像 1070 直调声明面 ct_fsig_code(file, gd8[4]) 同源
                 var fret10 = ct_fsig_ret(ty)
+                if st[3][0] == "FnType" {
+                    fret10 = ct_fsig_ret(ct_fsig_code(file, st[3]))
+                }
                 if fret10.len > 0 {
                     if fret10 != "v" {
                         if fret10 != "i" {
@@ -1095,7 +1102,18 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                     }
                 }
             }
-            var rhs = ct_expr(st[4], env, file)
+            // 批C-3 径A:fn 注解 let + 闭包初值 → 绑 '#clcodes'(shim 形参码提示,
+            // 镜像 StructLit 字段位两处与调用点 'F' 位;W4 勘定「期望签名未穿入
+            // 闭包形参 env」的最后一条公开缝:var f: fn(Box[T[M]])->R = |x| {…}
+            // 体内泛型调用 M 槽旧塌 __i,与直参/调用位两面劈叉)
+            var lenv = env
+            if st[4][0] == "Closure" && st[3][0] == "FnType" {
+                var lcc30 = ct_fntype_inner(file, ct_targ_env(st[3], env))
+                if lcc30.len > 0 {
+                    lenv = env_bind(env, "#clcodes", lcc30)
+                }
+            }
+            var rhs = ct_expr(st[4], lenv, file)
             // extern 返回 fn(v0.7 §9.6):声明位装箱——ct_fnK 裸指针 → ct_clop
             //(fn 槽存裸地址,env 恒 0),绑定后经既有 ct_clop 间接调用与回调摘槽路径
             // 统一工作;仅声明位(RHS 为 FnExt 调用)触发,fn 值直赋不二次装箱

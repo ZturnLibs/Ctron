@@ -1,0 +1,44 @@
+// 03o_generic_box_mono.ct —— Box[泛型struct携fn字段] 单态化推断三面钉(批C-3 收口)
+//
+// 语义承诺(§3.9.1 泛型实参推断 + §4 闭包 ABI):
+//   ①直参:fn[M](Box[TuiCase[M]], …) 调用位实参码 B:u:TuiCase__S → M=Str,
+//     单态化 mono_of__s(修前 ct_call_infer_tys Box 分支死码,恒落缺省 I32);
+//   ②fn 注解 let + 闭包初值:期望 fn 签型穿入闭包形参 env('#clcodes'),
+//     闭包体内泛型调用 M 自注解签型推断(修前形参槽塌 i,整型截断指针);
+//   ③fn 型形参位闭包实参:调用位签型注入(03j 同族,叠加泛型被调维度)。
+// 修前 ②③ 生成 t_TuiCase__I 声明位错配/不兼容指针 C;①依赖的 Box 分支因
+// else-if 错位嵌套(f1e0aee3)自落地起即为死码,且 pj≥ag.len 时越位引用 pty。
+
+fn noop() {
+}
+
+struct TuiCase[M] {
+    model: M
+    render: fn() -> Void
+}
+
+fn mono_of[M](tt: Box[TuiCase[M]], want: Str) -> Str {
+    return tt.model + want
+}
+
+fn feed(script: fn(Box[TuiCase[Str]]) -> Str, tt: Box[TuiCase[Str]]) -> Str {
+    return script(tt)
+}
+
+test "box generic mono: direct call infers M from Box payload" {
+    let t = Box[TuiCase[Str]](TuiCase { model: "A", render: noop })
+    assert_eq(mono_of(t, "B"), "AB")
+}
+
+test "box generic mono: annotated closure let threads expected signature" {
+    let t = Box[TuiCase[Str]](TuiCase { model: "C", render: noop })
+    let f: fn(Box[TuiCase[Str]]) -> Str = |tt| {
+        return tt.model + "D"
+    }
+    assert_eq(f(t), "CD")
+}
+
+test "box generic mono: closure literal at fn-typed param site" {
+    let t = Box[TuiCase[Str]](TuiCase { model: "E", render: noop })
+    assert_eq(feed(|tt| { return tt.model + "F" }, t), "EF")
+}

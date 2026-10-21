@@ -2768,3 +2768,63 @@ trans_v0-v6 7/7/boxmem 绿)。
   7/7 逐字、boxmem 绿。
 - **批C-3(闭包形参签型)仍为 test/d_* 回填的唯一在册阻塞**,两径待裁
   (A 期望签穿入 / B TuiTest 去泛型化),见上节与本计划 W4 注。
+
+### 批C-3 收口 + native.sh 自举回归根因闭环(2026-10-21 六;径A 落库,三缺口一追补一批)
+
+**背景**:c9e58977 移交的 native.sh 发射 cc_emit 确定性崩溃(`ct_expr:index 目标非
+List/数组:i 名:pty 下标:0`)复现锁定,顺藤清偿 批C-3 两径待裁案。**六层真因一次批内
+全落**,编译器源五处小改:
+
+1. **trans_ty.ct `ct_call_infer_tys` Box 分支自落地即死码(f1e0aee3 引入)**——
+   `} else if pty[0]=="Named" && seq2(pty[1],"Box")…` 带**双前 `}`**,错挂到外层
+   `if pj < ag.len` 而非内层型别分支链:`pj < ag.len` 时永不上链(推断恒缺省 I32,
+   `d_*` 族 `__i` 残根的真身),`pj ≥ ag.len` 时越位引用块内 `var pty`(块级绑定)
+   → 发射编译器自身时翻译该条件表达式即 panic = native.sh 崩溃真因。嵌套归位后分支
+   激活,直参面推断即正(探针 `d_expect__s` vs 修前恒 `__i`)。
+2. **批C-3 径A(裁决落库)**:期望 fn 签型穿入闭包形参 env——调用位 'F' 码 +
+   StructLit fn 字段位(既有 P0-A 两面)之外,补**第三绑定位:fn 注解 let + 闭包
+   初值**(trans_stmt Let 臂,`#clcodes` = `ct_fntype_inner(ct_targ_env(注解))`)。
+   三面贯通后闭包 shim 形参正型(`t_TuiCase__S* t_tt = (…)(long)_p0` + GC 槽注册;
+   修前 `int32_t t_tt = (int32_t)_p0` 整型截断指针 = 运行期内存腐蚀级)。
+3. **typedef 声明序(W4「声明位错配」真身)**:driver_emit.ct 预扫只认顶层 Named
+   注解,FnType 签名内实例(Box 载荷 `B:u:X__Y`)晚到 spec 点惰性直出 → 原型前置区
+   引用未声明型(探针:t_run_script 原型 503 行先于 CT_TDEF 520 行)。预扫增
+   `ct_ty_node_insts` 下钻(FnType 形参/返回递归 + B: 剥内码收集),参数/返回/
+   let 注解三位接线。
+4. **sem 面 E2060 宿主口径对齐**:自举 sem 调用点推断只认裸型参位绑定,
+   `Box[TuiCase[M]]` 深位出现恒 E2060(宿主 sem.c `ty_has_tp` 结构化出现则放行,
+   suite 双列差实证)。sem_type.ct 增 `sem_ty_has_tp`——**白名单制**逐类节点形
+   下钻(Named 壳内 TArgs/TupleT 直接元素/FnType 形参容器+返回/Ref/Slice/
+   Optional,深度 8 闸;初版无差别 tn[2] 递归把 TupleT 名字槽裸串当节点 =
+   SIGSEGV,04_generics_comptime 实证后改形),miss 判定改「全实参位零出现」
+   方红;值面单化仍归发射面推断。
+5. **追补(#fret 注解位)**:注解 FnType 的 `ct_ty_code` 短码恒 `F<arity>` 无返回维
+   → `ct_fsig_ret("F1")` 落 "" → `#fret` 不绑 → fn 值 Str 返回塌 ct_i(assert_eq
+   位裸指针 `==` 非 strcmp,`const char*` 原型化缺失)。注解位改走
+   `ct_fsig_code` 全签码(与直调声明面同源)。
+6. **W2 `.v` 直返内码勘误(陈旧 bin 掩蔽期暴露)**:批C-2 W2 的 typeof 侧
+   `e[3]=="v"` 恒直返内码,载荷 struct 自带 v 字段时(ctecho `Box64{v:I64}`,
+   `port_box.v`)与代码发射侧 `->v` 字段读劈叉 → `real.to_string()` typeof 塌
+   `u:Box64` 落 struct 臂 panic。基线 bin(97303043,无 W1-W3)同源掩盖两日,
+   bin 刷新批即暴露。改字段存在性优先(`ct_field_ty_node` 缺省 None 探针;
+   泛型载荷 `ct_field_ty_node_inst` 代入),无 v 字段方落载荷解引用。
+   smokelock 随批:decls 锁 531→532(sem_ty_has_tp +1,前注惯例)。
+
+**回归钉**:`tests/03o_generic_box_mono.ct`——Box[泛型struct携fn字段] 三形状
+(直参推断/注解闭包 let/调用位闭包实参);修前 ②③ 塌 `__i`+截断,①死码;
+种子 3/3 + 发射 rc=0(修前发射臂 assert_eq 红实证双列差非解析噪声)。
+
+**新立残债(G2,本批不治)**:裸 fn 引用蹦床(`let g = pick`)对 Str 形参丢 cast
+——`#fval` 蹦床体 `return (ct_i)t_pick(_cbp0)` 直传 ct_i 入 `const char*` 形参
+(cc hard error;03h 标量族不触)。归 P0-2/T54 fn 值签名携带面,独立账。
+
+**门**:json_fidelity 19/0 双臂(**出臂债随 bin 刷新首清**)+ native.sh 全程
+rc=0(八件 bin + 用户驱动器全自现行源,c9e58977 移交案销账)+ suite 双列
+120/121·121/121(03o 新钉入册即绿;唯一红=07a E4010 caps,在册零分歧旧账)
++ gui 阶梯 101/0(d_* 真 context 全绿)+ meta_check 632 文件全绿 + smoke
+23a-2 前先在双制残差非本批**(interp 推断形/native 写出形 F64 `32.0`↔`32`
+八例 + opti32 none 两面;conc 走 spawn 边界型别分派,23a-2 钉子未覆该形,
+随 23b/双制尾册);decls/ctecho 两红本批自愈,csv/strconv/time 三红为负载
+flake(独跑同版即绿)。**余册**:conc 八例(23a-2 双制尾册)、tui Wave-4 回填
+(tui_driver test/d_* 原稿 + tests/tui/s13 夹具)自此解锁待新批;G2 蹦床;
+种子发射 trace 恒 main:1(v1 桩形在册);IP-23 23b 下游(db/web)未动。

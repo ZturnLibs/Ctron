@@ -1360,7 +1360,29 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             // Box 自动解引用字段读:载荷 struct 的字段码(批C-2:内码携实例)
             var binner = byte_slice(oft, 2, oft.len)
             if e[3] == "v" {
-                // §6.1 Box[T].v = 载荷值本身(显式解引用;内码即值码)
+                // §6.1 Box[T].v = 载荷值本身(显式解引用;内码即值码)——但载荷
+                // struct 自带 v 字段时自动解引用+字段读优先(Box64{v:I64} 即此
+                // 形;W2 直返内码使 typeof 塌 u:Box64 与代码侧 ->v 字段读劈叉,
+                // real.to_string() 落 struct 臂 panic,陈旧 bin 掩盖至刷新批暴
+                // 露)。字段存在性经 ct_field_ty_node(缺 → None)
+                if binner.len > 2 && byte_slice(binner, 0, 2) == "u:" {
+                    var vnm31 = ct_struct_name_of(binner)
+                    var vty31 = mk("None")
+                    if ct_struct_tps(file, vnm31).len > 0 {
+                        var vbar31: I32 = 0
+                        var vq31: I32 = 0
+                        while vq31 < binner.len {
+                            if byte_at(binner, vq31) == 124 { vbar31 = vq31 }
+                            vq31 += 1
+                        }
+                        vty31 = ct_field_ty_node_inst(file, vnm31, "v", byte_slice(binner, vbar31 + 1, binner.len))
+                    } else {
+                        vty31 = ct_field_ty_node(file, vnm31, "v")
+                    }
+                    if vty31[0] != "None" {
+                        return ct_ty_code(vty31, file)
+                    }
+                }
                 return binner
             }
             if binner.len > 2 && byte_slice(binner, 0, 2) == "u:" {
@@ -2472,7 +2494,6 @@ fn ct_call_infer_tys(file: List[Str], env: List[Str], ag: List[Str], callee: Str
                         }
                     }
                 }
-            }
             } else if pty[0] == "Named" && seq2(pty[1], "Box") && pty[2].len > 1 && pty[2][1][0] == "Named" && pty[2][1].len > 2 && ct_struct_tps(file, pty[2][1][1]).len > 0 {
                 // 批C-2:Box[泛型struct[TPar]] 形参——实参码 B:<内码> 拆实例映射 tps
                 //(旧无分支落缺省 I32 → 单态化 __i 与构造面 __U5_Model 分叉)
@@ -2514,6 +2535,7 @@ fn ct_call_infer_tys(file: List[Str], env: List[Str], ag: List[Str], callee: Str
                         }
                     }
                 }
+            }
         }
         pj += 1
     }

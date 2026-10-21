@@ -724,6 +724,9 @@ println("static const char* ctron_bytes_to_str(ctron_bytes* b) \{ int64_t n = 0;
                                     }
                                 }
                             }
+                            if pr[3][0] == "FnType" {
+                                ct_ty_node_insts(file, pr[3], insts)
+                            }
                         }
                         gk += 1
                     }
@@ -739,6 +742,8 @@ println("static const char* ctron_bytes_to_str(ctron_bytes* b) \{ int64_t n = 0;
                                 inst_try_collect(insts, ct_struct_inst_code(gd[4][1], cs3))
                             }
                         }
+                    } else if gd[4][0] == "FnType" {
+                        ct_ty_node_insts(file, gd[4], insts)
                     }
                     // 体面 let/var 注解(非泛型体;泛型体无具体码)
                     if gd[2].len < 2 {
@@ -819,6 +824,9 @@ println("static const char* ctron_bytes_to_str(ctron_bytes* b) \{ int64_t n = 0;
                     while pk7 < pd7[3].len {
                         if pd7[3][pk7][0] == "Param" {
                             inst_try_collect(insts, ct_ty_code(pd7[3][pk7][3], file))
+                        }
+                        if pd7[3][pk7][3][0] == "FnType" {
+                            ct_ty_node_insts(file, pd7[3][pk7][3], insts)
                         }
                         pk7 += 1
                     }
@@ -1518,6 +1526,9 @@ fn ct_let_insts_b(b: List[Str], file: List[Str], out: List[Str]) {
             if st[3][0] == "Named" {
                 inst_try_collect(out, ct_ty_code(st[3], file))
             }
+            if st[3][0] == "FnType" {
+                ct_ty_node_insts(file, st[3], out)
+            }
             ct_let_insts_e(st[4], file, out)
         } else if t == "While" {
             ct_let_insts_e(st[1], file, out)
@@ -1557,6 +1568,27 @@ fn ct_let_insts_b(b: List[Str], file: List[Str], out: List[Str]) {
     }
 }
 
+// W4 残余/批C-3 收口:FnType 签名内实例下钻——fn 值形参/返回/let 注解携
+// Box[泛型struct]/u: 实例时,原型前置区引用 t_X__Y* 而预扫只认顶层 Named
+// → typedef 晚到(spec 点惰性直出)= C 未声明型(探针实证:t_run_script
+// 原型先于 CT_TDEF_t_TuiTest__S)。递归钻 FnType 形参/返回;W1 B: 码携全
+// 内码,B:u:X__Y 载荷实例同须前置。
+fn ct_ty_node_insts(file: List[Str], tn: List[Str], out: List[Str]) {
+    if tn[0] == "FnType" {
+        var di: I32 = 1
+        while di < tn[1].len {
+            ct_ty_node_insts(file, tn[1][di], out)
+            di += 1
+        }
+        ct_ty_node_insts(file, tn[2], out)
+        return
+    }
+    var c = ct_ty_code(tn, file)
+    inst_try_collect(out, c)
+    if c.len > 2 && byte_slice(c, 0, 2) == "B:" {
+        inst_try_collect(out, byte_slice(c, 2, c.len))
+    }
+}
 // P0-A 预扫收集:实例码(u:名__尾缀)或 Lu: 装箱槽元素实例 → 入表去重
 fn inst_try_collect(out: List[Str], code: Str) {
     // P0-A:&T 形参(p<…> 码)剥壳收集
