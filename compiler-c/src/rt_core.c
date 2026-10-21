@@ -153,7 +153,11 @@ void fmt_val(rt* R, val v, sb* b) {
     switch (v.k) {
     case V_INT: fmt_int(buf, v.i, v.us); rsb_s(b, buf); break;
     case V_FLOAT:
-        if (v.f == (double)(long long)v.f) snprintf(buf, sizeof buf, "%.1f", v.f);
+        // F64 写出钉子(IP-23 23a-2):零形 "0.0"(±0 无负号,df 零规则)/
+        // 界内整数形 %.1f(界内试探防 ≥2^63 UB 转换)/其余 %g——num_json_f64
+        // (std/json)规范定义处,自举解释臂 df_show 同形逐字
+        if (v.f == 0.0) { rsb_s(b, "0.0"); break; }
+        if (v.f >= -9.22e18 && v.f <= 9.22e18 && v.f == (double)(long long)v.f) snprintf(buf, sizeof buf, "%.1f", v.f);
         else snprintf(buf, sizeof buf, "%g", v.f);
         rsb_s(b, buf);
         break;

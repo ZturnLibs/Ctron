@@ -54,6 +54,11 @@ done
 if [ -x "$EMIT" ]; then
     for f in "$DIR"/corpus/*.ct; do
         name=$(basename "$f" .ct)
+        # i_ 前缀 = interp-only 件(x_ 逆先例):to_string(F64) 值面待 bin 刷新
+        # 转正(发射臂 f/g 臂已入源,现网 emit bin=绿基线遗留)
+        case "$name" in
+            i_*) continue ;;
+        esac
         if "$EMIT" run "$f" > "$T/$name.e.c" 2>"$T/$name.e.err" \
            && cc -O1 -w -o "$T/$name.e.bin" "$T/$name.e.c" 2>"$T/$name.e.cc.err" \
            && "$T/$name.e.bin" > "$T/$name.e.out" 2>&1; then

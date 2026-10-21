@@ -69,6 +69,84 @@
 > f_num_domains+存量九件零回归)+json.ct inline rc=0+suite 119/120·120/120(07a 在册)
 > +meta_check 全绿;smoke --full 跳过(对端批C-2 native.sh 回归在册,门=24 步等效
 > 子集:json_fidelity+suite+meta_check)。
+>> **IP-23 23a-2 F64 写出钉子落地(2026-10-21;裁决点1收口径①,两制归一)。**
+> 规范形字节级钉死:[-]int[.frac]——积分恒 ".0" 二段(零 → "0.0",±0 无负
+> 号)/非积分 6 位有效最短形(第 7 位半升+尾零修剪;定点窗 [1e-4,1e6),窗外
+> e±XX 两位指数=df_g/%g 同形)。规范定义处=num_json_f64(std/json 纯 Ctron
+> 规范机移植:jf_pw 幂升梯+jf_can 整性余尽判+6 位舍入逐支镜 df_g+私有测试
+> 助手 jf_rt/jf_rt_eq);三臂同形:解释 df_show(原形即钉形,零改)/种子
+> fmt_val(rt_core ±0 归一+界内试探防 ≥2^63 UB)/发射 ctron_f64_to_string
+> (自举 driver_emit prelude+种子 trans_rt 零形补齐)。**两制归一定案**:
+> 推断形/注解形分歧=型别分派所在(fx_conc_spawn 实证 "32"=Int 臂/"32.0"=
+> F64 臂),钉后各归其形。**臂落地**:自举 trans_expr.ct f/g 臂(入源,bin
+> 刷新后值面验证——jn f3 渲染债随臂销账)+种子 trans_expr.c T_FLT to_string
+> 臂(调用位内建成员分派新立,原 v1 仅表达式位「仅支持具名函数调用」错)+
+> ctron_fmt_f64 fam 死闸提名修复(fmt 截取先 return 从未可达,种子发射面
+> 首次实际-use 故提名)+种子双面探针 VERBATIM-MATCH(9 行:积分 .0/±0 归一/
+> e 形两位指数/负值/println 面)。**语料**:f_num_write 双臂(电池+写读写
+> ≤2 步收敛+≤6 位有效精确往返+nf 原文铁律)+i_num_tostring(interp-only,
+> i_ 前缀=run.sh 出臂跳过[x_ 逆先例],bin 刷新转正——to_string 值面毒化陈
+> 旧 emit 编译故隔离)。round-trip 口径定案:write∘parse ≤2 步收敛不动点
+> (e 形解析落定点窗一步定型)+≤6 位有效定点窗内精确往返;径② %.17g 暴露
+> 双宿值模型分歧(0.3 vs 0.30000000000000004)故否,6 位投影掩蔽噪声保逐字。
+> 夹具纪律:跨模块调用实参经 fixture 帮手/注解局部(陈旧发射器对 List 索引
+> 与直呼表达式实参推 "N" 不折算,bin 刷新后可化简)。种子副本随批同步。
+> 门:json_fidelity 18/0 双臂+suite 119/120·120/120(07a 在册零分歧)+
+> meta_check 全绿+种子面 suite_rt 基线等值(dom.set_body/Region 双红在册)/
+> suite_trans 15/0/suite_run 17/0;test_lex 基线即崩(陈旧 harness,门外
+> 步骤,与本批零交集,在册)。**余**:自举 emit 臂值面待 native.sh 修复
+> (对端批C-2 在册,Int 宽域后缀同批待验);23b 下游(db/web)未动。
+>
+>> **嵌套 enum 载荷绑定落地(2026-10-21;随 R 码 ABI 批,Ok(Big(raw)) 形三面)。**
+> 勘定:解释臂 pat_match 递归原生支持(PatAgg→SubTup 逐载荷递归,自举/种子双
+> 解释臂现网即通);**发射臂双缺口咬出**——①okIx/someIx 单槽扫描后臂覆盖前臂
+> =多 Ok 臂静默丢臂(嵌套语料 "other" 假绿实证);②Ok/Some 载荷只认 PatId,无
+> 嵌套分派(Err 臂 R2c 已有,Ok/Some 侧缺)。**治**:trans_stmt.ct R 分派臂
+> Some/Ok 各改源序 else-if 链(首中即断=解释臂同义),载荷嵌套用户枚举
+> (PatAgg/裸变体 Ident)→ 内层 variant 判(条件内联 cast `(ct_enum_N*)(long)
+> rme.v)->variant==k`,镜像 Err 臂 t_mn 链)+ct_variant_pcodes/ct_unwrap_i 直绑
+> (初版误传 C 型串 pc 给 ct_unwrap_i——Err 臂同款坑二度咬出,pct 才是码);
+> 简单臂保 T53 f 双关/u: 解引用/hR recv 原逻辑,臂体语义各保其位(Some=return
+> 位/Ok=合成语句位)。**验证路径立功**:ctc.sh emit=种子解释现行源拼接 cc_emit
+> 现行发射——gui_parse 泛型回归(批C-2)不触达小目标,**现行源发射臂验证在
+> native.sh 修复前即可做**(此后 emit 面验证默认此径,bin 刷新债仅余 smoke
+> --full/全量自举)。嵌套探针双案逐字(9e15 直绑/Int 落 Ok(_))+语料
+> i_jnum_nested(interp-only,bin 刷新转正——现网 bin 陈旧 emit 静默丢臂)
+> 四态直绑(nb 原文/nu U64 全域/ni 负域/nf 浮点)+首中即断链序+内层通配
+> Big(_)+noent Err 面,发射面(现行源)rc=0。种子发射器勘定=响亮拒绝
+> (「v1:载荷子模式不支持」),归种子发射器批统筹。jnum_of 消费面升级形=
+> 本语料(f_num_domains 受撑形待 bin 刷新随升级)。初版三误自咬(els 闭括号/
+> panic 行错位/if 守卫误删)——重读即修,零残留。
+> 门:json_fidelity 19/0+suite 119/120·120/120+meta_check 全绿+嵌套/钉子
+> 双探针现行源发射面 rc=0。
+>
+>> **F64 写出钉子 emit 值面销账(2026-10-21;23a-2 余项,ctc.sh 径)。**
+> 种子/自举发射 F64 to_string 臂经 ctc.sh 现行源发射探针逐字全对(32.0/0.0/
+> ±0→0.0/3.5/1e-05/1.23457e+06/-3.5+assert 族)——23a-2「emit 臂值面待
+> native.sh」当场销账;i_num_tostring 转正仍待 bin 刷新(json_fidelity 出臂
+> 用陈旧 bin,径不同)。Int 宽域后缀同径可验,留对端批。
+>
+>> **种子发射器 downcast 面落地(2026-10-21;IP-01 收官债销账,10_trace 四面)。**
+> 勘定:种子错误链面已具 ? 两段擦除/ctxres 链/opt match 机械,唯 anyerr 布局
+> 缺 magic/payload/tname 三字段(vs interp/自举)+Err 构造无 T_ERR 期望+
+> downcast 无臂。**四处落**:①trans.c anyerr 布局升全形(前插 magic,尾补
+> payload/tname——自含 typedef 字段名访问零扰动);②Err 构造 T_ERR 期望臂
+> (let e: AnyError = Err(Bad) 形,per-enum wrap 助手 use_sum 注入:magic+
+> payload 值拷贝+tname+code=枚举名.变体名[CTRON_WVN 变体名表静态注],镜像
+> rt v_err_t);③downcast[E](e) 臂(EX_TYPEARGS 闸;per-type Option 结构合成
+> ctron_opt_<E> use_sum+魔数+tname 判别+cause 链下探取最内层载荷[rt 同义]/
+> 载荷指针回交 some 槽,未命中 NONE;ek/bits=枚举表索引+tname2=枚举名递
+> Some(x) 绑定型别面——match 读侧 Sum-branch 随批补 T_ENUM tname2 递名);
+> ④ctron_erase_e_* 桩升真身(双站同文本 use_sum 单注;原桩丢 payload/tname/
+> code=downcast 恒 miss/code 断言空根)+ctxres 链节点透传 magic/payload/tname
+> (镜像自举 ct_ctxres)。**门**:10_trace 四面全绿——种子解释 4-4/0(在册形)/
+> 种子发射 rc=0 全测(本批新通:code="Fail.Bad"/downcast 命中+未命中/context
+> 链)/自举 cc rc=0/自举发射 rc=0;探针 t1-ok+dc-hit;种子面 suite_trans 15/0/
+> suite_run 17/0/suite_rt 基线等值(双红在册);suite 119/120·120/120+
+> meta_check 全绿+json_fidelity 19/0。**IP-01 全项清**(宿主 downcast 差分/
+> 种子发射 downcast 面/code 变体名三债全销)。**余册**:种子发射 ?/擦除 trace
+> 恒 "main:1"(调用点 file:line 未穿线,v1 桩形在册);Some(载荷绑定) 种子面
+> 已通型别递名,深嵌套子模式仍 v1 闸(嵌套批在册)。
 >
 > **R2c 枚举浮点/宽载荷位双关+U64 to_string(2026-10-20;IP-23 23a 前置地基)。**
 > JNum tagged union 探针(jn.ct)连环咬出三枚枚举机械通用缺口,全修:①ct_wrap_i 补

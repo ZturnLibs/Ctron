@@ -350,11 +350,12 @@ println("static ctron_list* ctron_list_new(void) \{ ctron_list* l = (ctron_list*
             println("static uint64_t ctron_u64_mod(uint64_t a, uint64_t b) \{ if (b == 0) \{ ctron_panic(\"division by zero\"); } return a % b; }")
             println("static const char* ctron_i64_to_string(int64_t v) \{ char* r = (char*)ct_gc_alloc(32); snprintf(r, 32, \"%lld\", (long long)v); return r; }")
             println("static const char* ctron_u64_to_string(uint64_t v) \{ char* r = (char*)ct_gc_alloc(32); snprintf(r, 32, \"%llu\", (unsigned long long)v); return r; }")
-            // 插值标量面(§4.11)F64/F32 文本化:拼写对齐 println 三元约定(整数形
-            // %.1f/其余 %g)——解释臂 df 规范十进制在非整数值域逐字同形,整数形
-            // 补 .0;界内 long long 试探防 1e300 级 UB 转换(≥2^63 双精度恒整数,
-            // 直落 %.1f)。512B 容 %.1f 全量位(1.8e308 → 309 位 + .0)
-            println("static const char* ctron_f64_to_string(double v) \{ char* r = (char*)ct_gc_alloc(512); double t = (v >= -9.22e18 && v <= 9.22e18) ? (double)(long long)v : v; if (v == t) \{ snprintf(r, 512, \"%.1f\", v); } else \{ snprintf(r, 512, \"%g\", v); } return r; }")
+            // 插值/to_string 标量面(§4.11;IP-23 23a-2 钉子):拼写对齐 println
+            // 三元约定(零形 "0.0" ±0 无负号/整数形 %.1f/其余 %g)——解释臂 df
+            // 规范十进制在非整数值域逐字同形,整数形补 .0;界内 long long 试探
+            // 防 1e300 级 UB 转换(≥2^63 双精度恒整数,直落 %.1f)。512B 容
+            // %.1f 全量位(1.8e308 → 309 位 + .0)
+            println("static const char* ctron_f64_to_string(double v) \{ char* r = (char*)ct_gc_alloc(512); if (v == 0.0) \{ snprintf(r, 512, \"0.0\"); } else \{ double t = (v >= -9.22e18 && v <= 9.22e18) ? (double)(long long)v : v; if (v == t) \{ snprintf(r, 512, \"%.1f\", v); } else \{ snprintf(r, 512, \"%g\", v); } } return r; }")
             // IP-01 W2 错误链发射面(§5.4):ctron_anyerr 物化结构 + 判型/字段/包装助手。
             // 布点=ct_res typedef(line~201)之后;枚举统一视图读 variant(布局同
             // ct_enum_* {int variant; ct_i p[2]})。code/变体名表见 ct_vnames_* 发射点

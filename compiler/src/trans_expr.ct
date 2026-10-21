@@ -1255,8 +1255,14 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 if objt == "N" { return "ctron_sb_str((const void*)(" + obj + "))" }
                 if objt == "6" { return "ctron_i64_to_string(" + obj + ")" }
                 if objt == "7" { return "ctron_u64_to_string(" + obj + ")" }
-                // f/g 臂=F64 写出钉子(IP-23 23a-2)地盘:解释臂对推断形/注解形两制
-                //(fx_conc_spawn "32" vs 注解 F64 "32.0" 实证),未钉前不落臂
+                // f/g 臂=IP-23 23a-2 写出钉子(2026-10-21 已落,裁决点1收口):
+                // ≡ num_json_f64 规范形(std/json 规范定义处;零形 "0.0"/整数形
+                // %.1f/其余 %g,prelude ctron_f64_to_string 即发射侧定义,解释臂
+                // df_show 同形逐字)。两制归一注记:推断形/注解形分歧=型别分派
+                // 所在(fx_conc_spawn 实证 "32"=Int 臂/"32.0"=F64 臂),钉后各归
+                // 其形,F64 恒规范形——jn 探针 f 渲染债("3")随本臂销账
+                if objt == "f" { return "ctron_f64_to_string((double)(" + obj + "))" }
+                if objt == "g" { return "ctron_f64_to_string((double)(" + obj + "))" }
                 return "ctron_i32_to_string((int32_t)(" + obj + "))"
             }
             if or2(m == "set_title", or2(m == "title", or2(m == "set_body", m == "body"))) {

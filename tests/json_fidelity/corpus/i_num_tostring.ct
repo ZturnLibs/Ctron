@@ -1,0 +1,42 @@
+// i_num_tostring.ct —— IP-23 23a-2:to_string(F64) ≡ num_json_f64 三臂归一互证
+// **interp-only 件**(i_ 前缀:run.sh 出臂跳过,镜像 x_ 逆先例)——自举发射臂
+// to_string f/g 臂已入源(trans_expr.ct)但 bin 未刷新,现网 emit 臂编译/运行
+// 值皆旧;bin 刷新后去前缀转正双臂。解释臂面:to_string 走 fmt→df_show,本件
+// 断言其与规范机逐字同形(两制归一:F64 恒 ".0" 形/规范形,Int 另臂 "32" 不涉)。
+// 域纪律:注解局部承载(码 "f");小数字面量 ≤6 位有效,禁 e 形字面量。
+use std.json.{num_json_f64}
+
+test "num write: to_string verbatim interp face" {
+    var a1: F64 = 32.0
+    assert_eq(a1.to_string(), num_json_f64(a1))
+    var a2: F64 = 123.0
+    assert_eq(a2.to_string(), num_json_f64(a2))
+    var a3: F64 = 100000.0
+    assert_eq(a3.to_string(), num_json_f64(a3))
+    var z1: F64 = 0.0
+    assert_eq(z1.to_string(), num_json_f64(z1))
+    var n1: F64 = 2.25
+    assert_eq((0.0 - n1).to_string(), num_json_f64(0.0 - n1))
+    var f1: F64 = 3.5
+    assert_eq(f1.to_string(), num_json_f64(f1))
+    var f2: F64 = 0.5
+    assert_eq(f2.to_string(), num_json_f64(f2))
+    var f3: F64 = 2.25
+    assert_eq(f3.to_string(), num_json_f64(f3))
+    var f4: F64 = 0.0001
+    assert_eq(f4.to_string(), num_json_f64(f4))
+    var f5: F64 = 12345.7
+    assert_eq(f5.to_string(), num_json_f64(f5))
+    var f6: F64 = 123456.7
+    assert_eq(f6.to_string(), num_json_f64(f6))
+    var e1: F64 = 0.00001
+    assert_eq(e1.to_string(), num_json_f64(e1))
+    var e2: F64 = 1000000.5
+    assert_eq(e2.to_string(), num_json_f64(e2))
+    var e3: F64 = 1234567.5
+    assert_eq(e3.to_string(), num_json_f64(e3))
+    // 两制归一锚:Int 臂 "32"/F64 臂 "32.0" 分型别各归其形
+    var iv: I64 = 32
+    assert_eq(iv.to_string(), "32")
+    assert_eq(a1.to_string(), "32.0")
+}

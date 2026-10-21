@@ -292,6 +292,12 @@ ty emit_expr(tc* c, cexpr* e, sb* o) {
             if (!strcmp(m, "char_len")) { use_helper(c, "ctron_str_char_len"); sb_f(o, "ctron_str_char_len(%s)", ov); sb_free(&ob); return ty_int(64, 0); }
             if (!strcmp(m, "to_string")) { sb_s(o, ov); sb_free(&ob); return ty_str(); }
         }
+        if (ot.k == T_FLT) {
+            // F64 写出钉子(IP-23 23a-2):to_string ≡ num_json_f64 规范形
+            // (std/json 规范定义处;零形 "0.0"/整数形 %.1f/其余 %g——
+            // ctron_fmt_f64 即发射侧定义,解释臂 fmt_val/df_show 同形逐字)
+            if (!strcmp(m, "to_string")) { use_helper(c, "ctron_fmt_f64"); sb_f(o, "ctron_fmt_f64(%s)", ov); sb_free(&ob); return ty_str(); }
+        }
         if (ot.k == T_ERR) {
             // AnyError 链节点属性(C10-i):message/cause/trace(rt EX_MEMBER V_ERR 语义)
             if (!strcmp(m, "message")) { sb_f(o, "(%s)->message", ov); sb_free(&ob); return ty_str(); }
@@ -817,6 +823,27 @@ ty emit_expr(tc* c, cexpr* e, sb* o) {
                     return emit_atomic_call(c, e, rt, cal->obj->text, o);
             }
         }
+        // 内建成员方法调用位:v1 原仅表达式位(290-294),调用位成员方法直落
+        // 「仅支持具名函数调用」错。IP-23 23a-2 钉子种子发射面:to_string 于
+        // T_FLT = ctron_fmt_f64(≡ num_json_f64 规范形,解释臂 fmt_val 同形),
+        // T_STR 透传;其余接收者维持原错(v1 最小面在册)
+        if (cal && cal->kind == EX_MEMBER && cal->m_is_name && cal->mname
+            && !strcmp(cal->mname, "to_string") && e->nelems == 0) {
+            sb rob4 = {0};
+            ty rt6 = emit_expr(c, cal->obj, &rob4);
+            if (rt6.k == T_FLT) {
+                use_helper(c, "ctron_fmt_f64");
+                sb_f(o, "ctron_fmt_f64(%s)", rob4.d ? rob4.d : "0");
+                sb_free(&rob4);
+                return ty_str();
+            }
+            if (rt6.k == T_STR) {
+                sb_s(o, rob4.d ? rob4.d : "\"\"");
+                sb_free(&rob4);
+                return ty_str();
+            }
+            sb_free(&rob4);
+        }
         // C10-m:parallel 命名空间(§7.7;解释器为序贯形态,v1 同构发射)
         if (cal && cal->kind == EX_MEMBER && cal->m_is_name && cal->mname
             && cal->obj && cal->obj->kind == EX_IDENT && !strcmp(cal->obj->text, "parallel")) {
@@ -1001,6 +1028,9 @@ ty emit_expr(tc* c, cexpr* e, sb* o) {
                             "    ctron_anyerr* n = (ctron_anyerr*)calloc(1, sizeof(ctron_anyerr));\n"
                             "    n->message = strdup(msg ? msg : \"\");\n"
                             "    n->cause = v.as.err;\n"
+                            "    n->magic = v.as.err ? v.as.err->magic : 0;\n"
+                            "    n->payload = v.as.err ? v.as.err->payload : 0;\n"
+                            "    n->tname = v.as.err ? v.as.err->tname : 0;\n"
                             "    n->trace = strdup(v.as.err && v.as.err->trace ? v.as.err->trace : \"main:1\");\n"
                             "    n->code = strdup(v.as.err && v.as.err->code ? v.as.err->code : (v.as.err && v.as.err->message ? v.as.err->message : \"\"));\n"
                             "    r.tag = CTRON_RES_ERR; r.as.err = n; return r;\n}\n",
@@ -1262,6 +1292,41 @@ ty emit_expr(tc* c, cexpr* e, sb* o) {
                 sb_free(&uargs); sb_free(&rob3);
                 return is_void_helper(iv) ? ty_unk() : uret;
             }
+        }
+        // IP-01 downcast[E](e: AnyError) -> Option[E](种子发射面收官;镜像自举
+        // trans_expr.ct 同名臂):per-type Option 结构合成(use_sum;ctron_opt_
+        // <E> 形同 ctron_opt_err)+魔数+tname 判别,载荷指针回交 some 槽;未命中
+        // NONE。ek/bits=枚举表索引,tname2=枚举名(Some(x) 绑定型别面递名)
+        if (cal && cal->kind == EX_TYPEARGS && cal->obj && cal->obj->kind == EX_IDENT
+            && !strcmp(cal->obj->text, "downcast") && cal->ntargs == 1 && e->nelems == 1) {
+            const char* denm = (cal->targs[0] && cal->targs[0]->npath > 0) ? cal->targs[0]->path[0] : NULL;
+            if (!denm) { terr(c, "v1:downcast 需具名错误类型实参"); return ty_unk(); }
+            sb dxb = {0};
+            ty dxt = emit_expr(c, e->elems[0], &dxb);
+            if (dxt.k != T_ERR) { terr(c, "v1:downcast 实参需 AnyError"); sb_free(&dxb); return ty_unk(); }
+            char optn[96];
+            snprintf(optn, sizeof optn, "ctron_opt_%s", denm);
+            char ddef[256];
+            snprintf(ddef, sizeof ddef,
+                "typedef struct { int tag; union { ctron_e_%s* some; } as; } %s;\n"
+                "#define CTRON_OPT_NONE 0\n#define CTRON_OPT_SOME 1\n", denm, optn);
+            use_sum(c, ddef);
+            sb_f(o, "({ ctron_anyerr* _da = %s; ctron_anyerr* _dz = _da; "
+                    "while (_dz && !(_dz->magic == 0x4354414E59455252ULL && _dz->tname && _dz->payload)) { _dz = _dz->cause; } "
+                    "%s _dc; "
+                    "if (_dz && _dz->tname && _dz->payload && strcmp(_dz->tname, \"%s\") == 0) "
+                    "{ _dc.tag = CTRON_OPT_SOME; _dc.as.some = (ctron_e_%s*)_dz->payload; } "
+                    "else { _dc.tag = CTRON_OPT_NONE; } _dc; })",
+                 dxb.d ? dxb.d : "0", optn, denm, denm);
+            sb_free(&dxb);
+            ty r = ty_unk();
+            r.k = T_SUM;
+            r.tname = ctron_arena_strndup(c->a, optn, strlen(optn));
+            r.ek = T_ENUM;
+            r.tname2 = ctron_arena_strndup(c->a, denm, strlen(denm));
+            for (size_t di = 0; di < c->nenums; di++)
+                if (!strcmp(c->enums[di].name, denm)) { r.bits = (int)di; break; }
+            return r;
         }
         // List 容器:List[T]() / arena.list[T]()
         if (cal && cal->kind == EX_TYPEARGS && cal->obj && cal->ntargs == 1) {
@@ -1548,7 +1613,49 @@ ty emit_expr(tc* c, cexpr* e, sb* o) {
                 sb_free(&args);
                 return derived;
             }
-            if (!w || w->k != T_SUM) { terr(c, "v1:%s 需期望类型(注解/返回类型)", nm); sb_free(&args); return ty_unk(); }
+            if (!w || (w->k != T_SUM && w->k != T_ERR)) { terr(c, "v1:%s 需期望类型(注解/返回类型)", nm); sb_free(&args); return ty_unk(); }
+            if (w->k == T_ERR) {
+                // T_ERR 期望:Err(变体) 擦除透传形(IP-01 种子发射面收官)。
+                // per-enum wrap 助手(use_sum 注入)物化链节点:magic+payload
+                // 值拷贝+tname+code=枚举名.变体名(镜像 rt v_err_t/自举
+                // ct_anyerr_wrap_e 形;变体名表静态注)
+                const ty* sw3 = c->want;
+                c->want = NULL;
+                sb p3 = {0};
+                ty pt3 = emit_expr(c, e->elems[0], &p3);
+                c->want = sw3;
+                if (pt3.k != T_ENUM || !pt3.tname) { terr(c, "v1:Err 擦除需用户枚举载荷"); sb_free(&p3); sb_free(&args); return ty_unk(); }
+                edef* wd3 = NULL;
+                for (size_t wi3 = 0; wi3 < c->nenums; wi3++)
+                    if (!strcmp(c->enums[wi3].name, pt3.tname)) { wd3 = &c->enums[wi3]; break; }
+                if (!wd3) { terr(c, "v1:Err 擦除枚举未名:%s", pt3.tname); sb_free(&p3); sb_free(&args); return ty_unk(); }
+                char wfn[96];
+                snprintf(wfn, sizeof wfn, "ctron_wrap_e_%s", wd3->name);
+                sb vt3 = {0};
+                sb_f(&vt3, "static const char* CTRON_WVN_%s[] = {", wd3->name);
+                for (size_t wi3 = 0; wi3 < wd3->n; wi3++)
+                    sb_f(&vt3, "%s\"%s\"", wi3 ? ", " : "", wd3->variants[wi3].name);
+                sb_f(&vt3, "};");
+                char wdef[768];
+                snprintf(wdef, sizeof wdef,
+                    "%s\n"
+                    "static ctron_anyerr* %s(ctron_e_%s v) {\n"
+                    "    ctron_anyerr* n = (ctron_anyerr*)calloc(1, sizeof(ctron_anyerr));\n"
+                    "    n->magic = 0x4354414E59455252ULL;\n"
+                    "    ctron_e_%s* p = (ctron_e_%s*)malloc(sizeof(ctron_e_%s));\n"
+                    "    *p = v; n->payload = p; n->tname = \"%s\";\n"
+                    "    char* cb = (char*)malloc(160);\n"
+                    "    snprintf(cb, 160, \"%s.%%s\", CTRON_WVN_%s[v.tag]);\n"
+                    "    n->code = cb;\n"
+                    "    return n;\n"
+                    "}\n", vt3.d ? vt3.d : "", wfn, wd3->name, wd3->name, wd3->name, wd3->name, wd3->name, wd3->name, wd3->name);
+                sb_free(&vt3);
+                use_sum(c, wdef);
+                sb_f(o, "%s(%s)", wfn, p3.d ? p3.d : "0");
+                sb_free(&p3);
+                sb_free(&args);
+                return *w;
+            }
             int is_opt = !strncmp(w->tname, "ctron_opt_", 10);
             if (!strcmp(nm, "Some") && is_opt)
                 sb_f(o, "(%s){ .tag = CTRON_OPT_SOME, .as.some = %s }", w->tname, args.d ? args.d : "0");

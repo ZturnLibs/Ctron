@@ -1463,110 +1463,191 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 if or2(rpt[0] == "PatId" && rpt[1] == "None", rpt[0] == "PatAgg" && rpt[1] == "None") { noneIx = ri }
                 ri += 1
             }
-            if someIx >= 0 {
-                var sa = rarms[someIx]
-                var spt = sa[1]
-                var sbe = sa[2]
-                var sec = ct_opt_elem_expr(file, st[1], env)
-                eln("if (" + rme + ".variant == 0) \{", env)
-                var senv = env
-                if spt[2].len > 1 && spt[2][1][0] == "PatId" && spt[2][1][1] != "_" {
-                    // T53:f 载荷位型双关(与 let-match 臂同款;旧 (double)(long) 值直转失真)
-                    var pvx9 = "(" + ct_ctype(sec) + ")(long)(" + rme + ".v)"
-                    // u: struct 载荷解引用(盒装写侧配对)
-                    if sec.len > 2 && byte_slice(sec, 0, 2) == "u:" {
-                        pvx9 = "(*(" + ct_ctype(sec) + "*)(long)(" + rme + ".v))"
-                    }
-                    if sec == "f" {
-                        pvx9 = "((union \{ double _d; ct_i _i; })\{ ._i = (ct_i)(" + rme + ".v) })._d"
-                    }
-                    eln(ct_ctype(sec) + " t_" + spt[2][1][1] + " = " + pvx9 + ";", env)
-                    senv = env_bind(env, spt[2][1][1], sec)
-                }
-                if sbe[0] == "BlockExpr" {
-                    ct_block(sbe[1], senv, file, hreg)
-                } else {
-                    // 非块臂体 = return 值(恒 return 位:尾槽 match 按语句发射时臂内
-                    // return 即 fn 返回[ct_is_value(Match)=false 设计];中位语句 match
-                    // 值臂=提前返回误用面,在册债——写法纪律=语句位用块臂)
-                    eln("return " + ct_expr(sbe, senv, file) + ";", env)
-                }
-                eln("}", env)
-            }
-            if noneIx >= 0 {
-                var na9 = rarms[noneIx]
-                var nbe = na9[2]
-                eln("if (" + rme + ".variant != 0) \{", env)
-                if nbe[0] == "BlockExpr" {
-                    ct_block(nbe[1], env, file, hreg)
-                } else {
-                    // 非块臂体 = return 值(同上)
-                    eln("return " + ct_expr(nbe, env, file) + ";", env)
-                }
-                eln("}", env)
-            }
-            if okIx >= 0 {
-                var oa = rarms[okIx]
-                var opt = oa[1]
-                var obe = oa[2]
-                eln("if (" + rme + ".variant == 0) \{", env)
-                var oenv = env
-                // T14-③:scrutinee 为 struct 元素通道 recv(hR 码)→ 载荷堆盒解引用
-                var recvElem = ""
-                if st[1][0] == "Call" {
-                    var scal14 = st[1][1]
-                    if scal14[0] == "Member" && scal14[2] == "Nm" && scal14[3] == "recv" {
-                        if scal14[1][0] == "Ident" {
-                            var rc14 = ct_env_ty(env, scal14[1][1])
-                            if rc14.len > 4 && byte_slice(rc14, 0, 2) == "hR" {
-                                recvElem = byte_slice(rc14, 2, rc14.len)
-                            }
+            // T14-③:scrutinee 为 struct 元素通道 recv(hR 码)→ 载荷堆盒解引用
+            var recvElem = ""
+            if st[1][0] == "Call" {
+                var scal14 = st[1][1]
+                if scal14[0] == "Member" && scal14[2] == "Nm" && scal14[3] == "recv" {
+                    if scal14[1][0] == "Ident" {
+                        var rc14 = ct_env_ty(env, scal14[1][1])
+                        if rc14.len > 4 && byte_slice(rc14, 0, 2) == "hR" {
+                            recvElem = byte_slice(rc14, 2, rc14.len)
                         }
                     }
                 }
-                if opt[2].len > 1 && opt[2][1][0] == "PatId" && opt[2][1][1] != "_" {
-                    if recvElem.len > 0 {
-                        eln(ct_ctype(recvElem) + " t_" + opt[2][1][1] + " = *(" + ct_ctype(recvElem) + "*)(long)" + rme + ".v;", env)
-                        oenv = env_bind(env, opt[2][1][1], recvElem)
+            }
+            // 逐 Some/Ok 臂(源序 else-if 链=解释臂首中即断同义)。原单槽扫描
+            // (okIx/someIx 后臂覆盖前臂)=多 Ok 臂静默丢臂(嵌套语料咬出),本环
+            // 治之。载荷嵌套用户枚举(PatAgg/裸变体 Ident)→ 内层 variant 判
+            // (条件内联 cast,镜像 Err 臂 t_mn 链,R2c 同款);PatId → 载荷绑定;
+            // PatWild/_ → 直落。臂体语义各保其位:Some=return 位,Ok=合成语句位。
+            var sec = ct_opt_elem_expr(file, st[1], env)
+            var anySO = false
+            var ri3: I32 = 1
+            while ri3 < rarms.len {
+                var sa2 = rarms[ri3]
+                var spt2 = sa2[1]
+                var sbe2 = sa2[2]
+                if spt2[0] == "PatAgg" && spt2[1] == "Some" {
+                    var nested2 = false
+                    var npn2 = ""
+                    if spt2[2].len > 1 && spt2[2][1][0] == "PatAgg" {
+                        nested2 = true
+                        npn2 = spt2[2][1][1]
+                    }
+                    if spt2[2].len > 1 && spt2[2][1][0] == "PatId" {
+                        if ct_enum_of_variant(file, spt2[2][1][1]).len > 0 {
+                            nested2 = true
+                            npn2 = spt2[2][1][1]
+                        }
+                    }
+                    var senv2 = env
+                    var headSO = "if ("
+                    if anySO {
+                        headSO = "else if ("
+                    }
+                    if nested2 {
+                        var nen2 = ct_enum_of_variant(file, npn2)
+                        if nen2.len == 0 {
+                            panic("ct_stmt:嵌套模式需用户枚举变体")
+                            return env
+                        }
+                        var nidx2 = ct_variant_index(file, nen2, npn2)
+                        eln(headSO + rme + ".variant == 0 && ((ct_enum_" + nen2 + "*)(long)" + rme + ".v)->variant == " + nidx2.to_string() + ") \{", env)
+                        eln("ct_enum_" + nen2 + "* t_mn = (ct_enum_" + nen2 + "*)(long)" + rme + ".v;", env)
+                        if spt2[2][1][0] == "PatAgg" {
+                            var npcs2 = ct_variant_pcodes(file, nen2, npn2)
+                            var nk2: I32 = 1
+                            while nk2 < spt2[2][1][2].len {
+                                var nsp2 = spt2[2][1][2][nk2]
+                                if nsp2[0] == "PatId" && nsp2[1] != "_" {
+                                    var pct2 = npcs2[nk2 - 1]
+                                    var pc2 = ct_ctype(pct2)
+                                    eln(pc2 + " t_" + nsp2[1] + " = " + ct_unwrap_i(pct2, "t_mn->p[" + (nk2 - 1).to_string() + "]") + ";", env)
+                                    senv2 = env_bind(senv2, nsp2[1], pct2)
+                                }
+                                nk2 += 1
+                            }
+                        }
                     } else {
-                        // T53:载荷码恢复(#elem/被调声明首参)——旧硬编码 int32(
-                        // I64 载荷 >2^31 截断、F64 载荷错值根);f 位型双关,
-                        // 6/7 整宽直槽;i 码保持原行(零扰动回落)
-                        var sec9 = ct_opt_elem_expr(file, st[1], env)
-                        if or2(sec9 == "f", or2(sec9 == "6", sec9 == "7")) {
-                            var vx9 = "(" + ct_ctype(sec9) + ")(long)" + rme + ".v"
-                            if sec9 == "f" {
-                                vx9 = "((union \{ double _d; ct_i _i; })\{ ._i = (ct_i)(" + rme + ".v) })._d"
+                        eln(headSO + rme + ".variant == 0) \{", env)
+                        if spt2[2].len > 1 && spt2[2][1][0] == "PatId" && spt2[2][1][1] != "_" {
+                            var pvx9 = "(" + ct_ctype(sec) + ")(long)(" + rme + ".v)"
+                            if sec.len > 2 && byte_slice(sec, 0, 2) == "u:" {
+                                pvx9 = "(*(" + ct_ctype(sec) + "*)(long)(" + rme + ".v))"
                             }
-                            eln(ct_ctype(sec9) + " t_" + opt[2][1][1] + " = " + vx9 + ";", env)
-                            oenv = env_bind(env, opt[2][1][1], sec9)
-                        } else {
-                            // u: struct 载荷解引用绑(与 ct_res_wrap u: 盒装写侧配对;
-                            // T14-③ 通道同款;旧盲绑 int32/"i"=Member@N 惊雷源头已除)
-                            if sec9.len > 2 && byte_slice(sec9, 0, 2) == "u:" {
-                                eln(ct_ctype(sec9) + " t_" + opt[2][1][1] + " = *(" + ct_ctype(sec9) + "*)(long)" + rme + ".v;", env)
-                                oenv = env_bind(env, opt[2][1][1], sec9)
+                            if sec == "f" {
+                                pvx9 = "((union \{ double _d; ct_i _i; })\{ ._i = (ct_i)(" + rme + ".v) })._d"
+                            }
+                            eln(ct_ctype(sec) + " t_" + spt2[2][1][1] + " = " + pvx9 + ";", env)
+                            senv2 = env_bind(env, spt2[2][1][1], sec)
+                        }
+                    }
+                    if sbe2[0] == "BlockExpr" {
+                        ct_block(sbe2[1], senv2, file, hreg)
+                    } else {
+                        // 非块臂体 = return 值(Some=return 位既有口径)
+                        eln("return " + ct_expr(sbe2, senv2, file) + ";", env)
+                    }
+                    eln("}", env)
+                    anySO = true
+                }
+                ri3 += 1
+            }
+            ri3 = 1
+            while ri3 < rarms.len {
+                var oa2 = rarms[ri3]
+                var opt2 = oa2[1]
+                var obe2 = oa2[2]
+                if opt2[0] == "PatAgg" && opt2[1] == "Ok" {
+                    var nested3 = false
+                    var npn3 = ""
+                    if opt2[2].len > 1 && opt2[2][1][0] == "PatAgg" {
+                        nested3 = true
+                        npn3 = opt2[2][1][1]
+                    }
+                    if opt2[2].len > 1 && opt2[2][1][0] == "PatId" {
+                        if ct_enum_of_variant(file, opt2[2][1][1]).len > 0 {
+                            nested3 = true
+                            npn3 = opt2[2][1][1]
+                        }
+                    }
+                    var oenv2 = env
+                    var headOK = "if ("
+                    if anySO {
+                        headOK = "else if ("
+                    }
+                    if nested3 {
+                        var nen3 = ct_enum_of_variant(file, npn3)
+                        if nen3.len == 0 {
+                            panic("ct_stmt:嵌套模式需用户枚举变体")
+                            return env
+                        }
+                        var nidx3 = ct_variant_index(file, nen3, npn3)
+                        eln(headOK + rme + ".variant == 0 && ((ct_enum_" + nen3 + "*)(long)" + rme + ".v)->variant == " + nidx3.to_string() + ") \{", env)
+                        eln("ct_enum_" + nen3 + "* t_mn = (ct_enum_" + nen3 + "*)(long)" + rme + ".v;", env)
+                        if opt2[2][1][0] == "PatAgg" {
+                            var npcs3 = ct_variant_pcodes(file, nen3, npn3)
+                            var nk3: I32 = 1
+                            while nk3 < opt2[2][1][2].len {
+                                var nsp3 = opt2[2][1][2][nk3]
+                                if nsp3[0] == "PatId" && nsp3[1] != "_" {
+                                    var pct3 = npcs3[nk3 - 1]
+                                    var pc3 = ct_ctype(pct3)
+                                    eln(pc3 + " t_" + nsp3[1] + " = " + ct_unwrap_i(pct3, "t_mn->p[" + (nk3 - 1).to_string() + "]") + ";", env)
+                                    oenv2 = env_bind(oenv2, nsp3[1], pct3)
+                                }
+                                nk3 += 1
+                            }
+                        }
+                    } else {
+                        eln(headOK + rme + ".variant == 0) \{", env)
+                        if opt2[2].len > 1 && opt2[2][1][0] == "PatId" && opt2[2][1][1] != "_" {
+                            var bnm = opt2[2][1][1]
+                            if recvElem.len > 0 {
+                                eln(ct_ctype(recvElem) + " t_" + bnm + " = *(" + ct_ctype(recvElem) + "*)(long)" + rme + ".v;", env)
+                                oenv2 = env_bind(env, bnm, recvElem)
                             } else {
-                                eln("int32_t t_" + opt[2][1][1] + " = (int32_t)" + rme + ".v;", env)
-                                oenv = env_bind(env, opt[2][1][1], "i")
+                                // T53:载荷码恢复(#elem/被调声明首参);f 位型双关,
+                                // 6/7 整宽直槽;i 码保持原行(零扰动回落)
+                                var sec9 = ct_opt_elem_expr(file, st[1], env)
+                                if or2(sec9 == "f", or2(sec9 == "6", sec9 == "7")) {
+                                    var vx9 = "(" + ct_ctype(sec9) + ")(long)" + rme + ".v"
+                                    if sec9 == "f" {
+                                        vx9 = "((union \{ double _d; ct_i _i; })\{ ._i = (ct_i)(" + rme + ".v) })._d"
+                                    }
+                                    eln(ct_ctype(sec9) + " t_" + bnm + " = " + vx9 + ";", env)
+                                    oenv2 = env_bind(env, bnm, sec9)
+                                } else {
+                                    // u: struct 载荷解引用绑(盒装写侧配对)
+                                    if sec9.len > 2 && byte_slice(sec9, 0, 2) == "u:" {
+                                        eln(ct_ctype(sec9) + " t_" + bnm + " = *(" + ct_ctype(sec9) + "*)(long)" + rme + ".v;", env)
+                                        oenv2 = env_bind(env, bnm, sec9)
+                                    } else {
+                                        eln("int32_t t_" + bnm + " = (int32_t)" + rme + ".v;", env)
+                                        oenv2 = env_bind(env, bnm, "i")
+                                    }
+                                }
                             }
                         }
                     }
+                    if obe2[0] == "BlockExpr" {
+                        ct_block(obe2[1], oenv2, file, hreg)
+                    } else {
+                        // 非块臂体 = 合成 Expr 语句委派 ct_stmt(match 语句位丢弃臂值;
+                        // assert/assert_eq 族复用语句位专道;IP-01 W2 随批解锁)
+                        var obe21 = List[Str]()
+                        obe21.push("Expr")
+                        obe21.push(obe2)
+                        ct_stmt(obe21, oenv2, file, hreg)
+                    }
+                    eln("}", env)
+                    anySO = true
                 }
-                if obe[0] == "BlockExpr" {
-                    ct_block(obe[1], oenv, file, hreg)
-                } else {
-                    // 非块臂体 = 合成 Expr 语句委派 ct_stmt(match 语句位丢弃臂值;
-                    // assert/assert_eq 族复用语句位专道;IP-01 W2 随批解锁)
-                    var obe1 = List[Str]()
-                    obe1.push("Expr")
-                    obe1.push(obe)
-                    ct_stmt(obe1, oenv, file, hreg)
-                }
-                eln("}", env)
+                ri3 += 1
             }
             if errIx >= 0 {
-                if okIx >= 0 {
+                if anySO {
                     eln("else \{", env)
                 } else {
                     eln("if (" + rme + ".variant != 0) \{", env)

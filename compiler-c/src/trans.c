@@ -335,7 +335,7 @@ ctron_trans_result ctron_trans_file(const cfile* f) {
                 "typedef struct { int64_t lo, hi; int incl; } ctron_rng;\n"
                 "typedef int64_t (*ctron_fnptr)();\n" // 无原型函数指针:任意实参数调用点经显式 cast 合法调用
                 "typedef struct ctron_anyerr ctron_anyerr;\n"
-                "struct ctron_anyerr { char* message; ctron_anyerr* cause; char* trace; char* code; };\n"
+                "struct ctron_anyerr { unsigned long long magic; char* message; ctron_anyerr* cause; char* trace; char* code; void* payload; const char* tname; };\n"
                 "typedef struct { int cancelled; } ctron_scope;\n"
                 "typedef struct { int panicked; char msg[256]; } ctron_task_base;\n"
                 "typedef struct ctron_task_ctx ctron_task_ctx;\n"

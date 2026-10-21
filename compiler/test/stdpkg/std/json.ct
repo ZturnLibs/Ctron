@@ -434,8 +434,9 @@ pub fn qval(entries: List[List[Str]], path: Str) -> Str {
 //   乘法即 panic——为双臂一致语义钳窗,emit 臂真 double 全域可算,窗即 v0
 //   口径);出窗 → range;下溢(≈1e-340 档)钳 0。精度口径:尾数取
 //   ≤17 位有效数字 + 逐步 ×10/÷10 单舍入,较 strtod 可差 1–2 ulp(2^53+1
-//   读回 2^53 可检);本文件及消费方夹具小数字面量禁指数形态、禁 F64 转
-//   Str(解释器 e 形字面量误析、emit F64 to_string 乱值,见 divergences (i))。
+//   读回 2^53 可检)。F64 转Str 已钉(23a-2):num_json_f64 规范机(见写出面
+//   注),e 形字面量解析仍禁入夹具(解释器误析在册);emit 臂 to_string 臂值
+//   验证待 bin 刷新(种子/自举发射器臂已入源)。
 // 数值保真(T53,2026-10-02):emit 的 Result/Option union 载荷槽=ct_i 64 位,
 //   F64 载荷 C11 union 位型双关入槽/回读(ct_res_wrap f 臂与 expect/match-Ok/
 //   Try/or 四读侧配对),I64 整宽直槽,expect 推断 let 型别随载荷码——跨模块
@@ -1349,8 +1350,225 @@ pub fn jw_ent(path: Str, tag: Str, val: Str) -> List[Str] {
     return e
 }
 
+// ---- F64 写出规范机(IP-23 23a-2 钉子;2026-10-21 裁决点1收口,径①定案)----
+// 规范形(字节级):[-]int[.frac]。积分值恒二段(int + ".0";零 → "0.0",±0 无
+// 负号);非积分 = 6 位有效最短形(df_g/%g 同形:第 7 位四舍五入[df_add1 半升],
+// 尾零修剪;定点窗 [1e-4,1e6),窗外 d[.frac]e±XX 两位指数)。规范定义处=
+// num_json_f64;三臂同形:解释 df_show(eval_float)/种子 fmt_val(rt_core)/发射
+// ctron_f64_to_string——推断形/注解形两制随型别归一(Int → "32",F64 → "32.0")。
+// 域:积分写出 |x|<2^53 逐位精确(窗至 9.2e17 同读侧 1–2 ulp v0 口径);夹具
+// 小数字面量 ≤6 位有效、禁 e 形字面量;第 7 位恰 5 的字面量与 <1e-9 超窗在册
+// (i) 族。round-trip=写出∘解析幂等(write∘parse 不动点)+ ≤6 位有效值精确
+// 往返(6 位钉进精度即规范最短形;>6 位值模型双宿本分歧,在册 (i) 族)。
+fn jf_pw(k: I32) -> F64 {
+    var r: F64 = 1.0
+    var i: I32 = 0
+    while i < k {
+        r = r * 10.0
+        i += 1
+    }
+    i = 0
+    while i > k {
+        r = r / 10.0
+        i -= 1
+    }
+    return r
+}
+
+// 数字串 +1(第 7 位进位;df_add1 移植)
+fn jf_add1(ds: Str) -> Str {
+    var dg = "0123456789"
+    var i: I32 = ds.len - 1
+    while i >= 0 {
+        var c = byte_at(ds, i)
+        if c == 57 {
+            i -= 1
+        } else {
+            var head = byte_slice(ds, 0, i)
+            var mid = byte_slice(dg, c - 47, c - 46)
+            var tail = ""
+            var z: I32 = 0
+            while z < ds.len - i - 1 {
+                tail = tail + "0"
+                z += 1
+            }
+            return head + mid + tail
+        }
+    }
+    var out = "1"
+    var z2: I32 = 0
+    while z2 < ds.len {
+        out = out + "0"
+        z2 += 1
+    }
+    return out
+}
+
+// F64 → 规范形文本:|v| 自 10^e 位逐位升梯取数;整性 = 10^0 位余尽判
+// (整值直出 ".0" 形不经舍入——df_show 整形补 .0 通道同款);非整值 6 位舍入
+// 逐支镜 df_g(舍位/进位/尾零/e 形两位指数)。
+fn jf_can(v: F64) -> Str {
+    if v == 0.0 {
+        return "0.0"
+    }
+    var neg = v < 0.0
+    var a: F64 = v
+    if neg {
+        a = 0.0 - v
+    }
+    var e: I32 = 0
+    while e > -40 && jf_pw(e) > a {
+        e -= 1
+    }
+    while e < 40 && jf_pw(e + 1) <= a {
+        e += 1
+    }
+    var sgn = ""
+    if neg {
+        sgn = "-"
+    }
+    var ds = ""
+    var m: F64 = a
+    var k: I32 = e
+    var isint = false
+    while k >= 0 {
+        var p = jf_pw(k)
+        var d: I32 = 0
+        while d < 9 {
+            var nx = m - p
+            if nx < 0.0 {
+                break
+            }
+            m = nx
+            d += 1
+        }
+        ds = ds + utf8_enc(48 + d)
+        if k == 0 {
+            if m == 0.0 {
+                isint = true
+            }
+            break
+        }
+        k -= 1
+    }
+    if isint {
+        return sgn + ds + ".0"
+    }
+    if e < 0 {
+        k = e
+    } else {
+        k = 0 - 1
+    }
+    while k >= -17 && ds.len < 10 {
+        var p = jf_pw(k)
+        var d: I32 = 0
+        while d < 9 {
+            var nx = m - p
+            if nx < 0.0 {
+                break
+            }
+            m = nx
+            d += 1
+        }
+        ds = ds + utf8_enc(48 + d)
+        if m == 0.0 {
+            break
+        }
+        k -= 1
+    }
+    var keep = ds
+    if keep.len > 6 {
+        var rest = byte_at(keep, 6)
+        keep = byte_slice(keep, 0, 6)
+        if rest >= 53 {
+            keep = jf_add1(keep)
+        }
+    }
+    while keep.len > 1 && byte_at(keep, keep.len - 1) == 48 {
+        keep = byte_slice(keep, 0, keep.len - 1)
+    }
+    if keep.len > 6 {
+        e += 1
+        keep = byte_slice(keep, 0, 1) + byte_slice(keep, 1, 6)
+    }
+    if e < -4 || e >= 6 {
+        var mant = byte_slice(keep, 0, 1)
+        if keep.len > 1 {
+            mant = mant + "." + byte_slice(keep, 1, keep.len)
+        }
+        var ae = e
+        var es = "+"
+        if ae < 0 {
+            es = "-"
+            ae = 0 - ae
+        }
+        var es2 = ae.to_string()
+        while es2.len < 2 {
+            es2 = "0" + es2
+        }
+        return sgn + mant + "e" + es + es2
+    }
+    if e >= 0 {
+        var pnt = e + 1
+        if keep.len <= pnt {
+            var r = keep
+            var z: I32 = keep.len
+            while z < pnt {
+                r = r + "0"
+                z += 1
+            }
+            return sgn + r
+        }
+        return sgn + byte_slice(keep, 0, pnt) + "." + byte_slice(keep, pnt, keep.len)
+    }
+    var pad = "0."
+    var z3: I32 = 0
+    while z3 < 0 - e - 1 {
+        pad = pad + "0"
+        z3 += 1
+    }
+    return sgn + pad + keep
+}
+
+// JSON number:F64 写出规范定义处(IP-23 23a-2 钉子;to_string(F64)/println
+// 浮点面三臂同形,种子 ctron_f64_to_string 即发射侧镜像)
+pub fn num_json_f64(v: F64) -> Str {
+    return jf_can(v)
+}
+
+// 测试助手(私有):写读写 ≤2 步收敛断言,0=绿(e 形解析落定点窗,重写定型)
+fn jf_rt(v: F64) -> I32 {
+    var t = num_json_f64(v)
+    var r = jf64(t)
+    if r.k != 0 {
+        return 1
+    }
+    var t2 = num_json_f64(r.v)
+    var r2 = jf64(t2)
+    if r2.k != 0 {
+        return 1
+    }
+    if num_json_f64(r2.v) != t2 {
+        return 1
+    }
+    return 0
+}
+
+// 测试助手(私有):精确往返 parse(write(x)) == x(≤6 位有效且定点窗内值)
+fn jf_rt_eq(v: F64) -> I32 {
+    var t = num_json_f64(v)
+    var r = jf64(t)
+    if r.k != 0 {
+        return 1
+    }
+    if r.v != v {
+        return 1
+    }
+    return 0
+}
+
 // ---- 标量规范形(S3 轨迹值编码;§5.1 字节级钉死;RFC 8259 标量)----
-// JSON number:整数 = 十进制原文(F64 形态未纳:浮点文本格式语言侧未钉,登记)
+// JSON number:整数 = 十进制原文;F64 = 规范机(num_json_f64,上方钉子)
 pub fn num_json(v: I64) -> Str {
     return v.to_string()
 }
@@ -1377,6 +1595,68 @@ test "scalar json canonical forms" {
     assert_eq(bool_json(false), "false")
     assert_eq(str_json("ada"), "\"ada\"")
     assert_eq(str_json("a\"b"), "\"a\\\"b\"")
+}
+
+test "num_json_f64 canonical form" {
+    // 注解局部承载(码 "f"):裸浮点字面量实参陈旧发射器推 "N" 不折算
+    var a1: F64 = 32.0
+    assert_eq(num_json_f64(a1), "32.0")
+    var a2: F64 = 123.0
+    assert_eq(num_json_f64(a2), "123.0")
+    var a3: F64 = 100000.0
+    assert_eq(num_json_f64(a3), "100000.0")
+    var z1: F64 = 0.0
+    assert_eq(num_json_f64(z1), "0.0")
+    assert_eq(num_json_f64(z1 * (z1 - 1.0)), "0.0")
+    var n1: F64 = 2.25
+    assert_eq(num_json_f64(0.0 - n1), "-2.25")
+    var f1: F64 = 3.5
+    assert_eq(num_json_f64(f1), "3.5")
+    var f2: F64 = 0.5
+    assert_eq(num_json_f64(f2), "0.5")
+    var f3: F64 = 2.25
+    assert_eq(num_json_f64(f3), "2.25")
+    var f4: F64 = 0.0001
+    assert_eq(num_json_f64(f4), "0.0001")
+    var f5: F64 = 12345.7
+    assert_eq(num_json_f64(f5), "12345.7")
+    var f6: F64 = 123456.7
+    assert_eq(num_json_f64(f6), "123457")
+    var e1: F64 = 0.00001
+    assert_eq(num_json_f64(e1), "1e-05")
+    var e2: F64 = 1000000.5
+    assert_eq(num_json_f64(e2), "1e+06")
+    var e3: F64 = 1234567.5
+    assert_eq(num_json_f64(e3), "1.23457e+06")
+}
+
+test "num_json_f64 round trip through jf64" {
+    // 往返律(23a-2 验收口径):写读写 ≤2 步收敛不动点;≤6 位有效且定点窗
+    // 内值加断精确往返 parse(write(x)) == x
+    var r1: F64 = 32.0
+    assert_eq(jf_rt(r1) + jf_rt_eq(r1), 0)
+    var r2: F64 = 3.5
+    assert_eq(jf_rt(r2) + jf_rt_eq(r2), 0)
+    var r3: F64 = 0.5
+    assert_eq(jf_rt(r3) + jf_rt_eq(r3), 0)
+    var r4: F64 = 2.25
+    assert_eq(jf_rt(r4) + jf_rt_eq(r4), 0)
+    var r5: F64 = 123.0
+    assert_eq(jf_rt(r5) + jf_rt_eq(r5), 0)
+    var r6: F64 = 100000.0
+    assert_eq(jf_rt(r6) + jf_rt_eq(r6), 0)
+    var r7: F64 = 12345.7
+    assert_eq(jf_rt(r7) + jf_rt_eq(r7), 0)
+    var r8: F64 = 123456.7
+    assert_eq(jf_rt(r8), 0)
+    var r9: F64 = 0.0001
+    assert_eq(jf_rt(r9), 0)
+    var r10: F64 = 0.00001
+    assert_eq(jf_rt(r10), 0)
+    var r11: F64 = 1000000.5
+    assert_eq(jf_rt(r11), 0)
+    var r12: F64 = 1234567.5
+    assert_eq(jf_rt(r12), 0)
 }
 
 test "esc round trip" {

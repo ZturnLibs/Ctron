@@ -26,6 +26,9 @@ void emit_helper(tc* c, const char* name) {
     else if (!strcmp(name, "ctron_byte_at")) { snprintf(fam, sizeof fam, "byte_at"); wl[0] = 0; }
     else if (!strcmp(name, "ctron_byte_slice")) { snprintf(fam, sizeof fam, "byte_slice"); wl[0] = 0; }
     else if (!strcmp(name, "ctron_idx")) { snprintf(fam, sizeof fam, "idx"); wl[0] = 0; }
+    // 专名表(先于 fam 截取):ctron_fmt_f64 原 fam="fmt" 闸先 return=死闸
+    // (IP-23 23a-2 钉子种子发射面首次实际-use,故提名)
+    else if (!strcmp(name, "ctron_fmt_f64")) { snprintf(fam, sizeof fam, "fmtf64"); wl[0] = 0; }
     else if (!strncmp(name, "ctron_assert_eq_", 16)) {
         snprintf(fam, sizeof fam, "assert_eq");
         snprintf(wl, sizeof wl, "%s", name + 16);
@@ -186,8 +189,10 @@ void emit_helper(tc* c, const char* name) {
             sb_f(o, "static const char* %s(uint64_t v) { char* r = (char*)malloc(32); snprintf(r, 32, \"%%llu\", (unsigned long long)v); return r; }\n", name);
         return;
     }
-    if (!strcmp(name, "ctron_fmt_f64")) {
-        sb_f(o, "static const char* %s(double v) { char* r = (char*)malloc(64); if (v == (double)(long long)v) snprintf(r, 64, \"%%.1f\", v); else snprintf(r, 64, \"%%g\", v); return r; }\n", name);
+    if (!strcmp(fam, "fmtf64")) {
+        // F64 写出钉子(IP-23 23a-2):零形 "0.0"(±0 无负号)/界内整数形
+        // %.1f(界内试探防 ≥2^63 UB)/其余 %g——num_json_f64 规范定义处
+        sb_f(o, "static const char* %s(double v) { char* r = (char*)malloc(64); if (v == 0.0) snprintf(r, 64, \"0.0\"); else if (v >= -9.22e18 && v <= 9.22e18 && v == (double)(long long)v) snprintf(r, 64, \"%%.1f\", v); else snprintf(r, 64, \"%%g\", v); return r; }\n", name);
         return;
     }
     if (!strcmp(name, "ctron_fmt_bool")) {
@@ -231,7 +236,7 @@ void emit_helper(tc* c, const char* name) {
     }
     if (!strcmp(fam, "print")) {
         if (isf)
-            sb_f(o, "static void %s(double v) { char b[64]; if (v == (double)(long long)v) snprintf(b, sizeof b, \"%%.1f\", v); else snprintf(b, sizeof b, \"%%g\", v); printf(\"%%s\", b); }\n", name);
+            sb_f(o, "static void %s(double v) { char b[64]; if (v == 0.0) snprintf(b, sizeof b, \"0.0\"); else if (v >= -9.22e18 && v <= 9.22e18 && v == (double)(long long)v) snprintf(b, sizeof b, \"%%.1f\", v); else snprintf(b, sizeof b, \"%%g\", v); printf(\"%%s\", b); }\n", name);
         else if (isb)
             sb_f(o, "static void %s(int v) { printf(\"%%s\", v ? \"true\" : \"false\"); }\n", name);
         else if (us)
@@ -335,8 +340,8 @@ void emit_helper(tc* c, const char* name) {
         } else if (isf) {
             sb_f(o, "static int %s(double a, double b) {\n", name);
             sb_f(o, "    char x[64], y[64];\n");
-            sb_f(o, "    if (a == (double)(long long)a) snprintf(x, sizeof x, \"%%.1f\", a); else snprintf(x, sizeof x, \"%%g\", a);\n");
-            sb_f(o, "    if (b == (double)(long long)b) snprintf(y, sizeof y, \"%%.1f\", b); else snprintf(y, sizeof y, \"%%g\", b);\n");
+            sb_f(o, "    if (a == 0.0) snprintf(x, sizeof x, \"0.0\"); else if (a >= -9.22e18 && a <= 9.22e18 && a == (double)(long long)a) snprintf(x, sizeof x, \"%%.1f\", a); else snprintf(x, sizeof x, \"%%g\", a);\n");
+            sb_f(o, "    if (b == 0.0) snprintf(y, sizeof y, \"0.0\"); else if (b >= -9.22e18 && b <= 9.22e18 && b == (double)(long long)b) snprintf(y, sizeof y, \"%%.1f\", b); else snprintf(y, sizeof y, \"%%g\", b);\n");
             sb_f(o, "    if (!(a %s b)) { char m[160]; snprintf(m, sizeof m, \"%s: %%s != %%s\", x, y); ctron_panic(m); }\n    return 1;\n}\n",
                  cmp, label);
         } else if (isb) {

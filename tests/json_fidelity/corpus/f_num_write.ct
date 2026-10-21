@@ -1,0 +1,204 @@
+// f_num_write.ct —— IP-23 23a-2:F64 写出规范机(num_json_f64 语言级钉子)
+// 规范形 = [-]int[.frac]:积分恒二段(".0")/零形 "0.0"(±0 无负号)/非积分
+// 6 位有效最短形(df_g/%g 同形,窗外 e±XX 两位指数)。三臂同形:解释 df_show
+// (eval_float)/种子 fmt_val(rt_core)/发射 ctron_f64_to_string——推断形/注解形
+// 两制随型别归一(Int → "32",F64 → "32.0")。本件承载:双宿写出逐字 + 写读写
+// ≤2 步收敛 + nf 原文写回铁律。
+// 域纪律:小数字面量 ≤6 位有效(第 7 位恰 5 双宿舍入临界,在册 (i) 族);禁
+// e 形字面量(解释器误析在册);to_string(F64) 值面在 i_num_tostring(interp-
+// only,bin 刷新转正)。形参纪律:跨模块直呼实参须码可推字面量/表达式经
+// fixture 帮手(陈旧发射器对索引/直呼表达式推 "N" 不折算;bin 刷新后可化简)。
+use std.json.{ parse, qtag, jget_f64, num_json_f64, write_json, jw_ent, jerr_kind }
+
+fn wr(v: F64) -> Str {
+    return num_json_f64(v)
+}
+
+// 写读写 ≤2 步收敛(e 形解析落定点窗,重写即定型);0=绿
+fn rt(v: F64) -> I32 {
+    var t = wr(v)
+    let pr = parse("[" + t + "]")
+    let arr = match pr {
+        Ok(vv) => vv
+        Err(m) => {
+            println(m)
+            return 1
+        }
+    }
+    let g = jget_f64(arr, "$.0")
+    let w2 = match g {
+        Ok(x) => x
+        Err(k) => {
+            println(jerr_kind(k))
+            return 1
+        }
+    }
+    var t2 = wr(w2)
+    let pr2 = parse("[" + t2 + "]")
+    let arr2 = match pr2 {
+        Ok(vv) => vv
+        Err(m) => {
+            println(m)
+            return 1
+        }
+    }
+    let g2 = jget_f64(arr2, "$.0")
+    let w3 = match g2 {
+        Ok(x) => x
+        Err(k) => {
+            println(jerr_kind(k))
+            return 1
+        }
+    }
+    if wr(w3) != t2 {
+        return 1
+    }
+    return 0
+}
+
+// 精确往返 parse(write(x)) == x(≤6 位有效且定点窗内值);0=绿
+fn rt_eq(v: F64) -> I32 {
+    var t = wr(v)
+    let pr = parse("[" + t + "]")
+    let arr = match pr {
+        Ok(vv) => vv
+        Err(m) => {
+            println(m)
+            return 1
+        }
+    }
+    let g = jget_f64(arr, "$.0")
+    let w2 = match g {
+        Ok(x) => x
+        Err(k) => {
+            println(jerr_kind(k))
+            return 1
+        }
+    }
+    if w2 != v {
+        return 1
+    }
+    return 0
+}
+
+test "num write: canonical battery" {
+    // 积分二段形(恒 ".0")
+    var a1: F64 = 32.0
+    assert_eq(wr(a1), "32.0")
+    var a2: F64 = 123.0
+    assert_eq(wr(a2), "123.0")
+    var a3: F64 = 100000.0
+    assert_eq(wr(a3), "100000.0")
+    var a4: F64 = 900.5
+    assert_eq(wr(a4), "900.5")
+    // 零形:±0 无负号
+    var z1: F64 = 0.0
+    assert_eq(wr(z1), "0.0")
+    assert_eq(wr(z1 * (z1 - 1.0)), "0.0")
+    // 负值
+    var n1: F64 = 2.25
+    assert_eq(wr(0.0 - n1), "-2.25")
+    var n2: F64 = 0.75
+    assert_eq(wr(0.0 - n2), "-0.75")
+    // 非积分 6 位有效最短形(定点窗 [1e-4,1e6))
+    var f1: F64 = 3.5
+    assert_eq(wr(f1), "3.5")
+    var f2: F64 = 0.5
+    assert_eq(wr(f2), "0.5")
+    var f3: F64 = 2.25
+    assert_eq(wr(f3), "2.25")
+    var f4: F64 = 12345.7
+    assert_eq(wr(f4), "12345.7")
+    var f5: F64 = 123456.7
+    assert_eq(wr(f5), "123457")
+    var f6: F64 = 0.0001
+    assert_eq(wr(f6), "0.0001")
+    // e 形两位指数(窗外)
+    var e1: F64 = 0.00001
+    assert_eq(wr(e1), "1e-05")
+    var e2: F64 = 1000000.5
+    assert_eq(wr(e2), "1e+06")
+    var e3: F64 = 1234567.5
+    assert_eq(wr(e3), "1.23457e+06")
+}
+
+test "num write: convergent round trip" {
+    // 前七件 ≤6 位有效且定点窗内:收敛 + 精确往返双断;余件收敛断
+    var r1: F64 = 32.0
+    assert_eq(rt(r1) + rt_eq(r1), 0)
+    var r2: F64 = 3.5
+    assert_eq(rt(r2) + rt_eq(r2), 0)
+    var r3: F64 = 0.5
+    assert_eq(rt(r3) + rt_eq(r3), 0)
+    var r4: F64 = 2.25
+    assert_eq(rt(r4) + rt_eq(r4), 0)
+    var r5: F64 = 123.0
+    assert_eq(rt(r5) + rt_eq(r5), 0)
+    var r6: F64 = 100000.0
+    assert_eq(rt(r6) + rt_eq(r6), 0)
+    var r7: F64 = 12345.7
+    assert_eq(rt(r7) + rt_eq(r7), 0)
+    var r8: F64 = 123456.7
+    assert_eq(rt(r8), 0)
+    var r9: F64 = 0.0001
+    assert_eq(rt(r9), 0)
+    var r10: F64 = 0.00001
+    assert_eq(rt(r10), 0)
+    var r11: F64 = 1000000.5
+    assert_eq(rt(r11), 0)
+    var r12: F64 = 1234567.5
+    assert_eq(rt(r12), 0)
+}
+
+test "num write: nf raw write-back iron law" {
+    // jw_val nf 原文直推(23a-1 铁律):写出逐字,写回类稳定,读值一致
+    var es = List[List[Str]]()
+    es.push(jw_ent("$", "a", ""))
+    es.push(jw_ent("$.0", "nf", "32.0"))
+    es.push(jw_ent("$.1", "nf", "1.5e3"))
+    es.push(jw_ent("$.2", "nf", "-0.7"))
+    let text = match write_json(es) {
+        Some(t) => t
+        None => {
+            assert(false)
+            return 1
+        }
+    }
+    assert_eq(text, "[32.0,1.5e3,-0.7]")
+    let back = match parse(text) {
+        Ok(v) => v
+        Err(m) => {
+            println(m)
+            assert(false)
+            return 1
+        }
+    }
+    assert_eq(qtag(back, "$.0"), "nf")
+    assert_eq(qtag(back, "$.1"), "nf")
+    assert_eq(qtag(back, "$.2"), "nf")
+    let f0 = match jget_f64(back, "$.0") {
+        Ok(x) => x
+        Err(_) => {
+            assert(false)
+            return 1
+        }
+    }
+    assert(f0 == 32.0)
+    let f1 = match jget_f64(back, "$.1") {
+        Ok(x) => x
+        Err(_) => {
+            assert(false)
+            return 1
+        }
+    }
+    assert(f1 == 1500.0)
+    let f2 = match jget_f64(back, "$.2") {
+        Ok(x) => x
+        Err(_) => {
+            assert(false)
+            return 1
+        }
+    }
+    var n7: F64 = 0.7
+    assert(f2 == 0.0 - n7)
+}

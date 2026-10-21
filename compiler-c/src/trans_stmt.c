@@ -151,6 +151,9 @@ ty emit_match(tc* c, cexpr* e, sb* o, int want_value, char** out_tmp) {
                     if (st.ek == T_FLT) pt = ty_flt();
                     if (st.ek == T_BOOL) pt = ty_bool();
                     if (st.ek == T_STR) pt = ty_str();
+                    // downcast 臂随批:opt 载荷为用户枚举时经 tname2 递名
+                    // (Some(x) 绑定型别面;ctron_opt 结构本体不携带枚举名)
+                    if (st.ek == T_ENUM && st.tname2) pt.tname = st.tname2;
                 }
                 sb_f(&cond, "(%s.tag == %s)", vn, good);
             } else {
@@ -410,15 +413,33 @@ void emit_stmt(tc* c, cstmt* st, sb* o) {
                 // 两段式擦除:fn 错误目标为 AnyError,? 操作数错误为具体类型 → 物化链后传播(rt §5.3)
                 char efn[96];
                 snprintf(efn, sizeof efn, "ctron_erase_e_%s", ot.tname2);
-                char ebody[512];
-                snprintf(ebody, sizeof ebody,
-                    "static ctron_anyerr* %s(ctron_e_%s v) {\n"
-                    "    ctron_anyerr* n = (ctron_anyerr*)calloc(1, sizeof(ctron_anyerr));\n"
-                    "    n->message = strdup(\"\");\n"
-                    "    n->cause = (ctron_anyerr*)calloc(1, sizeof(ctron_anyerr));\n"
-                    "    n->trace = strdup(\"main:1\");\n"
-                    "    (void)v; return n;\n}\n", efn, ot.tname2);
-                use_sum(c, ebody);
+                // 真身(IP-01 随批;原桩丢 payload/tname/code=downcast/code 断言根):
+                // magic+payload 值拷贝+tname+code=枚举名.变体名,镜像 rt v_err_t
+                sb eb2 = {0};
+                sb_f(&eb2, "static const char* CTRON_WVN_%s[] = {", ot.tname2);
+                edef* wd4 = NULL;
+                for (size_t wi4 = 0; wi4 < c->nenums; wi4++)
+                    if (!strcmp(c->enums[wi4].name, ot.tname2)) { wd4 = &c->enums[wi4]; break; }
+                if (wd4) {
+                    for (size_t wi4 = 0; wi4 < wd4->n; wi4++)
+                        sb_f(&eb2, "%s\"%s\"", wi4 ? ", " : "", wd4->variants[wi4].name);
+                }
+                sb_f(&eb2, "};");
+                sb_f(&eb2, "static ctron_anyerr* %s(ctron_e_%s v) {", efn, ot.tname2);
+                sb_f(&eb2, "    ctron_anyerr* n = (ctron_anyerr*)calloc(1, sizeof(ctron_anyerr));");
+                sb_f(&eb2, "    n->magic = 0x4354414E59455252ULL;");
+                sb_f(&eb2, "    ctron_e_%s* p = (ctron_e_%s*)malloc(sizeof(ctron_e_%s));", ot.tname2, ot.tname2, ot.tname2);
+                sb_f(&eb2, "    *p = v; n->payload = p; n->tname = \"%s\";", ot.tname2);
+                sb_f(&eb2, "    char* cb = (char*)malloc(160);");
+                sb_f(&eb2, "    snprintf(cb, 160, \"%s.%%s\", CTRON_WVN_%s[v.tag]);", ot.tname2, ot.tname2);
+                sb_f(&eb2, "    n->code = cb;");
+                sb_f(&eb2, "    n->message = strdup(\"\");");
+                sb_f(&eb2, "    n->cause = (ctron_anyerr*)calloc(1, sizeof(ctron_anyerr));");
+                sb_f(&eb2, "    n->trace = strdup(\"main:1\");");
+                sb_f(&eb2, "    return n;");
+                sb_f(&eb2, "}");
+                use_sum(c, eb2.d);
+                sb_free(&eb2);
                 sb_f(o, "if (%s.tag == %s) return (%s){ .tag = CTRON_RES_ERR, .as.err = %s(%s.as.err) };\n",
                      tn, bad, c->fn_ret->tname, efn, tn);
             } else { terr(c, "v1:? 早退类型与函数返回类型不符"); sb_free(&op); return; }
@@ -648,15 +669,32 @@ void emit_stmt(tc* c, cstmt* st, sb* o) {
                     // return expr? —— fn 错误目标 AnyError,操作数错误为具体类型:物化链后返回
                     char efn[96];
                     snprintf(efn, sizeof efn, "ctron_erase_e_%s", ot.tname2);
-                    char ebody[512];
-                    snprintf(ebody, sizeof ebody,
-                        "static ctron_anyerr* %s(ctron_e_%s v) {\n"
-                        "    ctron_anyerr* n = (ctron_anyerr*)calloc(1, sizeof(ctron_anyerr));\n"
-                        "    n->message = strdup(\"\");\n"
-                        "    n->cause = (ctron_anyerr*)calloc(1, sizeof(ctron_anyerr));\n"
-                        "    n->trace = strdup(\"main:1\");\n"
-                        "    (void)v; return n;\n}\n", efn, ot.tname2);
-                    use_sum(c, ebody);
+                    // 真身(同首站;use_sum 全文去重,双站同文本单注)
+                    sb eb2 = {0};
+                    sb_f(&eb2, "static const char* CTRON_WVN_%s[] = {", ot.tname2);
+                    edef* wd4 = NULL;
+                    for (size_t wi4 = 0; wi4 < c->nenums; wi4++)
+                        if (!strcmp(c->enums[wi4].name, ot.tname2)) { wd4 = &c->enums[wi4]; break; }
+                    if (wd4) {
+                        for (size_t wi4 = 0; wi4 < wd4->n; wi4++)
+                            sb_f(&eb2, "%s\"%s\"", wi4 ? ", " : "", wd4->variants[wi4].name);
+                    }
+                    sb_f(&eb2, "};");
+                    sb_f(&eb2, "static ctron_anyerr* %s(ctron_e_%s v) {", efn, ot.tname2);
+                    sb_f(&eb2, "    ctron_anyerr* n = (ctron_anyerr*)calloc(1, sizeof(ctron_anyerr));");
+                    sb_f(&eb2, "    n->magic = 0x4354414E59455252ULL;");
+                    sb_f(&eb2, "    ctron_e_%s* p = (ctron_e_%s*)malloc(sizeof(ctron_e_%s));", ot.tname2, ot.tname2, ot.tname2);
+                    sb_f(&eb2, "    *p = v; n->payload = p; n->tname = \"%s\";", ot.tname2);
+                    sb_f(&eb2, "    char* cb = (char*)malloc(160);");
+                    sb_f(&eb2, "    snprintf(cb, 160, \"%s.%%s\", CTRON_WVN_%s[v.tag]);", ot.tname2, ot.tname2);
+                    sb_f(&eb2, "    n->code = cb;");
+                    sb_f(&eb2, "    n->message = strdup(\"\");");
+                    sb_f(&eb2, "    n->cause = (ctron_anyerr*)calloc(1, sizeof(ctron_anyerr));");
+                    sb_f(&eb2, "    n->trace = strdup(\"main:1\");");
+                    sb_f(&eb2, "    return n;");
+                    sb_f(&eb2, "}");
+                    use_sum(c, eb2.d);
+                    sb_free(&eb2);
                     sb_f(o, "{ %s ctron_t%d = %s;\n", ctype_of(ot), n2, op.d ? op.d : "0");
                     sb_f(o, "    if (ctron_t%d.tag == CTRON_RES_ERR) return (%s){ .tag = CTRON_RES_ERR, .as.err = %s(ctron_t%d.as.err) };\n",
                          n2, c->fn_ret->tname, efn, n2);

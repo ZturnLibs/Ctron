@@ -1,0 +1,126 @@
+// i_jnum_nested.ct —— 嵌套 enum 载荷绑定(Ok(Big(raw)) 形;随 R 码 ABI 批)
+// **interp-only 件**(i_ 前缀:run.sh 出臂跳过,bin 刷新转正)——自举发射臂
+// 嵌套 Some/Ok 源序 else-if 链+内层 variant 判已入源(trans_stmt.ct,ctc.sh
+// 现行源发射实证 9007199254740993/non-big 双案逐字),现网 emit bin=绿基线
+// 遗留(多 Ok 臂单槽扫描=后臂覆盖前臂静默丢臂旧形)。解释臂 pat_match 递归
+// 原生支持,种子解释臂同;种子发射器响亮拒绝(「v1:载荷子模式不支持」,
+// 归种子发射器批统筹)。jnum_of 消费面升级形=本件(受撑形 f_num_domains
+// 待 bin 刷新后随升级)。
+// 纪律:语句位 match 用块臂(R2b 非块值臂提前返回误用面在册)。
+use std.json.{ parse, jnum_of }
+
+test "jnum nested: Ok(Big(raw)) direct payload binding" {
+    let r = parse("\{\"big\": 90071992547409939999, \"u64max\": 18446744073709551615, \"i\": -42, \"f\": 2.5}")
+    let es = match r {
+        Ok(v) => v
+        Err(m) => {
+            println(m)
+            assert(false)
+            return 1
+        }
+    }
+    // nb 态:原文直绑(round-trip 铁律消费形)
+    match jnum_of(es, "$.big") {
+        Ok(Big(raw)) => {
+            assert_eq(raw, "90071992547409939999")
+        }
+        Ok(_) => {
+            assert(false)
+        }
+        Err(k) => {
+            println(k)
+            assert(false)
+        }
+    }
+    // nu 态:U64 全域直绑
+    match jnum_of(es, "$.u64max") {
+        Ok(UInt(u)) => {
+            assert_eq(u, 18446744073709551615u64)
+        }
+        Ok(_) => {
+            assert(false)
+        }
+        Err(_) => {
+            assert(false)
+        }
+    }
+    // ni 态:负域直绑
+    match jnum_of(es, "$.i") {
+        Ok(Int(v)) => {
+            assert_eq(v, 0 - 42)
+        }
+        Ok(_) => {
+            assert(false)
+        }
+        Err(_) => {
+            assert(false)
+        }
+    }
+    // nf 态:浮点直绑
+    match jnum_of(es, "$.f") {
+        Ok(Flt(x)) => {
+            assert(x == 2.5)
+        }
+        Ok(_) => {
+            assert(false)
+        }
+        Err(_) => {
+            assert(false)
+        }
+    }
+}
+
+test "jnum nested: first-match-wins arm order" {
+    // 嵌套臂先于通配臂:Int 值不入 Big 臂,落 Ok(_)(链序 parity)
+    let r = parse("\{\"i\": 7, \"big\": 99999999999999999999}")
+    let es = match r {
+        Ok(v) => v
+        Err(_) => {
+            assert(false)
+            return 1
+        }
+    }
+    match jnum_of(es, "$.i") {
+        Ok(Big(raw)) => {
+            assert(false)
+        }
+        Ok(_) => {
+            assert(true)
+        }
+        Err(_) => {
+            assert(false)
+        }
+    }
+    match jnum_of(es, "$.big") {
+        Ok(Big(raw)) => {
+            assert_eq(raw, "99999999999999999999")
+        }
+        Ok(_) => {
+            assert(false)
+        }
+        Err(_) => {
+            assert(false)
+        }
+    }
+    // 内层通配:Big(_) 变体判别不绑载荷
+    match jnum_of(es, "$.big") {
+        Ok(Big(_)) => {
+            assert(true)
+        }
+        Ok(_) => {
+            assert(false)
+        }
+        Err(_) => {
+            assert(false)
+        }
+    }
+    // noent 落 Err 面(载荷 Str 直绑)
+    match jnum_of(es, "$.nope") {
+        Ok(_) => {
+            assert(false)
+        }
+        Err(k) => {
+            assert(k.len > 0)
+        }
+    }
+}
