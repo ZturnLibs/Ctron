@@ -2690,3 +2690,14 @@ trans_v0-v6 7/7/boxmem 绿)。
   7/7 逐字、boxmem 绿。
 - **批C-3(闭包形参签型)仍为 test/d_* 回填的唯一在册阻塞**,两径待裁
   (A 期望签穿入 / B TuiTest 去泛型化),见上节与本计划 W4 注。
+
+### 批C-2 W3 回归撤销(2026-10-21;对端 c9e58977 移交登记的修复)
+
+对端移交:native.sh 自举发射 cc_emit 自 d8c4d3b0 起确定性失败——
+`ct_expr:index 目标非 List/数组:i 名:pty 下标:0`(gui_ds_gen 第7形参 pty:List[Str]
+型别码塌 i),二分表 97303043 GREEN / f1e0aee3(批C-2 W1-W3)RED。
+本批复现同指纹后逐 Wave 二分:**W3(`ct_call_infer_tys` Box 分支)为因**——撤 W3
+(保留 W1 `B:` 码携全内码 + W2 消费点归一)后 emit cc_emit rc=0。
+W3 分支对 compiler 源内某 `Box[泛型struct]` 调用误映射型参(具体调用点与条件待
+批C-3 一并勘定;d_* 推断需求并入批C-3 闭包形参签型主径)。
+门:trans_v0-v6 往返 7/7 逐字;boxmem 绿;check cc_run decls=531;emit cc_emit rc=0。
