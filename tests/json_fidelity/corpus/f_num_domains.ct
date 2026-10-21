@@ -1,0 +1,55 @@
+// f_num_domains.ct —— IP-23 23a:数值四态分类与 U64/Big 原文保真(round-trip)
+use std.json.{ parse, qtag, qval, jget_i64, jget_u64, jget_big, jnum_of, jerr_kind }
+
+test "num domains: four-way classification, U64 full domain, Big raw fidelity" {
+    // 四态分类(qtag 细分 ni/nu/nb/nf)
+    let ok = parse("\{\"u64max\": 18446744073709551615, \"i64min\": -9223372036854775808, \"over\": 99999999999999999999, \"flt\": 2.5}")
+    let es = match ok {
+        Ok(v) => v
+        Err(m) => {
+            println(m)
+            assert(false)
+        }
+    }
+    assert_eq(qtag(es, "$.u64max"), "nu")
+    assert_eq(qtag(es, "$.i64min"), "ni")
+    assert_eq(qtag(es, "$.over"), "nb")
+    assert_eq(qtag(es, "$.flt"), "nf")
+
+    // jget_u64:U64 全域取值(含 I64 域正数)
+    assert_eq(jget_u64(es, "$.u64max").or(0u64), 18446744073709551615u64)
+    assert_eq(jget_u64(es, "$.i64min").or(1u64), 1u64)
+
+    // jget_big:原文保真(超宽不失真)
+    assert_eq(jget_big(es, "$.over").or("x"), "99999999999999999999")
+
+    // jnum_of tagged 总口:四态 Ok 面(变体内嵌绑定=扁平 R 族在册缺口,
+    // 分类判别由 qtag 断言承担;嵌套绑定解锁后可升级细断言)
+    match jnum_of(es, "$.u64max") {
+        Ok(_) => assert(true)
+        _ => assert(false)
+    }
+    match jnum_of(es, "$.over") {
+        Ok(_) => assert(true)
+        _ => assert(false)
+    }
+    match jnum_of(es, "$.i64min") {
+        Ok(_) => assert(true)
+        _ => assert(false)
+    }
+    match jnum_of(es, "$.flt") {
+        Ok(_) => assert(true)
+        _ => assert(false)
+    }
+    match jnum_of(es, "$.nope") {
+        Ok(_) => assert(false)
+        Err(_) => assert(true)
+    }
+
+    // 存量兼容:i64 面不回绕(U64_MAX 超域 → range)
+    let rng = jget_i64(es, "$.u64max")
+    match rng {
+        Ok(_) => assert(false)
+        Err(k) => assert_eq(jerr_kind(k), "range")
+    }
+

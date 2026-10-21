@@ -378,7 +378,7 @@ fn jval(s: Str, i: I32, pre: Str, st: List[Str], out: List[List[Str]], dp: I32) 
         }
         var ent = List[Str]()
         ent.push(pre)
-        ent.push("n")
+        ent.push(jnum_class(byte_slice(s, i2, ne)))
         ent.push(byte_slice(s, i2, ne))
         out.push(ent)
         return jskip(s, ne)
@@ -443,9 +443,111 @@ pub fn qval(entries: List[List[Str]], path: Str) -> Str {
 //   (pub 面 jnum_*/jreal_*/jn_*/jr_* 退场);jint64/jf64 以私有 (k,v) 对保留
 //   为解析内件。消费速查:值 jv_*;kind jk_*(返回 "ok" 或 kind 段);类型化 jget_*。
 
-struct JNum {
+struct JNumR {
     k: I64
     v: I64
+}
+
+// IP-23 23a:JSON 数值 tagged union(四态;JNumR 私有错误对让位更名 JNumR)
+// Int=有符号域(含负)/UInt=>I64_MAX 正整数/Big=超宽原文保真/Flt=含小数指数
+enum JNum {
+    Int(I64)
+    UInt(U64)
+    Big(Str)
+    Flt(F64)
+}
+
+struct JU64R {
+    k: I64
+    v: U64
+}
+
+// 无符号十进制字串折叠(U64 全域;非数字 k=4/越 2^64-1 k=5)
+fn ju64(s: Str) -> JU64R {
+    var r: U64 = 0u64
+    var i: I32 = 0
+    if s.len == 0 {
+        var e9 = JU64R { k: 6, v: 0u64 }
+        return e9
+    }
+    while i < s.len {
+        var c = byte_at(s, i)
+        if c < 48 || c > 57 {
+            var e0 = JU64R { k: 4, v: 0u64 }
+            return e0
+        }
+        var d: U64 = (c - 48).as[U64]()
+        var lim: U64 = (18446744073709551615u64 - d) / 10u64
+        if r > lim {
+            var e1 = JU64R { k: 5, v: 0u64 }
+            return e1
+        }
+        r = r * 10u64 + d
+        i += 1
+    }
+    var ok0 = JU64R { k: 0, v: r }
+    return ok0
+}
+
+// 数值原文词法分类(IP-23 23a):含 ./e → nf;整数按域 ni/nu/nb
+// (界:|x| < 2^63 → ni;2^63 ≤ x ≤ 2^64-1 正数 → nu;越 → nb)
+fn jnum_mag_cmp(d: Str, bound: Str) -> I32 {
+    if d.len != bound.len {
+        if d.len < bound.len {
+            return -1
+        }
+        return 1
+    }
+    var i: I32 = 0
+    while i < d.len {
+        if byte_at(d, i) != byte_at(bound, i) {
+            if byte_at(d, i) < byte_at(bound, i) {
+                return -1
+            }
+            return 1
+        }
+        i += 1
+    }
+    return 0
+}
+
+fn jnum_class(t: Str) -> Str {
+    var i: I32 = 0
+    var isflt = false
+    while i < t.len {
+        var c = byte_at(t, i)
+        if c == 46 || c == 101 || c == 69 {
+            isflt = true
+        }
+        i += 1
+    }
+    if isflt {
+        return "nf"
+    }
+    var neg = false
+    var dg = t
+    if t.len > 0 && byte_at(t, 0) == 45 {
+        neg = true
+        dg = byte_slice(t, 1, t.len)
+    }
+    var c63 = jnum_mag_cmp(dg, "9223372036854775808")
+    if c63 < 0 {
+        return "ni"
+    }
+    if c63 == 0 {
+        if neg {
+            return "ni"
+        }
+        return "nu"
+    }
+    var c64 = jnum_mag_cmp(dg, "18446744073709551615")
+    if c64 <= 0 {
+        if neg {
+            return "nb"
+        }
+        return "nu"
+    }
+    return "nb"
 }
 
 struct JReal {
@@ -483,7 +585,7 @@ fn jf_sent() -> F64 {
 }
 
 // 整数语法形态数值原文 → JNum(k: 0=ok/4=frac/5=range/6=syn;值仅 k=0 有效)
-fn jint64(s: Str) -> JNum {
+fn jint64(s: Str) -> JNumR {
     var neg = false
     var i: I32 = 0
     if s.len > 0 {
@@ -493,7 +595,7 @@ fn jint64(s: Str) -> JNum {
         }
     }
     if i >= s.len {
-        var e0 = JNum { k: 6, v: 0 }
+        var e0 = JNumR { k: 6, v: 0 }
         return e0
     }
     var i0 = i
@@ -509,30 +611,30 @@ fn jint64(s: Str) -> JNum {
             }
         }
         if !isd {
-            var ef = JNum { k: 4, v: 0 }
+            var ef = JNumR { k: 4, v: 0 }
             return ef
         }
         var d: I64 = c - 48
         if neg {
             if acc < -922337203685477580 {
-                var er = JNum { k: 5, v: 0 }
+                var er = JNumR { k: 5, v: 0 }
                 return er
             }
             if acc == -922337203685477580 {
                 if d > 8 {
-                    var er2 = JNum { k: 5, v: 0 }
+                    var er2 = JNumR { k: 5, v: 0 }
                     return er2
                 }
             }
             acc = acc * 10 - d
         } else {
             if acc > 922337203685477580 {
-                var er3 = JNum { k: 5, v: 0 }
+                var er3 = JNumR { k: 5, v: 0 }
                 return er3
             }
             if acc == 922337203685477580 {
                 if d > 7 {
-                    var er4 = JNum { k: 5, v: 0 }
+                    var er4 = JNumR { k: 5, v: 0 }
                     return er4
                 }
             }
@@ -544,11 +646,11 @@ fn jint64(s: Str) -> JNum {
     // 使 "0.5" 归 frac 而非 syn)
     if byte_at(s, i0) == 48 {
         if s.len > i0 + 1 {
-            var ez = JNum { k: 6, v: 0 }
+            var ez = JNumR { k: 6, v: 0 }
             return ez
         }
     }
-    var okn = JNum { k: 0, v: acc }
+    var okn = JNumR { k: 0, v: acc }
     return okn
 }
 
@@ -720,7 +822,14 @@ fn jtagk(tag: Str, path: Str, want: Str) -> Str {
         return jmkerr("null", path)
     }
     if tag != want {
-        return jmkerr("type", path)
+        // IP-23 23a:数值细分族(ni/nu/nb/nf)对裸 "n" 请求前缀兼容(存量零破坏)
+        var okn = false
+        if want == "n" && tag.len > 1 && byte_at(tag, 0) == 110 {
+            okn = true
+        }
+        if !okn {
+            return jmkerr("type", path)
+        }
     }
     return ""
 }
@@ -768,6 +877,67 @@ pub fn jget_bool(entries: List[List[Str]], path: Str) -> Result[Bool, Str] {
         return Ok(false)
     }
     return Err(jmkerr("syn", path))
+}
+
+// 类型化读取:U64(IP-23 23a;ni 域正数亦收,负/超域 → range)
+pub fn jget_u64(entries: List[List[Str]], path: Str) -> Result[U64, Str] {
+    var tag = qtag(entries, path)
+    var bad = jtagk(tag, path, "n")
+    if bad != "" {
+        return Err(bad)
+    }
+    var raw = qval(entries, path)
+    if byte_at(raw, 0) == 45 {
+        return Err(jmkerr("range", path))
+    }
+    var u = ju64(raw)
+    if u.k != 0 {
+        return Err(jmkerr(jkname(u.k), path))
+    }
+    return Ok(u.v)
+}
+
+// 原文读取(IP-23 23a;数值四态皆收,原文保真面)
+pub fn jget_big(entries: List[List[Str]], path: Str) -> Result[Str, Str] {
+    var tag = qtag(entries, path)
+    var bad = jtagk(tag, path, "n")
+    if bad != "" {
+        return Err(bad)
+    }
+    return Ok(qval(entries, path))
+}
+
+// tagged 总口(IP-23 23a):JNum 四态判别(match/downcast 消费)
+pub fn jnum_of(entries: List[List[Str]], path: Str) -> Result[JNum, Str] {
+    var tag = qtag(entries, path)
+    var bad = jtagk(tag, path, "n")
+    if bad != "" {
+        return Err(bad)
+    }
+    var raw = qval(entries, path)
+    var cls = jnum_class(raw)
+    if cls == "nf" {
+        var f = jf64(raw)
+        if f.k != 0 {
+            return Err(jmkerr(jkname(f.k), path))
+        }
+        return Ok(Flt(f.v))
+    }
+    if cls == "nu" {
+        var u = ju64(raw)
+        if u.k != 0 {
+            return Err(jmkerr(jkname(u.k), path))
+        }
+        return Ok(UInt(u.v))
+    }
+    if cls == "nb" {
+        return Ok(Big(raw))
+    }
+    var r = jint64(raw)
+    if r.k != 0 {
+        return Err(jmkerr(jkname(r.k), path))
+    }
+    return Ok(Int(r.v))
 }
 
 // ---- 带默认/kind 便捷面(jv_*/jk_*;T53 后内部恒经 Result 面 jget_*)----
@@ -1114,7 +1284,7 @@ fn jw_val(entries: List[List[Str]], ni: I32, depth: I32, out: List[Str]) -> I32 
         out.push(wesc(val))
         return ni + 1
     }
-    if tag == "n" {
+    if tag == "n" || tag == "ni" || tag == "nu" || tag == "nb" || tag == "nf" {
         out.push(val)
         return ni + 1
     }
@@ -1246,7 +1416,8 @@ test "numbers strict per RFC ABNF" {
             return 1
         }
     }
-    assert_eq(qtag(v_ok1, "$.0"), "n")
+    assert_eq(qtag(v_ok1, "$.0"), "ni")
+    assert_eq(qtag(v_ok1, "$.3"), "nf")
     assert_eq(qval(v_ok1, "$.1"), "10")
     assert_eq(qval(v_ok1, "$.4"), "-2E-3")
     // 负例四件:RFC 8259 违例必须 Err(旧形倒装期待 Ok 空表+Err 臂 return 1,

@@ -13,6 +13,13 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 return lit_to_dec(e[1]) + "LL"
             }
         }
+        // R2c:宽域后缀字面量 → C 无符号后缀(u64/u32;裸十进制 >I64_MAX=C 符号溢出)
+        if e[2] == "u64" || e[2] == "usize" {
+            return e[1] + "ULL"
+        }
+        if e[2] == "u32" {
+            return e[1] + "u"
+        }
         return e[1]
     }
     if t == "Float" { return e[1] }

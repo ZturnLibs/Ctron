@@ -54,6 +54,22 @@
 > **临时工作径**:自举 bin 于 97303043 基线可建(bisect GREEN 实证);对端修复前
 > compiler/bin 沿用绿基线产物。
 >
+> **IP-23 23a-1 落地(2026-10-21;JNum tagged union+qtag 细分+三访问器,json_fidelity 15/0 双臂)。**
+> lib/std/json.ct:①解析位词法分类 jnum_class(nf 含 ./e;整数按域 ni(|x|<2^63,含
+> -2^63)/nu(2^63..2^64-1 正)/nb(越))——qtag 细分 ni/nu/nb/nf,qtag 兼容面=jtagk 裸 "n"
+> 前缀匹配(存量零破坏,jint64 frac 路径保真);②私有 JNumR 更名让位 **pub enum JNum**
+> 四态 tagged union(Int/UInt/Big/Flt);③三新访问器 jget_u64(ju64 全域折叠越域 range)/
+> jget_big(原文保真)/jnum_of(tagged 总口);④jw_val 数值族渲染;⑤种子副本同步。
+> 新件 f_num_domains(四态 qtag+四 Ok 面+U64_MAX 取值+超宽原文+range 拒绝)双臂绿。
+> **随批附带**:trans_expr Int 宽域后缀字面量 → C 无符号后缀(u64/usize→ULL,u32→u;
+> 裸十进制 >I64_MAX=C 符号溢出)**入源,emit 臂验证待对端 native.sh 修复后**(现 emit
+> bin=绿基线遗留);**在册**:嵌套 enum 载荷绑定(Ok(Big(raw)) 形)=扁平 R 族缺口
+> (夹具用受撑形:变体判别由 qtag 承担+Ok(_) 面),jnum_of 变体内嵌绑定解锁后升级;
+> F64 to_string 两制=23a-2 钉子(设计轮 §3)。**门**:json_fidelity 15/0 双臂(新件
+> f_num_domains+存量九件零回归)+json.ct inline rc=0+suite 119/120·120/120(07a 在册)
+> +meta_check 全绿;smoke --full 跳过(对端批C-2 native.sh 回归在册,门=24 步等效
+> 子集:json_fidelity+suite+meta_check)。
+>
 > **R2c 枚举浮点/宽载荷位双关+U64 to_string(2026-10-20;IP-23 23a 前置地基)。**
 > JNum tagged union 探针(jn.ct)连环咬出三枚枚举机械通用缺口,全修:①ct_wrap_i 补
 > f/g 位双关(构造侧;值截断曾致 Flt(3.5)→3);②新增 ct_unwrap_i(读侧逆,f/g 双关/
