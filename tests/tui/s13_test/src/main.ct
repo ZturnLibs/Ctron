@@ -1,0 +1,30 @@
+// s13 —— test[M]/d_* 泛型 headless 驱动门(批C-3A 回填验证;设计 §9)
+// 断言:渲染(d_expect_text 逐字)/帧计数(d_frame 随按键递增)/闭包捕获
+// struct 模型 + 闭包体内泛型调用全场景(批C 五级修复的验收应用)。
+use tui.{ test, d_expect_text, d_key, d_frame, theme_default, text, Event, TuiTree }
+
+struct M0 {
+    var n: I32
+}
+
+fn vw(m: M0) -> TuiTree {
+    return text("abc")
+}
+
+fn up(m: M0, e: Event) {
+    m.n = m.n + 1
+}
+
+fn main() -> I32 {
+    var m = M0 { n: 0 }
+    test[M0](vw, up, m, theme_default(), 10, 3, |tt| {
+        d_expect_text(tt, 0, 0, 3, "abc")
+        d_key(tt, vw, up, m, theme_default(), 65)
+        if d_frame(tt) != 2 {
+            panic("tui s13: frame count")
+        }
+        d_expect_text(tt, 0, 0, 3, "abc")
+    })
+    println("s13_test-probe ok")
+    return 0
+}

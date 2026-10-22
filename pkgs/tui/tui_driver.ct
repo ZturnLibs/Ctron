@@ -93,9 +93,12 @@ pub fn run_app[M](view: fn(M) -> TuiTree, update: fn(M, Event), m: M, theme: The
     return 0
 }
 
-// ---- headless 测试驱动(§9;批C-3A 回填:TuiTest[M] 仅持数据,
-// view/update/th 走 d_* 显式形参——fn 字段调用返回 struct 过 ct_clop 面无装箱
-// (编组白名单=标量族限,在册),直接调用则走 fn 形参盒化既有通装)----
+// ---- headless 测试驱动(§9;批C-3A 回填,批C 关闭 2026-10-22)----
+// 回填史:批C 立案(合并名槽泄漏 E5030)→ 三勘(①E5030 自愈 ②发射面 B: 码丢
+// 实例实参+推断无 Box 分支已修(批C-2 W1–W3) ③闭包形参无签型→批C-3A)。
+// 设计定案:TuiTest[M] 仅持数据(buf/frames/w/h/m);view/update/th 走 d_* 显式
+// 形参——fn 字段调用返回 struct 过 ct_clop 面无装箱(编组白名单=标量族限,在册)
+// 的绕行,直接调用走 fn 形参盒化既有通装(test__u_Model 实证解盒正确)。----
 
 pub struct TuiTest[M] {
     var buf: TuiBuf
@@ -126,6 +129,10 @@ fn d_send[M](tt: Box[TuiTest[M]], view: fn(M) -> TuiTree, update: fn(M, Event), 
 pub fn d_key[M](tt: Box[TuiTest[M]], view: fn(M) -> TuiTree, update: fn(M, Event), m: M, th: Theme, code: I32) {
     var e = Event { kind: ev_key(), code: code, ch: 0, shift: false, ctrl: false, alt: false, mx: 0, my: 0, w: 0, h: 0, name: "", args: List[Str]() }
     d_send[M](tt, view, update, m, th, e)
+}
+
+pub fn d_frame[M](tt: Box[TuiTest[M]]) -> I32 {
+    return tt.v.frames
 }
 
 pub fn d_expect_text[M](tt: Box[TuiTest[M]], x: I32, y: I32, n: I32, s: Str) {
