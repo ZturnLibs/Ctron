@@ -3075,3 +3075,28 @@ db **50/0**;plugins 10 过 1 败(唯一败=在册容器面先在缺口);web json
 test 块 bin 径 rc=0(`.len` 假红为 seed 径专属,上条 debit 注记照登)。
 **bin 径勘误**:「4 块原序 `.len` 假红」在 native bin 径不复现(rc=0)——
 该顺序状态泄漏=seed 解释径专属面,debit 归属改记 compiler-c/rt 派发族。
+
+## 2026-10-22 P2 落地(byte_slice OOB 销账钉 + 种子 trace 桩退役)
+
+**①byte_slice AST 越界(2026-10-18 批C 邻案)——销账**:触发形
+`index_of(byte_slice(x,a,b), s)` 调用结果内联作首参,今日不复现——用户 fn
+首参/参数化边界穿层/直接内联三形 emit+运行全对(index_of 本身非内建,原账
+形出自 tui 语境用户 fn);治愈归因 = T31 M1.5 实参 ANF 提升批(调用实参
+求值悬窗即病灶面)+ 两批实参链路落修。**回归钉**:fx_byteslice_arg.ct
+(三形:调用结果内联首参/fn 参数化边界穿两层/直接内联)入册 smoke 3b,
+interp/emit 双臂逐字一致。编译器自身面:native.sh 五连绿 + self-emit
+3.03MB rc=0 实证源内已无触发形(let 绑定纪律遗留洗净)。
+
+**②种子发射 ?/擦除 trace 恒 main:1——桩形退役(v1 诚实化)**:seed interp
+rt_eval EX_TRY AnyError 擦除点 trace 恒 "main:1"(位置桩)→ 记当前函数名
+(g_cur_fn 常驻维护:call_decl 去 CTRON_FN_TRACE 门(桶计数仍随门)/
+call_decl_vals/call_method_body 补存取,restore 无条件化防首层 NULL 漏);
+context() fallback 与 seed 发射面 4 处 strdup("main:1") → strdup("")
+(诚实空——v1 cexpr 无位置字段,真位置 = legacy 线大手术不在账)。
+**先在限制(登记)**:v1 发射面 AnyError 构造即拒(`trans: v1:构造目标需
+struct:AnyError`)→ 种子发射 ? 擦除端到端不可达,发射面诚实化以代码面
+落地(strdup("") 取代伪 main:1)。
+
+**门**:seed 重建(Oct 22)后 erase.ct interp `trace=erased_caller` ✓;
+金样逐字绿(GREEN-GOLDEN);db 50/0;plugins 10/1(在册);web json bin 径
+rc=0——seed 即 ctc.sh 全日宿主,五门连跑无回归。

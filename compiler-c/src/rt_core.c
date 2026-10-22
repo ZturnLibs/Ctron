@@ -435,6 +435,8 @@ val call_decl_vals(rt* R, const cdecl* fn, val* args, size_t n) {
     env_push(R);
     const char* saved_eh = R->err_head;
     R->err_head = err_head_of(F->ret);
+    const char* saved_fn = g_cur_fn;
+    g_cur_fn = F->name ? F->name : saved_fn;
     for (size_t i = 0; i < n; i++) {
         val a = args[i];
         a = apply_decl(R, a, F->params[i].ty);
@@ -449,6 +451,7 @@ val call_decl_vals(rt* R, const cdecl* fn, val* args, size_t n) {
     R->has_ret = sr;
     R->ret = srv;
     R->err_head = saved_eh;
+    g_cur_fn = saved_fn;
     env_pop(R);
     return res;
 }
@@ -532,7 +535,7 @@ int option_builtin(rt* R, val recv, const char* m, cexpr* call) {
             val msg = call->nelems == 1 ? eval_expr(R, call->elems[0]) : v_bool(0);
             const char* txt = (msg.k == V_STR && msg.s) ? msg.s : "";
             val payload = recv.nitems >= 1 ? recv.items[0] : v_void();
-            const char* tr = (payload.k == V_ERR && payload.err && payload.err->trace) ? payload.err->trace : "main:1";
+            const char* tr = (payload.k == V_ERR && payload.err && payload.err->trace) ? payload.err->trace : "";
             val* cause_payload = (val*)ctron_arena_alloc(R->a, sizeof(val));
             cause_payload[0] = payload;
             val* one = (val*)ctron_arena_alloc(R->a, sizeof(val));
@@ -615,6 +618,11 @@ val call_decl(rt* R, const cdecl* fn, cexpr** args, size_t n) {
         if (fat < 0) fat = getenv("CTRON_FN_TRACE") ? 1 : 0;
         if (fat) {
             saved_fn = ctron_fn_enter(F->name);
+        } else {
+            // P2:? 擦除点 trace 源——g_cur_fn 常驻维护(原仅 CTRON_FN_TRACE 门内;
+            // ? 点读名替 "main:1" 桩),桶计数仍随门(fat 追踪器语义不动)
+            saved_fn = g_cur_fn;
+            g_cur_fn = F->name;
         }
     }
     if (F->nparams != n) rt_abort(R, RT_ERROR, "参数个数: %s 期望 %zu 实得 %zu",
@@ -647,7 +655,7 @@ val call_decl(rt* R, const cdecl* fn, cexpr** args, size_t n) {
     R->ret = save_retv;
     R->err_head = saved_eh;
     env_pop(R);
-    if (saved_fn) ctron_fn_restore(saved_fn);
+    ctron_fn_restore(saved_fn);
     return res;
 }
 

@@ -1,4 +1,5 @@
 #include "rt_internal.h"
+#include "arena.h"
 
 // L4-②:read_bytes_len/at 共享缓冲(配对面)
 static unsigned char* ctron_rb = NULL;
@@ -118,6 +119,9 @@ val call_method_body(rt* R, const cfn* F, val self, cexpr** args, size_t nargs) 
     env_push(R);
     const char* saved_eh = R->err_head;
     R->err_head = err_head_of(F->ret);
+    // P2:? 擦除点 trace 源(g_cur_fn 常驻维护,原仅 CTRON_FN_TRACE 门内)
+    const char* saved_fn = g_cur_fn;
+    g_cur_fn = F->name ? F->name : saved_fn;
     for (size_t i = 0; i < F->nparams; i++) {
         const cparam* pr = &F->params[i];
         if (pr->is_receiver) env_let(R, "self", self);
@@ -138,6 +142,7 @@ val call_method_body(rt* R, const cfn* F, val self, cexpr** args, size_t nargs) 
     R->has_ret = sr;
     R->ret = srv;
     R->err_head = saved_eh;
+    g_cur_fn = saved_fn;
     env_pop(R);
     return res;
 }
@@ -726,7 +731,10 @@ val eval_expr(rt* R, cexpr* e) {
                     fmt_val(R, inner, &b);
                     val* cause_payload = (val*)ctron_arena_alloc(R->a, sizeof(val));
                     cause_payload[0] = inner;
-                    errv = v_err_t(R, b.d ? b.d : "", v_tag("Some", cause_payload, 1), "main:1",
+                    // P2 桩形退役:? 擦除点 trace 记当前函数名(g_cur_fn;旧恒
+                    // "main:1" 桩——v1 无位置字段,函数名为诚实可达面)
+                    errv = v_err_t(R, b.d ? b.d : "", v_tag("Some", cause_payload, 1),
+                                   g_cur_fn ? g_cur_fn : "main:1",
                                    ctron_err_code_of(R, inner));
                     free(b.d);
                 } else {

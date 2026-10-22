@@ -19,6 +19,7 @@ void ctron_arena_free(ctron_arena* a);
 long ctron_mem_total(void);
 const char* ctron_fn_enter(const char* n);
 void ctron_fn_restore(const char* prev);
+extern const char* g_cur_fn; // 当前函数名(? 擦除点 trace 源;P2 桩形退役)
 /// 逐块对账(cap vs used;CTRON_MEM_DEBUG=1 时有效)。
 void ctron_mem_audit(const ctron_arena* a);
 /// 若 p 是 arena 最后一次分配且余量足够,原地扩展到 new_len 字节并返 1(拼接零拷贝快路径)。

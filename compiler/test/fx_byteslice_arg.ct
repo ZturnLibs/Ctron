@@ -1,0 +1,22 @@
+// fx_byteslice_arg.ct —— byte_slice 调用结果内联作实参回归钉(P2;2026-10-18
+// 批C 邻案 OOB 销账钉:触发形 = 调用结果内联作首参(index_of(byte_slice(..),..)
+// 原账形)emit 期 `byte_slice: range out of bounds`,let 绑定替身即愈;后经
+// T31 M1.5 实参 ANF 提升批治愈——本夹具钉死三形不复发:
+// ①用户 fn 调用结果内联作首参 ②fn 参数化边界 byte_slice 穿两层 ③直接内联
+fn slice_at(s: Str, lo: I32, hi: I32) -> Str {
+    return byte_slice(s, lo, hi)
+}
+
+fn eq(a: Str, b: Str) -> I32 {
+    if a == b {
+        return 1
+    }
+    return 0
+}
+
+fn main() -> I32 {
+    println(eq(slice_at("hello world", 6, 11), "world").to_string())
+    println(eq(byte_slice("hello world", 0, 5), "hello").to_string())
+    println(byte_slice("abcdef", 2, 4))
+    return 0
+}
