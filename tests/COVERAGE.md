@@ -3121,6 +3121,12 @@ bin/ctron-chk 精确产出 `E4010: 使用 fs 能力超出 manifest(caps) 声明:
   编组族,P0-2 同域延伸)。
 - heap:本日 P0-1 已清账(none 臂修翻绿);扁平 R 族 DIFF:维持(基线同
   指纹,optstr/boxalias emit 往返面)。
+- **opt 族面复勘(2026-10-23 探针)**:①闭包捕获 struct 值(`|| { p.x }`)
+  interp/emit 双臂绿(捕获写侧 ct_wrap_i 堆盒 + 读侧解引用既有通装);②
+  struct 双参比较器穿 fn 值间接调用(`apply2(cmp, p1, p2)`,u: 双参堆盒
+  穿 ct_cbtr/调用位)双臂绿。**真余面收窄 = 捕获闭包作 fn 值传递**(clops
+  env-first shim 与裸 fnptr 抽取 `->fn` 不兼容,一等闭包值在册族)——
+  4c known 原文本「闭包结构值/比较器形参」两形今日均绿,余面以此为准。
 
 ## 2026-10-23 泛型槽 slice 视图键位(第一批)——vi 恐慌清除,余缝精化
 
