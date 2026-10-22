@@ -68,6 +68,16 @@ fn main() -> I32 {
             }
             var run_prof = "ANCHORPROFILE"
             var lmisses = List[Str]()
+            // P2:合并前收输入文件 test 名集(run_tests allow——合并单元含被
+            // use 模块的 Test 块,只跑自己的)
+            var mytests = List[Str]()
+            var mi2: I32 = 1
+            while mi2 < file.len {
+                if file[mi2][0] == "Test" {
+                    mytests.push(file[mi2][1])
+                }
+                mi2 += 1
+            }
             file = pkg_load_use_t(file, pkg_dir_of(epath), lstack, ldiags, lmisses, run_prof)
             if ldiags.len > 0 {
                 var li: I32 = 0
@@ -99,21 +109,23 @@ fn main() -> I32 {
                 return 1
             }
             var d = find_decl(file, "main")
+            // P2 挂账兑现:test 块不再因 main 存在而静默跳过——先测后主
+            //(fail-fast:测试失败 rc=1,main 不运行;输出按真实执行时序)
+            var tr = run_tests(file, mytests)
+            if tr.kind == "a" {
+                print(tr.out)
+                return 1
+            }
             if d.len > 0 {
                 var br = run_block(file, statics_env(file), "", d[5], false)
                 if br.kind == "a" {
                     // P1-A2:panic 消息已在 panic 点即时 stderr(panic 内建冲刷,
                     // §6.4+eprint 对齐);此处只补展开期残余 out(Drop 体 println)
-                    print(br.out)
+                    print(tr.out + br.out)
                     return 1
                 }
-                print(br.out)
+                print(tr.out + br.out)
                 return 0
-            }
-            var tr = run_tests(file)
-            if tr.kind == "a" {
-                print(tr.out)
-                return 1
             }
             print(tr.out)
             return 0

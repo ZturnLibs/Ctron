@@ -3049,3 +3049,29 @@ db 50/0;plugins interp bigstr-ok。
 (1,2,3,4)interp 执行 `.len 目标类型不支持` 假红——对内全部单块/双对过、
 4-first 换序全绿 = 顺序状态泄漏(块间 interp 派发态),非任何单块语义;
 归 P2「ctron test」挂账族勘定。
+
+## 2026-10-22 P2 落地(含 main 文件 test 执行)——driver_run/driver_emit 双面
+
+**挂账兑现**:「ctron test 含 main 文件的 test 执行(现仅无 main 走解释)」——
+driver_run 单臂分派(`find_decl("main")` 命中即 return,test 永不跑;emit 侧
+hasmain 分支 testcalls 拼而不用)双面同修:
+- interp(driver_run):先测后主——run_tests 无条件先行,失败(tr.kind=="a")
+  rc=1 main 不运行(fail-fast);通过则按真实执行时序续跑 main,残余 out
+  按 tr+br 串联。合并前收输入文件 test 名集(mytests)传 allow——合并单元
+  携带被 use 模块的 Test 块(Test 恒随),只跑自己的(eval_run run_tests
+  加 allow 过滤,签名原地改零新增 fn,decls 锁 532 不变)。
+- emit(driver_emit):hasmain 分支 `+ testcalls + mcall` splice(t_test_N
+  失败 return 1 先于 t_main),与 interp 同构。
+
+**验证**:①先测后主双绿(test-body-ran → main-ran,rc=0);②fail-fast
+(assert_eq(1,2) → rc=1,main 不运行)——interp(拼装件)/emit(cc 原生)
+双臂同判;③纯 main 文件零扰动(无 test = run_tests 空转);④共存夹具回
+归:t55_mw_smoke/03j/05j/04c_or_infix 全 rc=0(clock_sanity rc=1 = 先在
+net 泳道 interp 缺口,HEAD~2 worktree 同败实证,夹具头注自登记「方法调用
+发射缺口」);⑤无 main 夹具族(fx_*/anchors)allow=自身名集,行为不变。
+
+**门**:native.sh 八件 bin 全刷新 rc=0;smoke --full **241 ok / 0 fail**;
+db **50/0**;plugins 10 过 1 败(唯一败=在册容器面先在缺口);web json.ct
+test 块 bin 径 rc=0(`.len` 假红为 seed 径专属,上条 debit 注记照登)。
+**bin 径勘误**:「4 块原序 `.len` 假红」在 native bin 径不复现(rc=0)——
+该顺序状态泄漏=seed 解释径专属面,debit 归属改记 compiler-c/rt 派发族。

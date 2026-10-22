@@ -497,13 +497,20 @@ fn statics_env(file: List[Str]) -> List[Str] {
     }
     return env
 }
-fn run_tests(file: List[Str]) -> Flow {
+fn run_tests(file: List[Str], allow: List[Str]) -> Flow {
     var env0 = statics_env(file)
     var acc = ""
     var i: I32 = 1
     while i < file.len {
         var d = file[i]
         if d[0] == "Test" {
+            // P2:只跑输入文件自己的 test——合并单元携带被 use 模块的 Test 块
+            //(Test 恒随合并),全跑 = 消费方替依赖跑测试(net.ct 族 to_string
+            // 缺口即此咬出);allow = 合并前输入 AST 的 test 名集
+            if allow.len > 0 && !in_list(allow, d[1]) {
+                i += 1
+                continue
+            }
             var br = run_block(file, env0, "", d[2], false)
             if br.kind == "a" {
                 return s4("a", br.env, acc + br.out, br.v)
