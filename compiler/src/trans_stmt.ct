@@ -481,6 +481,32 @@ fn ct_body(b: List[Str], env: List[Str], file: List[Str], rc: Str) -> List[Str] 
     if rc != "v" {
         fenv = env_bind(env, "#fnret", rc)
     }
+    // P3:泛型实例返回钉——rc = u:Name__<encs> 时绑 "#Name"→rc + 型参名→码
+    //(return 位泛型 struct 字面量的期望型源:iter map 族 `RawSeq { src: xs }`
+    // 的槽仅 impl 方法引用,字段推不出 → 自注解面取;径A env 预绑同哲学)
+    if rc.len > 2 && byte_slice(rc, 0, 2) == "u:" {
+        var rinfo = ct_struct_inst_split(rc)
+        if rinfo.len > 1 {
+            var rbar = 0
+            var rii: I32 = 0
+            while rii < rinfo.len {
+                if byte_at(rinfo, rii) == 124 { rbar = rii }
+                rii += 1
+            }
+            var rnm = byte_slice(rinfo, 0, rbar)
+            var rencs = byte_slice(rinfo, rbar + 1, rinfo.len)
+            fenv = env_bind(fenv, "#" + rnm, rc)
+            var rtps = ct_struct_tps(file, rnm)
+            var rcodes = ct_inst_arg_codes(rencs)
+            if rtps.len == rcodes.len {
+                var rki: I32 = 0
+                while rki < rtps.len {
+                    fenv = env_bind(fenv, rtps[rki], rcodes[rki])
+                    rki += 1
+                }
+            }
+        }
+    }
     var p1 = seq2(ct_pass(fenv), "1")
     if !p1 {
         // P0-A:"#nobrace" 位(特化盒槽序言在 ct_body 前直出,花括号由发射位自带)
