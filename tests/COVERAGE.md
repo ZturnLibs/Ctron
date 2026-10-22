@@ -3121,3 +3121,15 @@ bin/ctron-chk 精确产出 `E4010: 使用 fs 能力超出 manifest(caps) 声明:
   编组族,P0-2 同域延伸)。
 - heap:本日 P0-1 已清账(none 臂修翻绿);扁平 R 族 DIFF:维持(基线同
   指纹,optstr/boxalias emit 往返面)。
+
+## 2026-10-22 P4/W3d 落地(256 档 bg / 16 档 fg 默认不对称面复核)
+
+**复核结论(挂账兑现)**:不对称面真身 = `sgr_fg` 16 档缺 v<0 直通——
+sgr_bg 同位有 `if v < 0 { return "" }`(256/24bit 双面皆有两臂直通),唯
+fg 16 档把 default(-1)喂 ansi16 折成黑码(`\e[30m`)= 16 色终端下
+default 前景被涂黑。修 = 16 档 v<0 直通补臂(无 SGR = 终端默认)。
+
+**验证**:三档探针(CTRON_TUI_COLOR 钩子,包形 use tui.{sgr_fg,sgr_bg}
+经门面 re-export,发射臂链 tui_term.c)——16 档 fg-default-len=0(修前
+4 字节黑码)/bg=0;256 档 5/5(\e[39m/\e[49m 直通不变);24bit 5/5;
+tui 阶梯 14/14 零回归(s7_color 四档+NO_COLOR 在册)。

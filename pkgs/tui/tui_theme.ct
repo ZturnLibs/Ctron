@@ -170,6 +170,11 @@ pub fn sgr_fg(v: I32) -> Str {
         return ""
     }
     if lvl == color_16() {
+        // W3d 不对称面复核修正:fg 16 档缺 v<0 直通(bg 同位有)——default
+        // 前景被 ansi16(负)折成黑(bg_code16 镜像臂);补直通 = 无 SGR
+        if v < 0 {
+            return ""
+        }
         return fg_code16(ansi16(v))
     }
     if lvl == color_256() {
