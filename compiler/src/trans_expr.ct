@@ -457,7 +457,20 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             return "(" + ct_expr(e[1], env, file) + ")." + e[3]
         }
         if oft.len > 2 && byte_slice(oft, 0, 2) == "B:" {
-            // Box 自动解引用字段读(§6.1)
+            // Box 自动解引用字段读(§6.1);显式 .v 双语义字段优先——
+            // 载荷 struct 自带 v 字段(Box64{v:I64},ctecho 实证)→ 字段读
+            // `->v`(与 typeof 侧 ct_field_ty_node 探针同闸,W2 勘误批);
+            // 无 v 字段(t_TuiTest__U5_Model)→ 解引用本身=载荷左值
+            // `(*box)`(批C-3A:box.v.field 须消 .v,C 级无 v 成员)
+            if e[3] == "v" {
+                var binner31 = byte_slice(oft, 2, oft.len)
+                if binner31.len > 2 && byte_slice(binner31, 0, 2) == "u:" {
+                    if ct_field_ty_node(file, ct_struct_name_of(binner31), "v")[0] != "None" {
+                        return "(" + ct_expr(e[1], env, file) + ")->v"
+                    }
+                }
+                return "(*" + ct_expr(e[1], env, file) + ")"
+            }
             return "(" + ct_expr(e[1], env, file) + ")->" + e[3]
         }
     }

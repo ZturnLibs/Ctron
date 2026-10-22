@@ -93,16 +93,49 @@ pub fn run_app[M](view: fn(M) -> TuiTree, update: fn(M, Event), m: M, theme: The
     return 0
 }
 
-// ---- headless 测试驱动(§9)持出(批C → 批C-2 → 批C-3,2026-10-20 三勘)----
-// test/d_* 家族(TuiTest[M] 泛化稿)持出。三勘定案:
-// ①原「合并期 decl 名槽泄漏 E5030」**不再复现**(2026-10-20 以本文件真 context 重建
-//   触发形状,全族 check 绿;详见 COVERAGE「批C 再勘定」)。
-// ②真阻塞=发射面:`B:` 码丢实例实参 + `ct_call_infer_tys` 无 Box 分支已修
-//   (批C-2 W1–W3 f1e0aee3),构造/局部声明 `__U5_Model` 均正确。
-// ③**批C-3 已收口(2026-10-21,径A 落库)**:期望 fn 签型穿入闭包形参 env——
-//   ①调用位 'F' 码 + ②StructLit fn 字段位(既有)+ ③fn 注解 let 初值位(trans_stmt
-//   新绑 '#clcodes')三面贯通;trans_ty.ct ct_call_infer_tys Box 分支错位嵌套同批
-//   修正(f1e0aee3 引入即死码),driver_emit.ct 预扫 FnType 下钻(实例 typedef 先于
-//   原型前置区)。回归钉:tests/03o_generic_box_mono.ct 三形状(种子 3/3+发射 rc=0)。
-//   本节原稿回填(tui_driver test/d_* 家族 + tests/tui/s13 夹具)自此解锁,待新 bin
-//   阶梯验证后落批。
+// ---- headless 测试驱动(§9;批C-3A 回填:TuiTest[M] 仅持数据,
+// view/update/th 走 d_* 显式形参——fn 字段调用返回 struct 过 ct_clop 面无装箱
+// (编组白名单=标量族限,在册),直接调用则走 fn 形参盒化既有通装)----
+
+pub struct TuiTest[M] {
+    var buf: TuiBuf
+    var frames: I32
+    var w: I32
+    var h: I32
+    var m: M
+}
+
+pub fn test[M](view: fn(M) -> TuiTree, update: fn(M, Event), m: M, theme: Theme, w: I32, h: I32,
+               script: fn(Box[TuiTest[M]]) -> Void) -> I32 {
+    let b0 = frame_buf(view(m), w, h, theme)
+    var tt = Box[TuiTest[M]](TuiTest { buf: b0, frames: 1, w: w, h: h, m: m })
+    script(tt)
+    return 0
+}
+
+fn tt_frame[M](tt: Box[TuiTest[M]], view: fn(M) -> TuiTree, m: M, th: Theme) {
+    tt.v.buf = frame_buf(view(m), tt.v.w, tt.v.h, th)
+    tt.v.frames += 1
+}
+
+fn d_send[M](tt: Box[TuiTest[M]], view: fn(M) -> TuiTree, update: fn(M, Event), m: M, th: Theme, e: Event) {
+    update(m, e)
+    tt_frame[M](tt, view, m, th)
+}
+
+pub fn d_key[M](tt: Box[TuiTest[M]], view: fn(M) -> TuiTree, update: fn(M, Event), m: M, th: Theme, code: I32) {
+    var e = Event { kind: ev_key(), code: code, ch: 0, shift: false, ctrl: false, alt: false, mx: 0, my: 0, w: 0, h: 0, name: "", args: List[Str]() }
+    d_send[M](tt, view, update, m, th, e)
+}
+
+pub fn d_expect_text[M](tt: Box[TuiTest[M]], x: I32, y: I32, n: I32, s: Str) {
+    var seg = ""
+    var i: I32 = 0
+    while i < n {
+        seg = seg + buf_at(tt.v.buf, x + i, y)
+        i += 1
+    }
+    if seg != s {
+        panic("tui d_expect_text: (" + x.to_string() + "," + y.to_string() + ") 期望 [" + s + "] 实得 [" + seg + "]")
+    }
+}

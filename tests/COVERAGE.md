@@ -2828,3 +2828,53 @@ rc=0(八件 bin + 用户驱动器全自现行源,c9e58977 移交案销账)+ suit
 flake(独跑同版即绿)。**余册**:conc 八例(23a-2 双制尾册)、tui Wave-4 回填
 (tui_driver test/d_* 原稿 + tests/tui/s13 夹具)自此解锁待新批;G2 蹦床;
 种子发射 trace 恒 main:1(v1 桩形在册);IP-23 23b 下游(db/web)未动。
+### 批C-2 W3 回归撤销(2026-10-21;对端 c9e58977 移交登记的修复)
+
+对端移交:native.sh 自举发射 cc_emit 自 d8c4d3b0 起确定性失败——
+`ct_expr:index 目标非 List/数组:i 名:pty 下标:0`(gui_ds_gen 第7形参 pty:List[Str]
+型别码塌 i),二分表 97303043 GREEN / f1e0aee3(批C-2 W1-W3)RED。
+本批复现同指纹后逐 Wave 二分:**W3(`ct_call_infer_tys` Box 分支)为因**——撤 W3
+(保留 W1 `B:` 码携全内码 + W2 消费点归一)后 emit cc_emit rc=0。
+W3 分支对 compiler 源内某 `Box[泛型struct]` 调用误映射型参(具体调用点与条件待
+批C-3 一并勘定;d_* 推断需求并入批C-3 闭包形参签型主径)。
+门:trans_v0-v6 往返 7/7 逐字;boxmem 绿;check cc_run decls=531;emit cc_emit rc=0。
+
+## 2026-10-22 批C-3A 落地(期望签型穿入闭包形参)+ W4 test/d_* 回填(TUI 泳道+编译器泳道)
+
+**根因勘定闭环(入口矛盾解)**:上批「clcodes 已绑但推断仍 i」的断点=**Member 发射
+未消费 `.v`**(Box 解引用在 C 级无 v 成员,`(t_tt)->v` 即 undeclared/错成员;连带
+`typeof(tt.v)` 链)。批C-2 W3 撤销实为**误撤**:重上后 cc_emit 自举发射 rc=0
+(3.0MB 产物,cc 25.9s,--version 冒烟绿)——对端登记的回归未复现(当时观测疑与
+seed 栈溢出叠加,c9e58977 已修)。
+
+**落库(编译器面)**:
+- W3 重上:`ct_call_infer_tys` Box 分支(`Box[泛型struct[TPar]]` 形参自
+  `B:<内码>` 拆实例映射 tps)——本批实测对 tui 泛型族推断正确
+  (`d_expect_text` M=u:Model,DBG 探针逐级验证)。
+- `trans_expr` Member B: 臂消费 `.v`(Box 解引用=载荷左值 `(*p)`)。
+- `ct_generic_retcode` 无返回注解(None)= "v"——泛型 Void 调用旧被
+  `(ct_i)(void)` 包(闭包尾非法 C)。
+
+**落库(库面,pkgs/tui test/d_* 家族回填)**:TuiTest[M] 仅持数据
+(buf/frames/w/h/m);view/update/th 走 d_* 显式形参——fn 字段调用返回 struct
+过 ct_clop 面无装箱(编组白名单=标量族限,在册)的绕行:直接调用走 fn 形参
+盒化既有通装(test__u_Model 实证 `*(t_TuiTree*)(long)(…)` 解盒正确)。
+
+**验证**:批C 复现件 emit→cc→run 全绿(`repro-tui-probe ok`;闭包捕获 struct 模型
++ 闭包体内泛型调用全场景);decls=531 不变;trans_v0-v6 7/7 逐字;emit cc_emit
+rc=0(自举发射回归确认修复)。
+
+**批C 状态:全链路关闭**(E5030→型别塌 i→B: 丢实参→FnType typedef→闭包签型,
+五级递进全落)。
+
+### 双线合并:本地批C-3 收口批 × 对端 W3 撤销/重上批(2026-10-22;语义统一 .v 字段优先)
+
+两地并行同题(本地 3bb9c5d9 六层修 / 对端 0189eca4 撤 W3 + db65e1d3 重上+径A+tui
+回填)合并归一:①`ct_call_infer_tys` Box 分支取对端重上形(链位 branch1 后,单副本;
+本地 branch3 后副本撤),`ct_generic_retcode` None=v 保对端;②**`.v` 语义双侧统一
+字段优先**——载荷 struct 自带 v 字段(ctecho `Box64{v:I64}`)→ 字段读(类型侧
+ct_field_ty_node 探针/代码侧 `->v`),无 v 字段(t_TuiTest)→ 载荷左值 `(*box)`
+(对端 6 行修的形状,其对端无条件载荷左值会复破 ctecho,合并时加字段存在性闸);
+③tui test/d_* 家族回填取对端(本地持出注记废止);④本地六修(嵌套死码勘定/径A
+第三绑定位/typedef 预扫下钻/sem 白名单出现/#fret 全签码/W2 勘误)全数保留。decls
+锁 532(sem_ty_has_tp)。门:全量重跑见下批。
