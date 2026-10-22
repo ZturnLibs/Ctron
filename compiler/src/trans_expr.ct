@@ -457,7 +457,11 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             return "(" + ct_expr(e[1], env, file) + ")." + e[3]
         }
         if oft.len > 2 && byte_slice(oft, 0, 2) == "B:" {
-            // Box 自动解引用字段读(§6.1)
+            // Box 自动解引用字段读(§6.1);显式 .v = 解引用本身(载荷左值,
+            // 批C-3A:t_TuiTest__U5_Model 无 v 成员,box.v.field 须消 .v)
+            if e[3] == "v" {
+                return "(*" + ct_expr(e[1], env, file) + ")"
+            }
             return "(" + ct_expr(e[1], env, file) + ")->" + e[3]
         }
     }
