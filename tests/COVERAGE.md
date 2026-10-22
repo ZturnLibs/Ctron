@@ -3142,10 +3142,15 @@ parallel_map 族旧径 panic"closure 参数个数";捕获闭包维持 ct_emit_cl
 **验证**:iter.ct emit 越过 vi panic(panic 清零;RawSeq__D 键符号 ×57
 两制一致);spot 23 夹具(泛型/fn 值族)全绿;smoke --full **242 ok / 0
 fail**(+fx_byteslice_arg);native.sh rc=0。
-**余缝(同面下一段,精化入账)**:iter emit cc 败于 vt_Seq vtable——
-`t_MapSeq__II` 前置声明序 + 嵌套实例(u:RawSeq__D2_viI)尾缀推导歧义
-(ret 注解径 __II vs 字面量径 __IID2_vi 两符号并存)= MapSeq 嵌套实例
-typedef/符号单源化,iter/T16 面下一段。
+**余缝(同面下一段,根归修正)**:iter emit cc 败于 vt_Seq vtable 槽
+`t_MapSeq__II`——非 typedef 前置序(517 长键 typedef 先于 584 vtable,序无
+恙),亦非单纯尾缀歧义:真身 = **泛型 impl 的 trait 面 v2**——vtable 结构
+按 impl 实例共享(vt_Seq 单名),槽型却须 per-instance Self
+(t_MapSeq__IU13_RawSeq__D1_iI);impl 面 SELF 码浅推(d[3][1] 裸名 + 缺省
+槽码)与体面长键并存即双符号。修 = trait 面 per-instance vtable 设计
+(vt 槽型/命名随 SELF 实例键 + impl 方法逐实例单态化;T25/T26 v2 演进,
+iter.ct:9「前奏 class 直 impl trait 派发不挂」自登记之 v2 位)。设计位批,
+非小钉。
 
 ## 2026-10-22 P4/W3d 落地(256 档 bg / 16 档 fg 默认不对称面复核)
 
