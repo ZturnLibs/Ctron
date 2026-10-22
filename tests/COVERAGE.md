@@ -2729,3 +2729,24 @@ rc=0(自举发射回归确认修复)。
 
 **批C 状态:全链路关闭**(E5030→型别塌 i→B: 丢实参→FnType typedef→闭包签型,
 五级递进全落)。
+
+## 2026-10-22 批C-2 Wave 4 收官(s13 夹具 + tui 阶梯 14/14 + 全量门;TUI/编译器泳道)
+
+**s13 夹具落地**(tests/tui/s13_test):`test[M0]` + `d_expect_text`(渲染逐字)/
+`d_key`(事件注入)/`d_frame`(帧计数)全场景——闭包捕获 struct 模型 + 闭包体内
+泛型调用(d_* 无显式 targs,M 自 Box 实参经批C-2 W3 分支推断)。
+**tui 阶梯 14/14 双跑绿**(s13 新增;存量 13 门零回归)。
+
+**门**(本机环境项单独标注):
+- suite 双列 119/120 · 120/120(03m 超时=负载 flake,垫片复跑一致定谳)
+- smoke --full:167 ok / 65 fail——**0 发射/编译失败**;emit 往返抽查(fx_enum/
+  fx_conc_spawn/fx_optstr/fx_boxalias/fx_conc_gstruct,timeout 垫片):fx_enum/
+  fx_conc_spawn/gstruct 绿,optstr/boxalias 两 DIFF=扁平 R 族在册债(基线同指纹);
+  fail 分类=环境(timeout 垫片缺失时段/原生件版本交错/meta_check 需 Python3.10+
+  本机 3.9.6)与在册债(扁平 R 族/heap 闭包面)
+- ctcl_check --selftest ALL GREEN;s13 manifest 1/1
+- meta_check:本机 Python 3.9.6 不支持 `str | None` 注解(对端 3.10+ 全绿 627 文件
+  =环境项)
+- gui 阶梯:本机缺 freetype dlg 子模块(环境项,对端在册)
+
+**批C-2 计划 Wave 4 收官;批C 全链路关闭。**
