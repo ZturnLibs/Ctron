@@ -3100,3 +3100,24 @@ struct:AnyError`)→ 种子发射 ? 擦除端到端不可达,发射面诚实化�
 **门**:seed 重建(Oct 22)后 erase.ct interp `trace=erased_caller` ✓;
 金样逐字绿(GREEN-GOLDEN);db 50/0;plugins 10/1(在册);web json bin 径
 rc=0——seed 即 ctc.sh 全日宿主,五门连跑无回归。
+
+## 2026-10-22 P3 收口勘定(07a 销账 + 4c known 根因精化)
+
+**07a E4010 caps——销账(harness 退役 + 本地面绿)**:「suite 唯一双列差」
+的宿主 suite.py 已不在主树(仅存 .worktrees 旧影),双列差无处复现;本地
+活面实证绿——tests/roadmap/modules/caps_fs(//@ fail: E4010)经
+bin/ctron-chk 精确产出 `E4010: 使用 fs 能力超出 manifest(caps) 声明:
+参数 &Fs`(期望键逐字),meta_check E4010 键在册。陈账按 harness 退役+
+本地面绿收口。
+
+**smoke 4c known 余二——根因精化(下一批入账面)**:
+- **iter(T16)**:真因 = 泛型 struct 载荷白名单缺 slice 视图——iter.ct
+  泛型槽实例化为 `vi`(I32 切片视图)入 `ct_inst_encode` 即
+  `panic(emit:泛型 struct 载荷限标量/Str/struct:vi)`(trans_ty.ct:2221;
+  T45 在册债族「定长数组/List/fn 值/Result 载荷仍 panic」之 slice 支).
+  修面 = 键字母表 v 码槽(ct_inst_encode/decode 对 + typedef C 型
+  ctron_view_*)——单态化核心键位,须防撞设计与回归钉随批,独立小批。
+- **opt(闭包结构值/比较器形参)**:维持(trans 线批,fn 值 ABI 结构捕获
+  编组族,P0-2 同域延伸)。
+- heap:本日 P0-1 已清账(none 臂修翻绿);扁平 R 族 DIFF:维持(基线同
+  指纹,optstr/boxalias emit 往返面)。
