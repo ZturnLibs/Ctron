@@ -1,0 +1,18 @@
+// fx_fnval_str.ct —— G2 蹦床:裸 fn 引用(let g = pick)Str 形参/返回全宽面
+// 修前:ct_cbtr 蹦床体 `return (ct_i)t_pick(_cbp0)` ct_i 直入 const char* 形参 = cc hard error
+// 03h 标量族同批看护(widen 臂不触 bug,防回归)
+fn pick(s: Str) -> Str {
+    return "picked:" + s
+}
+
+fn widen(n: I64) -> I64 {
+    return n * 2
+}
+
+fn main() -> I32 {
+    let g = pick
+    println(g("world"))
+    let h = widen
+    println(h(21).to_string())
+    return 0
+}

@@ -225,7 +225,7 @@ for cv in spawn chan mutex atomic parallel joinor cancel; do
         bad "conc_$cv 发射/编译失败"
     fi
 done
-for cv in fnval cloval clostr enumres fnret try tlist own generic gstruct gpayload derive optstr boxalias gprobe2 gprobe fmap fs time drop slice simd fnval_multi u64 drop_unwind w8 val_panic_order val_negarith channel_cap128 arr_byval tuple with_expr loop_relet empty_brace as_str_num arr_ret arr_nested bytes opti32 opti32b; do
+for cv in fnval fnval_str cloval clostr enumres fnret try tlist own generic gstruct gpayload derive optstr boxalias gprobe2 gprobe fmap fs time drop slice simd fnval_multi u64 drop_unwind w8 val_panic_order val_negarith channel_cap128 arr_byval tuple with_expr loop_relet empty_brace as_str_num arr_ret arr_nested bytes opti32 opti32b; do
     if "$COMP/ctc.sh" emit "$COMP/test/fx_$cv.ct" "$T/cn_$cv.c" > /dev/null 2>&1 \
        && cc -O1 -w -o "$T/cn_$cv.bin" "$T/cn_$cv.c" 2>/dev/null; then
         timeout 15 "$T/cn_$cv.bin" > "$T/cn_$cv.got" 2>&1
@@ -650,9 +650,10 @@ P
     emit_knownred=0
     emit_newred=0
     emit_flipped=""
-    # 4c known 欠账表按平台:heap 在 linux 双臂已绿(翻绿清账),mac 解释臂仍红
+    # 4c known 欠账表按平台:heap 已随 G-opti none 臂批翻绿清账(2026-10-22;
+    # 本机对数绿实证),mac 解释臂旧红同源
     case $(uname) in
-        Darwin) KNOWN4C=" heap opt iter " ;; # iter=T16 fn 字段发射在册
+        Darwin) KNOWN4C=" opt iter " ;; # iter=T16 fn 字段发射在册
         *)      KNOWN4C=" opt iter " ;;
     esac
     for f in "$ROOT"/lib/std/*.ct; do

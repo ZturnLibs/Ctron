@@ -159,6 +159,12 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                         // fn(Req, fn(Req)->Resp)->Resp 的裸值装箱蹦床;旧裸传 _cbpK
                         // 为 ct_i,被调形参 ct_clop 即非法转换)
                         acall = acall + "(ct_clop)(long)_cbp" + ai.to_string()
+                    } else if or2(seq2(cbp5, "s"), seq2(cbp5, "N")) {
+                        // G2:Str/内码串形参——ct_i 槽 → const char* 显式 cast
+                        //(裸 ct_i 直入 const char* 形参 = cc hard error
+                        // incompat integer-to-pointer;ct_fval_emit env-first
+                        // 路径同约定先例,fx_fnval_str 钉)
+                        acall = acall + "(const char*)(long)_cbp" + ai.to_string()
                     } else {
                         acall = acall + "_cbp" + ai.to_string()
                     }

@@ -574,7 +574,11 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         if pat[0] == "PatId" && st[4][0] == "Scope" {
             var rc4 = "t_" + pat[1]
             var renv4 = ct_emit_scope_stmt(st[4], env, file, rc4, hreg)
-            return env_bind(renv4, pat[1], "g")
+            // G-conc:绑定码 = 块值真型(ct_emit_scope_stmt 尾表达式 typeof,
+            // "#scopety" 侧条目;旧硬编码 "g"=F32 → to_string/插值落 F64 渲染臂)
+            var svt4 = ct_env_ty(renv4, "#scopety:" + rc4)
+            if svt4.len == 0 { svt4 = "g" }
+            return env_bind(renv4, pat[1], svt4)
         }
         if pat[0] == "PatId" {
             // T33:parallel let —— map 结果=int 槽表(LI;发射 mapL/pmap 恒 ct_i 槽),reduce=标量
@@ -1081,6 +1085,25 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                         if frc8 != "v" {
                             if frc8 != "i" {
                                 env = env_bind(env, "#fret:" + pat[1], frc8)
+                            }
+                        }
+                    }
+                }
+                // G2:裸 fn 引用初值(let g = pick)同挂 #fret——env 短码 "F<arity>"
+                // 无返回维,ct_fsig_ret 落 "",调用位返回型塌 ct_i(Str 返回经
+                // printf %d 出指针垃圾/strcmp 位裸指针)。返回码取 ct_fn_ret
+                //(与 ct_cbtr 蹦床同源;gd[4] 是返回型节点非 FnType,注解形
+                // ct_fsig_code 门不适用);u:/聚合返回同式贯通盒指针解盒约定。
+                // fx_fnval_str 钉
+                if st[4][0] == "Ident" {
+                    var gd9 = ct_fn_decl(file, st[4][1])
+                    if gd9.len > 0 {
+                        var frc9b = ct_fn_ret(file, st[4][1])
+                        if frc9b.len > 0 {
+                            if frc9b != "v" {
+                                if frc9b != "i" {
+                                    env = env_bind(env, "#fret:" + pat[1], frc9b)
+                                }
                             }
                         }
                     }
@@ -1741,6 +1764,25 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                         firstE = false
                     }
                     ri2 += 1
+                }
+                eln("}", env)
+            }
+            // G-opti:none 臂消费(语句位 Option match)——noneIx 旧只检测不发射
+            //(fx_opti32 take_opt(None)/fx_opti32b relay d-none 实红:None 臂块
+            // 整个丢失,interp 侧照走 → 双制分歧)。非块臂守 SOME/NONE return 位
+            // 既有口径(W2a 勘定);Err 与 None 按 Option/Result 型互斥不共存。
+            if noneIx >= 0 {
+                if anySO {
+                    eln("else \{", env)
+                } else {
+                    eln("if (" + rme + ".variant != 0) \{", env)
+                }
+                var armN = rarms[noneIx]
+                var nbe = armN[2]
+                if nbe[0] == "BlockExpr" {
+                    ct_block(nbe[1], env, file, hreg)
+                } else {
+                    eln("return " + ct_expr(nbe, env, file) + ";", env)
                 }
                 eln("}", env)
             }

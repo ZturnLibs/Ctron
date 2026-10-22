@@ -2898,3 +2898,48 @@ ct_field_ty_node 探针/代码侧 `->v`),无 v 字段(t_TuiTest)→ 载荷左值
 - gui 阶梯:本机缺 freetype dlg 子模块(环境项,对端在册)
 
 **批C-2 计划 Wave 4 收官;批C 全链路关闭。**
+
+## 2026-10-22 P0-1 小批(conc 双制残差 + G2 蹦床)——三真因一批落修
+
+(账本"建议下一棒":conc 八例唯一实红 + G2 hard error 并小批;基线 bin 同红
+非回归实证后开修。修前基线 smoke --full 11 红锚 /tmp/smoke_before.log。)
+
+1. **conc F64 `32.0`↔`32` 六夹具族(账面"八例"主体)**——真因**双谎**,非
+   spawn 边界:trans_stmt Let-Scope 臂 `env_bind(…, "g")` 硬编码("g"=F32 码)
+   + trans_conc `ct_emit_scope_stmt` decl `ct_ctype(rc)`(寄存器名首字节撞
+   't' 偶得 int32_t,ct_zero 同误喂名)。scope 块值真型 = 尾表达式 typeof:
+   fx_conc_spawn/chan/mutex/joinor/cancel 五件 I32 和经 to_string 落 F64 渲染臂
+   出 `32.0`/`30.0`/`7.0`/`1.0`×2(interp 按值型出 `32` 等,fx_conc_spawn
+   逐字 `32`↔`32.0` 即账面钉例);clostr 同族 `1.0`↔`1`。真 F64 块值旧径
+   int32_t 截断亦在此门。修 = 尾表达式 typeof 定 decl + `#scopety:<rc>` 侧
+   条目交 Let 臂绑真码 + ct_zero 喂真码;**with 尾槽分支 decl 保持旧面**
+   (ct_emit_with_stmt 值面自管,#scopety 不绑,fx_with_expr 家族零扰动)。
+   连带:fx_fnval_str 新夹具钉 G2(见 3)。
+2. **opti32 none 两面**——真因:R 路径 match **语句位** `noneIx` 只检测不消费
+   (Some/Ok/Err 三环齐备,None 臂检测后无发射,Err 块后即 `return env`;
+   表达式位路径 354 有消费)→ `None => {…}` 臂整个不发射(fx_opti32
+   take_opt(None) 无输出/fx_opti32b relay `d-none` 丢失,interp 照走 → 双制
+   分歧)。修 = Err 臂块后补 None 臂发射(镜像 Err 结构 anySO else 链;非块
+   臂守 SOME/NONE return 位 W2a 既有口径;Err/None 按 Option/Result 型互斥)。
+3. **G2 蹦床(裸 fn 引用)两面**:①trans_expr `ct_cbtr` 形参分派链缺 s/N 臂
+   ——`return (ct_i)t_pick(_cbp0)` ct_i 直入 `const char*` 形参 = cc hard
+   error(账面指纹逐字复现;ct_fval_emit env-first 路径同链反有臂),补
+   `(const char*)(long)` cast(镜像 ct_fval_emit)。②修 ① 后 cc 过而值错:
+   裸 `let g = pick` 无注解,env 短码 "F1" 无返回维,#fret 不绑 → 调用位
+   返回型塌 ct_i,Str 返回经 printf %d 出指针垃圾(`-92274608`)。修 =
+   trans_stmt Let 臂补**裸 Ident 初值** #fret 绑定,返回码取 `ct_fn_ret`
+   (与蹦床同源;decl d[4] 是返回型节点非 FnType,注解形 ct_fsig_code 门
+   不适用——首版走错门即此);u:/聚合返回同式贯通盒指针解盒约定。
+
+**回归钉**:新夹具 `fx_fnval_str.ct`(Str 形参/返回经裸 fn 引用 + I64 看护
+臂,03h 标量族不触纪律)入册 smoke 3b 循环;修前 emit→cc hard error /
+修后双臂逐字一致。heap 翻绿清账:lib/std/heap.ct 两处 None 臂随 2 修翻绿,
+smoke 4c Darwin KNOWN4C 移除 heap(对数绿实证;opt/iter 两 known 维持在册:
+闭包结构值/比较器形参 + T16 fn 字段发射=P0-2 面)。
+
+**门**:smoke --full 修后 **240 ok / 1 fail**(唯一 fail=heap 翻绿待清账
+旗标)→ 清账复跑 **240 ok / 0 fail(SMOKE-RC=0,基线 11 红全清)**;3b 循环
+46 夹具全绿(修前 11 红:目标 8 + trans_v5/boxalias/tlist 三件=批内并发改源
+窗口受害者,复跑自愈);decls=532 锁不变(零新顶层 fn,# 侧条目皆键);
+native.sh 八件 bin 全刷新 rc=0(发射器自举链带修自持);suite 双列 harness
+不在本树(对端在册),本地以 smoke --full 为全量门。
