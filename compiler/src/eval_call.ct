@@ -1530,6 +1530,15 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
             if seq2(m, "is_some") && vals.len == 0 {
                 return e4("k", ob.env, vB(or2(seq2(cx_of(recv)[1], "Some"), seq2(cx_of(recv)[1], "Ok"))), ob.out)
             }
+            // IP-23 23b:is_ok/is_err interp 补臂(check/emit 面既有;web json
+            // jd_i64/jd_i64_between 与 std json Result 读取面 interp 直呼
+            // panic "method:is_ok" 实证)——ct_res 统一模型 variant 0=Ok/Some
+            if seq2(m, "is_ok") && vals.len == 0 {
+                return e4("k", ob.env, vB(or2(seq2(cx_of(recv)[1], "Some"), seq2(cx_of(recv)[1], "Ok"))), ob.out)
+            }
+            if seq2(m, "is_err") && vals.len == 0 {
+                return e4("k", ob.env, vB(!or2(seq2(cx_of(recv)[1], "Some"), seq2(cx_of(recv)[1], "Ok"))), ob.out)
+            }
             if seq2(m, "map") && vals.len == 1 {
                 if seq2(cx_of(recv)[1], "Some") && cx_of(recv).len == 3 {
                     var fa = List[Str]()

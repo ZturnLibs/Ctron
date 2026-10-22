@@ -139,3 +139,44 @@ test "derive json to_json suite" {
     println("json-ok")
     println("rt-ok")
 }
+
+// IP-23 23b 裁决:Big(越域数值)= Str 字段直收(原文保真)——err 半边放行
+// qtag n 族(n/ni/nu/nb/nf 穷举);val 半边 jix_val 原文。b/z/容器仍 type@。
+test "derive big to str field direct" {
+    let over = parse("\{" + "\"x\":7,\"s\":18446744073709551615" + "}")
+    if !over.is_some() {
+        assert(false)
+    } else {
+        let es = over.or(List[List[Str]]())
+        assert_eq(P_json_err(es, "$"), "")
+        let q = P_from_json_at(es, "$")
+        assert_eq(q.s, "18446744073709551615")
+        assert_eq(q.x, 7)
+    }
+    // 负越域(nb;|x| = 2^63+1)
+    let negbig = parse("\{" + "\"x\":7,\"s\":-9223372036854775809" + "}")
+    if !negbig.is_some() {
+        assert(false)
+    } else {
+        let es2 = negbig.or(List[List[Str]]())
+        assert_eq(P_json_err(es2, "$"), "")
+        assert_eq(P_from_json_at(es2, "$").s, "-9223372036854775809")
+    }
+    // 域内整数经 Str 直收亦通(ni;原文即十进制)
+    let inr = parse("\{" + "\"x\":7,\"s\":42" + "}")
+    if !inr.is_some() {
+        assert(false)
+    } else {
+        let es3 = inr.or(List[List[Str]]())
+        assert_eq(P_json_err(es3, "$"), "")
+        assert_eq(P_from_json_at(es3, "$").s, "42")
+    }
+    // 布尔仍拒(类型面不因 23b 放宽)
+    let booled = parse("\{" + "\"x\":7,\"s\":true" + "}")
+    if !booled.is_some() {
+        assert(false)
+    } else {
+        assert_eq(P_json_err(booled.or(List[List[Str]]()), "$"), "type@$.s")
+    }
+    println("bigstr-ok")
+}

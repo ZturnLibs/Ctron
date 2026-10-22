@@ -69,7 +69,10 @@ pub fn ctron_derive(input: DeriveInput) -> Str {
                     rd = rd + "    var tg_" + f.name + " = jix_tag(ix, pre + " + path + ")\n"
                     rd = rd + "    if tg_" + f.name + " == \"\" " + lb + " return \"noent@\" + pre + " + path + " }\n"
                     rd = rd + "    if tg_" + f.name + " == \"z\" " + lb + " return \"null@\" + pre + " + path + " }\n"
-                    rd = rd + "    if tg_" + f.name + " != \"s\" " + lb + " return \"type@\" + pre + " + path + " }\n"
+                    // IP-23 23b 裁决:Big(越域数值)= Str 字段直收(原文保真)——
+                    // err 半边放行 qtag n 族(n/ni/nu/nb/nf;穷举集免生成码新增
+                    // use 依赖);val 半边 jix_val 原文直收。s/b/z/容器仍 type@
+                    rd = rd + "    if tg_" + f.name + " != \"s\" && tg_" + f.name + " != \"n\" && tg_" + f.name + " != \"ni\" && tg_" + f.name + " != \"nu\" && tg_" + f.name + " != \"nb\" && tg_" + f.name + " != \"nf\" " + lb + " return \"type@\" + pre + " + path + " }\n"
                     rv = rv + "    let v_" + f.name + " = jix_val(ix, pre + " + path + ")\n"
                 } else {
                     if t == "F64" {

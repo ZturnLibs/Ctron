@@ -17,12 +17,15 @@
 //     kind 0 ok / 1 列缺失(noent)/ 2 类型不符(声明 OID 与访问器族违)/
 //     3 NULL(调用方经 wrapper 映射 Option:kind 3 → None,否则 Some)/
 //     4 行越界 / 5 值域坏(文本解析溢出/非数值形态)。
+//   rm_big(rows, row, name) → 数值列原文直收(IP-23 23b §12.6;jget_big
+//     同构:整族 ∪ numeric 1700,U64/越域经 Str 绑定零损通行)。
 //   正向绑定演示(结构体字面量显式字段装配)= tests/db/rowmap(r7d 正例钉)。
 // ═══ 类型分派表(声明 OID;v1 子集 = 基本面常型)═══
 //   bool 16 / int8 20 / int2 21 / int4 23 / text 25 / float4 700 /
-//   float8 701 / varchar 1043。整族访问器收 {20,21,23};文本族收
-//   {25,1043};浮族收 {700,701};布尔收 {16}。族外 OID → kind 2
-//   (fail-closed;新常型随消费面扩表)。
+//   float8 701 / varchar 1043 / numeric 1700(23b:rm_big 原文通道)。整族
+//   访问器收 {20,21,23};文本族收 {25,1043};浮族收 {700,701};布尔收
+//   {16};rm_big 收整族 ∪ numeric。族外 OID → kind 2(fail-closed;新常型
+//   随消费面扩表)。
 // ═══ 依赖与发射面纪律(divergences (f)-(i);全镜像 pg.ct 族)═══
 //   单子扩展 db.pg(PgRows getter 面消费;(h) 跨模块数值载荷禁
 //   Result ⇒ RmVal struct 通道,P5-A 裁定同源;Err-Str 载荷虽绿,统一
@@ -66,6 +69,7 @@ pub fn rm_oid_name(oid: I64) -> Str {
     if oid == 700 { return "float4" }
     if oid == 701 { return "float8" }
     if oid == 1043 { return "varchar" }
+    if oid == 1700 { return "numeric" }
     return ""
 }
 
@@ -212,6 +216,62 @@ pub fn rm_i64(r: PgRows, row: I64, name: Str) -> RmVal {
         acc = 0 - acc
     }
     g.v = acc
+    return g
+}
+
+// ---- Big/原文族(rm_big;jget_big 同构:数值 OID 原文直收,IP-23 23b §12.6)----
+
+// 整族 ∪ numeric(1700):U64/越域整数在 PG 侧的真载体是 numeric;原文通道
+// 与 derive(Json) Big=Str 字段直收裁决同构(Str 绑定零损通行)
+pub fn rm_is_num_oid(oid: I64) -> I64 {
+    if oid == 20 || oid == 21 || oid == 23 || oid == 1700 { return 1 }
+    return 0
+}
+
+// 原文绑定:数值列(整族 ∪ numeric 1700;ni/nu/nb 域皆可)→ RmVal.s = 单元
+// 原文。自持族门(rmx_gate 不识 numeric;rm_i64/rm_str 等对 numeric 仍
+// kind 2,类型面 fail-closed 不变);形态校验 fail-closed(可选负号 +
+// 全数字,非数值形态 → kind 5);调用方以 Str 字段直收,域语义(I64/U64/Big)
+// 由消费侧 std/json 分类管线裁定(jget_big 同构)。
+pub fn rm_big(r: PgRows, row: I64, name: Str) -> RmVal {
+    var col = rm_col(r, name)
+    if col < 0 {
+        return rmx_fail(1, -1, -1)
+    }
+    var oid = pgr_oid(r, col)
+    if rm_is_num_oid(oid) != 1 {
+        return rmx_fail(2, col, oid)
+    }
+    if row < 0 || row >= pgr_rows(r) {
+        return rmx_fail(4, col, oid)
+    }
+    var nul = pgr_isnull(r, row, col)
+    if nul == 1 {
+        return rmx_fail(3, col, oid)
+    }
+    if nul < 0 {
+        return rmx_fail(4, col, oid)
+    }
+    var g = RmVal { ok: 1, kind: 0, v: 0, d: 0.0, s: "", oid: oid, col: col }
+    var txt = pgr_cell(r, row, g.col)
+    if txt.len == 0 {
+        return rmx_fail(5, g.col, g.oid)
+    }
+    var i: I32 = 0
+    if byte_at(txt, 0) == 45 {
+        i = 1
+    }
+    if i >= txt.len {
+        return rmx_fail(5, g.col, g.oid)
+    }
+    while i < txt.len {
+        var c: I64 = rmz() + byte_at(txt, i)
+        if c < 48 || c > 57 {
+            return rmx_fail(5, g.col, g.oid)
+        }
+        i += 1
+    }
+    g.s = txt
     return g
 }
 

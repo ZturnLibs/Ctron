@@ -2987,3 +2987,65 @@ T54 两段式 `let v = h.f; v(x)` 靠 env≠1 时 ct_fn0 无参调用偶然存�
 刷新 rc=0(新 bin 可发射新源=自举链含修自持);self-emit 3.03MB 产物 rc=0;
 decls=532 锁不变;3b 循环 47 夹具全绿(joinor/time 两红均批内并发窗口受害
 者,干净复跑自愈)。
+
+## 2026-10-22 IP-23 23b 落地(db 行映射 / web json 中间件切换;§12.6 兑现)
+
+**裁决落定(设计稿 §5 执行前需裁两案,本批入口)**:
+- 裁决点 2:qtag 细分拼写 = **ni/nu/nb/nf**(23a-1 已库实现维持;jtagk "n"
+  前缀兼容保存量零破坏);
+- 裁决点 3:derive(Json) Big 字段映射 = **Str 字段直收**(原文保真;与
+  JNum.Big(Str) 同构,零新类型)。
+
+**落修(四件)**:
+1. web json 中间件(pkgs/web/json.ct):`jd_u64`(jget_u64 U64 全域;负域/
+   越 2^64-1/小数形态 → None)+ `jd_big`(jget_big 数值四态原文直收)双
+   访问器 + 数值保真 test 块(2^64-1 顶格读回不截断/负域拒/越域拒/坏体
+   None/Str 通道误读数值仍拒);jd_i64/jd_str/jd_bool 语义零扰动。
+2. derive(Json) 插件(compiler/plugins/derive_json/src/main.ct):Str 字段
+   err 半边放行 qtag n 族(穷举集 n/ni/nu/nb/nf——免生成码新增 use 依赖,
+   byte_at/starts_with 均不引入);val 半边 jix_val 原文直收(既有)。写半边
+   不变(Str 字段照 __esc 字符串写出 = 类型诚实逆;读直收/写字符串)。
+   json_demo 三新正例(越域正/负 nb + 域内 ni)+ b 仍 type@ 负例;run.sh
+   双臂 grep 随批 bigstr-ok。
+3. db 行映射(lib/db/rowmap.ct):`rm_big`(整族 ∪ numeric 1700 原文直收,
+   jget_big 同构;自持族门——rmx_gate 不识 numeric,rm_i64/rm_str 等对
+   numeric 仍 kind 2 fail-closed 不变;形态校验可选负号+全数字,非数值
+   kind 5)+ `rm_is_num_oid` + OID 表(1700 numeric)/头注 API 面随批。
+   rm_i64/rm_f64/rm_bool/rm_str 语义零扰动。
+4. 行绑定链路集成语料(tests/db/rowmap/rm_json_link.ct + rm_json.script):
+   §12.6 请求体→分类管线→行绑定全链——同一 JSON 体 parse→qtag(nu/ni
+   断言)→jget_big/jget_i64 取值 ↔ 同值 PG text 单元回放 rm_big/rm_i64
+   绑定,断言原文逐字 + typed 逐值(I64_MIN 顶格)+ numeric 列对 rm_i64
+   kind 2 类型面不放宽 + 缺列(k1)/越界(k4)负例。script 按 pg 帧契约
+   生成:len 字段含自身 4 字节(真 PG 语义;首版 payload-only 被
+   pgx_frame_check -2 拒即帧契约实证)。
+
+**连带勘定(先在于本批,登记+随批钉)**:tests/db/run.sh interp 臂
+`env -u CTRON_GC` 在 GC 默认翻转后悄然=默认开——解释器堆不回收(P5-B
+在册)+ db 域模块链(pg 2088 行)合并单元 → test 执行回扫巨型堆 = GC 风暴
+假死(6 行 mini 复现:use db.rowmap + 1 test,40s+ 满核;CTRON_GC=0 后
+4.5s 绿)。run.sh 两处改 `env CTRON_GC=0` 显式钉(恢复 harness 原无 GC
+预算语义);emit 臂不受涉。批内 bisect:call_mem fn 字段臂撤除不解;
+HEAD~2 worktree seed 径同挂——先在于 P0-1/P0-2 两批之前,非本批引入。
+**先在本机缺口(另册)**:①plugins emit 臂本机即红——bin/ctron-emit 裸调
+缺 CTRON_STDPATH 即 E2020(S4-⑤ 三探 fail-open 面,harness 有根不受涉);
+带根后 json_demo emit cc 败于 WithLists Option[Str] 槽 ct_res 初始化
+(json_demo 头注在册「emit struct 值链面静默错编」域,pre-23b 插件同 2 错
+实证非本批);②ctc.sh emit 对锚换靶文件的插件面同败。23b 插件面门以
+interp 臂 bigstr-ok + 生成形语义探针(穷举 tag 集手写形,interp/native
+双臂 `direct=18446744073709551615`)承载。
+
+**门**:db 套件 **50/0**(基线 44/10:10 常设红随 GC 钉清账,rm_json_link
+interp/emit 双臂 +2,rm_anchors 族 4.3s 绿零回归);plugins interp 臂
+bigstr-ok;web json.ct test 块 4 绿;compiler/src 与 lib/std 本批零 delta
+(smoke 241/0 面不受涉,免重跑)。
+
+**随批追补(eval_call.ct)与终门**:interp 组合子面补 `is_ok`/`is_err` 臂
+(check/emit 面既有;web json jd_i64 族与 std json Result 读取面 interp
+直呼 panic 实证)——ct_res 统一模型 variant 0=Ok/Some 镜像 is_some。
+终门(干净 native 重建后):smoke --full **241 ok / 0 fail(SMOKE-RC=0)**;
+db 50/0;plugins interp bigstr-ok。
+**新立边(interp test 派发,另册)**:pkgs/web/json.ct 四 test 块原序
+(1,2,3,4)interp 执行 `.len 目标类型不支持` 假红——对内全部单块/双对过、
+4-first 换序全绿 = 顺序状态泄漏(块间 interp 派发态),非任何单块语义;
+归 P2「ctron test」挂账族勘定。

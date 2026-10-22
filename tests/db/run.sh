@@ -51,7 +51,11 @@ echo "== tests/db db 数据访问层回放用例(P5-C/P5-D/P5-E)=="
 
 # ── db 声明冒烟(无 inline test 块;装载/类型检查即过,C17 口径)──
 for m in pg db redis pool rowmap; do
-    if env -u CTRON_GC "$CC" run "$ROOT/lib/db/$m.ct" > "$T/std_$m.out" 2>&1; then
+    # CTRON_GC=0 显式钉(2026-10-22):GC 默认翻开后 env -u 悄然=默认开——
+    # 解释器堆不回收(P5-B 在册)+ db 域模块链(pg 2088 行)合并单元 →
+    # test 执行每步回扫巨型堆 = GC 风暴假死(mini 6 行复现 40s+ 满核;
+    # GC=0 后 anchors 4.3s / rm_json_link 4.4s 绿,基线恢复)。emit 臂不受涉。
+    if env CTRON_GC=0 "$CC" run "$ROOT/lib/db/$m.ct" > "$T/std_$m.out" 2>&1; then
         pass=$((pass+1)); echo "  PASS db/$m.ct (decl smoke, interp)"
     else
         fail=$((fail+1)); echo "  FAIL db/$m.ct (decl smoke, interp)"; sed -n '1,5p' "$T/std_$m.out"
@@ -97,7 +101,8 @@ for f in "$DIR"/corpus/*.ct "$DIR"/replay_scram/s_*.ct \
     case "$name" in
         x_*) continue ;;
     esac
-    if env -u CTRON_GC "$CC" run "$f" > "$T/$name.out" 2>&1; then
+    # CTRON_GC=0 钉(同 53 行注;GC 默认翻转后 env -u 即风暴假死)
+    if env CTRON_GC=0 "$CC" run "$f" > "$T/$name.out" 2>&1; then
         pass=$((pass+1)); echo "  PASS $name (interp)"
     else
         fail=$((fail+1)); echo "  FAIL $name (interp)"; sed -n '1,5p' "$T/$name.out"

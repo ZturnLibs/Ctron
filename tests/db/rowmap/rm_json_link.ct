@@ -1,0 +1,85 @@
+// tests/db/rowmap/rm_json_link.ct —— 行绑定链路集成语料(IP-23 23b;§12.6 兑现)。
+//
+// 链路 = §12.6 请求体 → struct 值 → 行绑定:同一 JSON 体经 std/json 23a 分类
+// 管线(qtag ni/nu/nb + jget_i64/jget_big)取值,同一数值作为 PG text 单元
+// 经回放帧进 rowmap(rm_i64 typed / rm_big 原文),断言两臂逐字/逐值一致——
+// U64 域(nu)与越域(nb)经 Str 绑定零损通行,I64 域(ni 含 MIN 顶格)typed 通行。
+// use 纪律:std.json 与 db.rowmap 独立导入树(E5020 环仅 pool/rowmap/pg 互斥)。
+use std.json.{ parse, qtag, jget_i64, jget_big }
+use db.rowmap.{ rm_query, rm_nrows, rm_big, rm_i64, rm_ok, rm_kind, rm_val, rm_strv }
+
+fn load_frames(base: Str, name: Str) -> List[Str] {
+    var out = List[Str]()
+    var txt = read_file(base + "/" + name)
+    var i: I32 = 0
+    var start: I32 = 0
+    while i <= txt.len {
+        var c: I32 = 10
+        if i < txt.len {
+            c = byte_at(txt, i)
+        }
+        if c == 10 {
+            if i > start {
+                var line = byte_slice(txt, start, i)
+                if line.len > 0 && byte_at(line, line.len - 1) == 13 {
+                    line = byte_slice(line, 0, line.len - 1)
+                }
+                if line.len > 0 && byte_at(line, 0) != 35 {
+                    out.push(line)
+                }
+            }
+            start = i + 1
+        }
+        i += 1
+    }
+    return out
+}
+
+test "23b 行绑定链路:json 分类管线 ↔ rowmap 原文/typed 双臂一致" {
+    // 请求体:U64 顶格(nb 前 nu 域)/I64_MIN 顶格/I64_MAX——三域一行
+    let body = "\{" + "\"u\":18446744073709551615,\"m\":-9223372036854775808,\"n\":9223372036854775807" + "}"
+    let p = parse(body)
+    assert(p.is_some())
+    let es = p.or(List[List[Str]]())
+    // json 臂:分类标签 + 原文/typed 读回
+    assert_eq(qtag(es, "$.u"), "nu")
+    assert_eq(qtag(es, "$.m"), "ni")
+    assert_eq(qtag(es, "$.n"), "ni")
+    assert_eq(jget_big(es, "$.u").or(""), "18446744073709551615")
+    assert_eq(jget_big(es, "$.m").or(""), "-9223372036854775808")
+    let mn = jget_i64(es, "$.m")
+    assert(mn.is_some())
+    assert_eq(mn.expect("m"), 0 - 9223372036854775807 - 1)
+    // 行绑定臂:同一数值作为 PG text 单元回放(rm_json.script)
+    let frames = load_frames(env_get("CT_DB_ROW"), "rm_json.script")
+    assert_eq(frames.len, 4)
+    let r = rm_query(frames, 0, "SELECT u, m, n FROM links")
+    assert_eq(rm_nrows(r), 1)
+    // 原文通道:rm_big ↔ jget_big 逐字一致(U64/越域经 Str 零损)
+    let bu = rm_big(r, 0, "u")
+    assert_eq(rm_ok(bu), 1)
+    assert_eq(rm_strv(bu), jget_big(es, "$.u").or(""))
+    let bm = rm_big(r, 0, "m")
+    assert_eq(rm_ok(bm), 1)
+    assert_eq(rm_strv(bm), "-9223372036854775808")
+    // typed 通道:rm_i64 ↔ jget_i64 逐值一致(ni 域含 MIN 顶格)
+    let tn = rm_i64(r, 0, "n")
+    assert_eq(rm_ok(tn), 1)
+    assert_eq(rm_val(tn), jget_i64(es, "$.n").or(0))
+    let tm = rm_i64(r, 0, "m")
+    assert_eq(rm_ok(tm), 1)
+    assert_eq(rm_val(tm), 0 - 9223372036854775807 - 1)
+    // 类型面 fail-closed 不变:numeric 列对 rm_i64 仍 kind 2(u 列 OID 1700;
+    // 整族含于 rm_big 族,n 列 int8 对 rm_big 直收为设计内)
+    let tu = rm_i64(r, 0, "u")
+    assert_eq(rm_ok(tu), 0)
+    assert_eq(rm_kind(tu), 2)
+}
+
+test "23b rm_big 负例:形态/缺失/错族" {
+    let frames = load_frames(env_get("CT_DB_ROW"), "rm_json.script")
+    let r = rm_query(frames, 0, "SELECT u, m, n FROM links")
+    assert_eq(rm_ok(rm_big(r, 9, "u")), 0)          // 行越界 kind 4
+    assert_eq(rm_kind(rm_big(r, 9, "u")), 4)
+    assert_eq(rm_kind(rm_big(r, 0, "nope")), 1)     // 列缺失 kind 1
+}

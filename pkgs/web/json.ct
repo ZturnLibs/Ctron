@@ -16,7 +16,7 @@
 // 与 I64 域越界 → None 均由 std/jget_i64 原样继承。
 
 use std.str.{ starts_with }
-use std.json.{ parse, qtag, qval, jget_i64 }
+use std.json.{ parse, qtag, qval, jget_i64, jget_u64, jget_big }
 use web.core.{ Req, Pair, req_full }
 
 pub struct JDoc {
@@ -67,6 +67,27 @@ pub fn jd_i64(d: JDoc, path: Str) -> Option[I64] {
     let r = jget_i64(d.entries, jd_path(path))
     if r.is_ok() {
         return Some(r.expect("jd"))
+    }
+    return None
+}
+
+// 取值:U64 全域(nu;jget_u64 域口径 = nu + ni 正数,负域/越 2^64-1 → None)。
+// IP-23 23b(§12.6):数值保真面从 I64 单缝扩 U64——UInt 载荷经 Option 读回不截断。
+pub fn jd_u64(d: JDoc, path: Str) -> Option[U64] {
+    let r = jget_u64(d.entries, jd_path(path))
+    if r.is_ok() {
+        return Some(r.expect("jdu"))
+    }
+    return None
+}
+
+// 取值:数值原文直收(jget_big 四态皆可:ni/nu/nb/nf 原文保真;缺路径/null/
+// 非数 → None)。越域整数(U64 之上)经 Str 载荷零损通行,与 derive(Json)
+// Big=Str 字段直收裁决同构(IP-23 23b)。
+pub fn jd_big(d: JDoc, path: Str) -> Option[Str] {
+    let r = jget_big(d.entries, jd_path(path))
+    if r.is_ok() {
+        return Some(r.expect("jdb"))
     }
     return None
 }
@@ -159,4 +180,26 @@ test "jd 域检查边界(闭区间双界含)" {
     assert(jd_i64_between(d, "age", 43, 65).or(0 - 1) == 0 - 1)
     assert(jd_i64_between(d, "age", 18, 41).or(0 - 1) == 0 - 1)
     assert(jd_i64_between(d, "nope", 0, 99).or(0 - 1) == 0 - 1)
+}
+
+test "jd_u64/jd_big 数值保真(IP-23 23b)" {
+    // U64 全域:2^64-1 经 jd_u64 读回不截断;I64 单缝旧面同点拒(域口径)
+    let body = "\{" + "\"u\":18446744073709551615,\"neg\":-5,\"over\":18446744073709551616,\"f\":1.5" + "}"
+    let d = json_of[I32](req_full("POST", "/x", body, List[Pair](), 0))
+    assert(d.ok)
+    assert(jd_u64(d, "u").or(0) == 18446744073709551615)
+    assert(jd_u64(d, "neg").or(0) == 0)                        // 负域 → None
+    assert(jd_u64(d, "over").or(0) == 0)                       // 越 2^64-1 → None
+    assert(jd_u64(d, "f").or(0) == 0)                          // 小数形态 → None
+    assert(jd_u64(d, "nope").or(0) == 0)                       // 缺路径 → None
+    // 原文直收:越域整数(nb)零损通行;四态皆可
+    assert(jd_big(d, "over").or("") == "18446744073709551616")
+    assert(jd_big(d, "u").or("") == "18446744073709551615")
+    assert(jd_big(d, "f").or("") == "1.5")
+    assert(jd_big(d, "neg").or("") == "-5")
+    assert(jd_big(d, "nope").or("d") == "d")
+    let bad = json_of[I32](req_full("POST", "/x", "\{" + "broken", List[Pair](), 0))
+    assert(jd_big(bad, "u").or("d") == "d")                    // 坏体 → None
+    // Str 通道误读数值维持拒(类型面不因 23b 放宽)
+    assert(jd_str(d, "u").or("d") == "d")
 }

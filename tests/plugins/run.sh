@@ -17,10 +17,10 @@ bad() { fail=$((fail+1)); echo "  FAIL $1"; [ $# -gt 1 ] && { echo "    ---- 实
 
 echo "== tests/plugins T52 插件沙箱阶梯 =="
 
-# 1) derive(Json) 端到端(解释臂;W2 起 round-trip+三 kind 负例随锚)
+# 1) derive(Json) 端到端(解释臂;W2 起 round-trip+三 kind 负例随锚;23b Big→Str 直收)
 "$CC" run "$ROOT/tests/plugins/json_demo/src/main.ct" > "$T/json.out" 2>&1
-if [ $? -eq 0 ] && grep -q '{"x":1,"s":"hi"}' "$T/json.out" && grep -q 'json-ok' "$T/json.out" && grep -q 'rt-ok' "$T/json.out"; then
-    ok "json_demo interp(derive 展开端到端+W2 round-trip)"
+if [ $? -eq 0 ] && grep -q '{"x":1,"s":"hi"}' "$T/json.out" && grep -q 'json-ok' "$T/json.out" && grep -q 'rt-ok' "$T/json.out" && grep -q 'bigstr-ok' "$T/json.out"; then
+    ok "json_demo interp(derive 展开端到端+W2 round-trip+23b Big→Str 直收)"
 else
     bad "json_demo interp" "$T/json.out"
 fi
@@ -28,8 +28,8 @@ fi
 # 2) derive(Json) 端到端(发射臂:emit → cc → 运行)
 if "$EMIT" run "$ROOT/tests/plugins/json_demo/src/main.ct" > "$T/json.c" 2>"$T/json.err" && \
    cc -o "$T/jsonbin" "$T/json.c" 2>/dev/null && "$T/jsonbin" > "$T/json_native.out" 2>&1; then
-    if grep -q '{"x":1,"s":"hi"}' "$T/json_native.out" && grep -q 'json-ok' "$T/json_native.out" && grep -q 'rt-ok' "$T/json_native.out"; then
-        ok "json_demo emit(interp/emit 同判+W2 round-trip)"
+    if grep -q '{"x":1,"s":"hi"}' "$T/json_native.out" && grep -q 'json-ok' "$T/json_native.out" && grep -q 'rt-ok' "$T/json_native.out" && grep -q 'bigstr-ok' "$T/json_native.out"; then
+        ok "json_demo emit(interp/emit 同判+W2 round-trip+23b Big→Str 直收)"
     else
         bad "json_demo emit(输出不符)" "$T/json_native.out"
     fi
