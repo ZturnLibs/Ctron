@@ -1,0 +1,29 @@
+// fx_fnfield.ct —— P0-2:fn 字段直调全宽面(0-arity cbtr 箱 + struct 返回堆盒编组
+// + 多参标量返回 + 闭包字段 env-first 径)。修前:interp panic("method:f") /
+// emit typeof 塌 i → r.v Member 无臂 panic / 0 参槽裸地址 env 解引用即代码字节 SIGSEGV
+struct Resp {
+    v: I64
+}
+
+fn mk() -> Resp {
+    return Resp { v: 7 }
+}
+
+fn add(a: I64, b: I64) -> I64 {
+    return a + b
+}
+
+struct Handler {
+    f0: fn() -> Resp
+    f2: fn(I64, I64) -> I64
+    f1: fn(I64) -> I64
+}
+
+fn main() -> I32 {
+    let h = Handler { f0: mk, f2: add, f1: |x| x * 3 }
+    let r = h.f0()
+    println(r.v.to_string())
+    println(h.f2(20, 22).to_string())
+    println(h.f1(14).to_string())
+    return 0
+}

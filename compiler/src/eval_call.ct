@@ -1755,6 +1755,22 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
         }
         return call_decl_vals(file, ob.env, ob.out, ddx, fvv)
     }
+    // P0-2:fn 字段直调 h.f(x)——struct 槽内 fn 值(F=裸引用/C=闭包)按
+    // call_cv 应用;旧径 panic("method:") 与发射臂 t_<m> 直落双双缺此形态
+    //(fx_fnfield 钉)
+    if recv.tag == 8 {
+        if seq2(cx_of(recv)[0], "U") {
+            var ffv = u_field(cx_of(recv), m)
+            if ffv.len > 0 {
+                var fuv = v_unbox(ffv)
+                if fuv.tag == 8 {
+                    if or2(seq2(cx_of(fuv)[0], "F"), seq2(cx_of(fuv)[0], "C")) {
+                        return call_cv(file, ob.env, ob.out, fuv, vals)
+                    }
+                }
+            }
+        }
+    }
     panic("method:" + m)
     return e4("a", env, vV2(), out)
 }

@@ -1665,6 +1665,18 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     return "v" + byte_slice(trt, ti3, trt.len)
                 }
             }
+            // P0-2:fn 字段直调型别真源——接收者 struct 的字段 m 为 FnType 时
+            // 返回码 = 字段返回维(ct_fnfield_ret 走 ct_ty_code,u: 聚合贯通)。
+            // 旧名字白名单不认用户字段名 → 塌 "i":struct 返回让 r.v Member 无臂
+            //(ct_expr:Member@N hard error),标量族即"编组白名单=标量族限"账
+            var frt27 = ""
+            var rob27 = ct_strip_p(ct_typeof(cal[1], env, file))
+            if rob27.len > 2 && byte_slice(rob27, 0, 2) == "u:" {
+                frt27 = ct_fnfield_ret(file, byte_slice(rob27, 2, rob27.len), m)
+            }
+            if frt27.len > 0 {
+                return frt27
+            }
             if m == "load" { return "i" }
             if m == "to_string" { return "s" }
             if m == "title" { return "s" }

@@ -115,15 +115,15 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         if e[1] == "clo_cb2" { return "(ct_fn2)ctron_clo_tramp2" }
         if e[1] == "clo_cb3" { return "(ct_fn3)ctron_clo_tramp3" }
         var pcs5 = ct_fn_pcodes(file, e[1])
-        if pcs5.len > 0 {
-            if pcs5.len > 3 {
-                panic("emit:fn 值 arity>3")
-                return ""
-            }
-            // 裸 fn 值装箱(v0.8 锐边收口):fn 槽存 C-ABI 蹦床 ct_cbtr_<名>
-            //(全宽 ct_i 实参,替代旧 ct_ad shim 的 int32 截断),env = (void*)1
-            // 哨兵——Ctron 侧间接调用走哨兵直路,再传 C 边界自带蹦床
-            //(task 态 panic 策略全覆盖)
+        // decl-在案闸:ct_fn_pcodes 对 0 参 fn 与非 fn 名(const/let 变量)同为
+        // 空表——旧 >0 门天然挡变量,0-arity 扩箱后须显式判别,否则 const TICK
+        // 被当 0 参 fn 装箱(fx_time cc 实证)
+        if pcs5.len < 4 && ct_fn_decl_any(file, e[1]) {
+            // 裸 fn 值装箱(v0.8 锐边收口;P0-2 扩 0-arity):fn 槽存 C-ABI 蹦床
+            // ct_cbtr_<名>(全宽 ct_i 实参,替代旧 ct_ad shim 的 int32 截断),
+            // env = (void*)1 哨兵——Ctron 侧间接调用走哨兵直路,再传 C 边界自带
+            // 蹦床(task 态 panic 策略全覆盖)。0 参旧裸地址直填:槽协议 env 解引用
+            // 即代码字节(struct fn 字段 Handler{f: mk} 直调面实证 SIGSEGV)
             var anm = "ct_cbtr_" + e[1]
             if seq2(ct_pass(env), "1") {
                 var asig = ""
@@ -187,10 +187,11 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             }
             return "(\{ ct_clop _c = (ct_clop)ctron_amalloc(sizeof(ct_clo)); _c->fn = (void*)" + anm + "; _c->env = (void*)1; _c; })"
         }
-        // P0-A:裸 fn 引用值位 → env-first 解箱 shim(旧裸地址直填 fn 槽,env=垃圾)
-        var fpcs26 = ct_fn_pcodes(file, e[1])
-        if or2(fpcs26.len == 1, or2(fpcs26.len == 2, fpcs26.len == 3)) {
-            return ct_fval_emit(file, e[1], "L" + nline(e))
+        // P0-A:裸 fn 引用值位 → env-first 解箱 shim——1-3 参已被 cbtr 箱收编,
+        // 此径死码随 0-arity 扩箱撤除;>3 参维持硬错(蹦床面 arity 上限)
+        if pcs5.len > 3 {
+            panic("emit:fn 值 arity>3")
+            return ""
         }
         return "t_" + e[1]
     }
@@ -1431,6 +1432,92 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     return "(\{ " + upre + " " + ures + "; })"
                 }
                 return ures
+            }
+            // P0-2:fn 字段直调 h.f(args)——槽内 clop 间接调用(全签码定型:
+            // 实参对位/闭包形参码穿 #clcodes;非 i/v 返回按 #fret 同式原型化,
+            // u: 堆盒解引用;哨兵/闭包双路径)。旧径塌 t_<m> 裸直落(自由 fn
+            // 缺位 = undefined)/typeof 塌 i(r.v Member 无臂 panic)
+            var fsig29 = ""
+            var rob29 = ct_strip_p(objt)
+            if rob29.len > 2 && byte_slice(rob29, 0, 2) == "u:" {
+                fsig29 = ct_fnfield_fsig(file, byte_slice(rob29, 2, rob29.len), m)
+            }
+            if fsig29.len > 1 && byte_at(fsig29, 0) == 70 {
+                var far29: I32 = byte_at(fsig29, 1) - 48
+                var fsegs29 = ct_fsig_params(fsig29)
+                var fv29 = "(" + obj + "." + m + ")"
+                var fargs29 = "((ct_clop)" + fv29 + ")->env"
+                var fenv29 = env
+                if ag.len > 1 {
+                    var fa9 = ag[1]
+                    if fa9[0] == "Closure" {
+                        var fsg9 = ct_fseg_at(fsegs29, 0)
+                        if fsg9.len > 1 && byte_at(fsg9, 0) == 70 {
+                            var fsg92 = ct_fsig_params(fsg9)
+                            if fsg92.len > 0 { fsg9 = fsg92 }
+                        }
+                        if fsg9.len > 0 { fenv29 = env_bind(env, "#clcodes", fsg9) }
+                    }
+                    fargs29 = fargs29 + ", " + ct_wrap_i(ct_typeof(fa9, fenv29, file), ct_expr(fa9, fenv29, file))
+                }
+                var fk29: I32 = 2
+                while fk29 <= far29 {
+                    if ag.len > fk29 {
+                        var fa29 = ag[fk29]
+                        var faenv29 = env
+                        if fa29[0] == "Closure" {
+                            var fsg29 = ct_fseg_at(fsegs29, fk29 - 1)
+                            if fsg29.len > 1 && byte_at(fsg29, 0) == 70 {
+                                var fsg292 = ct_fsig_params(fsg29)
+                                if fsg292.len > 0 { fsg29 = fsg292 }
+                            }
+                            if fsg29.len > 0 { faenv29 = env_bind(env, "#clcodes", fsg29) }
+                        }
+                        fargs29 = fargs29 + ", " + ct_wrap_i(ct_typeof(fa29, faenv29, file), ct_expr(fa29, faenv29, file))
+                    } else { fargs29 = fargs29 + ", 0" }
+                    fk29 += 1
+                }
+                var fhead29 = "((ct_cfn" + far29.to_string() + ")(((ct_clop)" + fv29 + ")->fn))"
+                var rhead29 = "((ct_fn" + far29.to_string() + ")(((ct_clop)" + fv29 + ")->fn))"
+                var rargs29 = ""
+                var rk29: I32 = 2
+                while rk29 <= far29 {
+                    if ag.len > rk29 { rargs29 = rargs29 + ", " + ct_wrap_i(ct_typeof(ag[rk29], env, file), ct_expr(ag[rk29], env, file)) } else { rargs29 = rargs29 + ", 0" }
+                    rk29 += 1
+                }
+                if far29 == 0 { rargs29 = "" } else { if ag.len > 1 { rargs29 = "(ct_i)(" + ct_wrap_i(ct_typeof(ag[1], env, file), ct_expr(ag[1], env, file)) + ")" + rargs29 } else { rargs29 = "(ct_i)0" + rargs29 } }
+                var fret29 = ct_fsig_ret(fsig29)
+                if fret29.len > 0 {
+                    if fret29 != "i" {
+                        if fret29 != "v" {
+                            var boxed29 = fret29.len > 2 && byte_slice(fret29, 0, 2) == "u:"
+                            var frt29c = "ct_i"
+                            if !boxed29 { frt29c = ct_ctype(fret29) }
+                            var rp29 = "void"
+                            if far29 > 0 {
+                                rp29 = "ct_i"
+                                var pk29: I32 = 2
+                                while pk29 <= far29 {
+                                    rp29 = rp29 + ", ct_i"
+                                    pk29 += 1
+                                }
+                            }
+                            var fp29 = "void*"
+                            var pk29b: I32 = 1
+                            while pk29b <= far29 {
+                                fp29 = fp29 + ", ct_i"
+                                pk29b += 1
+                            }
+                            fhead29 = "((" + frt29c + "(*)(" + fp29 + "))(((ct_clop)" + fv29 + ")->fn))"
+                            rhead29 = "((" + frt29c + "(*)(" + rp29 + "))(((ct_clop)" + fv29 + ")->fn))"
+                            if boxed29 {
+                                var dual29 = "(((ct_clop)" + fv29 + ")->env == (void*)1 ? " + rhead29 + "(" + rargs29 + ") : " + fhead29 + "(" + fargs29 + "))"
+                                return "(*(" + ct_ctype(fret29) + "*)(long)(" + dual29 + "))"
+                            }
+                        }
+                    }
+                }
+                return "(((ct_clop)" + fv29 + ")->env == (void*)1 ? " + rhead29 + "(" + rargs29 + ") : " + fhead29 + "(" + fargs29 + "))"
             }
             var pcs = ct_fn_pcodes(file, m)
             var p0 = "i"

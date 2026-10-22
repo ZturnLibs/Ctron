@@ -2943,3 +2943,47 @@ smoke 4c Darwin KNOWN4C 移除 heap(对数绿实证;opt/iter 两 known 维持在
 窗口受害者,复跑自愈);decls=532 锁不变(零新顶层 fn,# 侧条目皆键);
 native.sh 八件 bin 全刷新 rc=0(发射器自举链带修自持);suite 双列 harness
 不在本树(对端在册),本地以 smoke --full 为全量门。
+
+## 2026-10-22 P0-2 落地(fn 字段直调全宽面)——双臂缺形态三缝一批补齐
+
+**勘定**(账面"fn 字段调用返回 struct 过 ct_clop 无装箱(编组白名单=标量族限)"
+精确化):直调形态 `h.f(args)` 双臂皆缺,非装箱白名单单缝——
+①interp `call_mem`:builtin 面→UFCS find_decl 后即 `panic("method:")`,fn 字段
+无臂(探针 `method:f` 实证);
+②emit typeof(trans_ty Call-Member):**名字白名单制**不认用户字段名 → 塌 "i"——
+struct 返回让 `let r` 绑 int32,`r.v` Member 无臂 = `ct_expr:Member@17` 兜底
+panic(白名单=标量族限的本尊;标量族"能过"实为自由 fn 同名 UFCS 蒙对或
+t_<m> undefined 隐性未达);
+③emit 0-arity 裸 fn 值不装箱:ct_cbtr 门 `pcs5.len > 0` 拒 0 参 → `t_mk` 裸地址
+直填 fn 槽,槽协议 env 解引用即代码字节(Handler{f: mk} 直调 SIGSEGV 实证;
+T54 两段式 `let v = h.f; v(x)` 靠 env≠1 时 ct_fn0 无参调用偶然存活)。
+
+**落修**(编译器五处):
+- eval_call.ct call_mem:UFCS 落空后补 fn 字段臂——U 壳 u_field 取槽,值 F/C
+  壳 → call_cv 应用(与 T54 两段式同源);
+- trans_ty.ct ct_typeof Call-Member:接收者 struct 字段 FnType → 返回码取
+  ct_fnfield_ret(u: 聚合贯通;置于通用名字白名单前,内建名让位真字段);
+- trans_stmt.ct:新 helper `ct_fnfield_fsig`(字段全签码 F<ar>{ps}>r;
+  ct_fnfield_ret 只有返回维,实参对位/闭包形参码不够;仅入 cc_emit,
+  cc_run 口径 decls 锁 532 零新增);
+- trans_expr.ct Call-Member:UFCS 块后补 fn 字段间接调用臂(全签码定型,闭包
+  实参 #clcodes 穿入;非 i/v 返回 #fret 同式原型化,u: 堆盒解引用;哨兵/闭包
+  双路径;臂序 builtin→UFCS→字段与 interp 对齐);
+- trans_expr.ct Ident 值位:cbtr 箱 0-arity 扩编(`pcs5.len < 4 &&
+  ct_fn_decl_any` 闸——ct_fn_pcodes 对 0 参 fn 与 const/let 变量同为空表,
+  fx_time const TICK 误装箱实证须 decl 判别)+ 死码 fval L 径撤除 +
+  arity>3 硬错保留。
+
+**新立边(非本批治)**:发射器裸块语句盲区——独立 `{ … }` 作用域块语句使
+发射臂 `ct_expr:if 值位需纯表达式分支` panic(迷你形:`var x = ""` 后裸块内
+赋值,/tmp/bare_block.ct 形 1.3s 复现);本批 self-emit 断链真因,拆块即愈。
+解析归因与语句 Walker 处置另立,fx_fnfield 首版曾用裸块踩中。
+
+**回归钉**:新夹具 `fx_fnfield.ct`(0 参 struct 返回/双参标量/闭包字段三形)
+入册 smoke 3b;修前 method:f / Member@17 / SIGSEGV,修后双臂逐字一致
+(7/42/42)。
+
+**门**:smoke --full **241 ok / 0 fail(SMOKE-RC=0)**;native.sh 八件 bin 全
+刷新 rc=0(新 bin 可发射新源=自举链含修自持);self-emit 3.03MB 产物 rc=0;
+decls=532 锁不变;3b 循环 47 夹具全绿(joinor/time 两红均批内并发窗口受害
+者,干净复跑自愈)。

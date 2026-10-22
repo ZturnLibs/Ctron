@@ -66,6 +66,31 @@ fn ct_fnfield_ret(file: List[Str], sname: Str, fname: Str) -> Str {
     return ""
 }
 
+// P0-2:fn 型字段全签码(F<ar>{p1;p2}>r)——直调 h.f(args) 的实参对位/闭包
+// 形参码/返回维同源(ct_fsig_code;ct_fnfield_ret 只有返回码,实参面不够)
+fn ct_fnfield_fsig(file: List[Str], sname: Str, fname: Str) -> Str {
+    var i: I32 = 1
+    while i < file.len {
+        var d = file[i]
+        if d[0] == "Struct" && d[1] == sname {
+            var fs = d[4]
+            var j: I32 = 1
+            while j < fs.len {
+                var f = fs[j]
+                if f[2] == fname {
+                    if f[3][0] == "FnType" {
+                        return ct_fsig_code(file, f[3])
+                    }
+                    return ""
+                }
+                j += 1
+            }
+        }
+        i += 1
+    }
+    return ""
+}
+
 // ===== Drop 层栈(§6.4 发射面) =====
 // env "#dls" 条目 = 层串:层间 ';',层内条目间 ',',条目 = "名@型码"。
 // 串恒以 ';' 结尾(除空串);当前层 = 最后一个 ';' 之后的后缀。
