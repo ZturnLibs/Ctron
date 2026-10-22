@@ -2138,6 +2138,12 @@ fn ct_mono_subst_ty(t: List[Str], tpsn: List[Str], tys: List[Str]) -> List[Str] 
         nr.push(ct_mono_subst_ty(t[1], tpsn, tys))
         return nr
     }
+    // P3:Slice 下钻(T[] 槽型参代入;实例码 v<ec> 键位随批)
+    if t[0] == "Slice" {
+        var ns = mk("Slice")
+        ns.push(ct_mono_subst_ty(t[1], tpsn, tys))
+        return ns
+    }
     if t[0] == "Named" {
         var k: I32 = 0
         while k < tpsn.len {
@@ -2218,6 +2224,12 @@ fn ct_inst_encode(code: Str) -> Str {
         var tail = byte_slice(code, 2, code.len)
         return "U" + tail.len.to_string() + "_" + tail
     }
+    if code.len > 1 && byte_at(code, 0) == 118 {
+        // P3:切片视图槽(iter/T16)——键 D<inner 长度>_<inner 原文>(长度前缀
+        // 消歧镜像 U 形;inner 任意码含 u:/嵌套 v 原文携带,decode 前缀 v 还原)
+        var inner = byte_slice(code, 1, code.len)
+        return "D" + inner.len.to_string() + "_" + inner
+    }
     panic("emit:泛型 struct 载荷限标量/Str/struct:" + code)
     return ""
 }
@@ -2283,6 +2295,17 @@ fn ct_inst_arg_codes(encs: Str) -> List[Str] {
         } else if ch == 89 {
             out.push("w16s")
             i += 1
+        } else if ch == 68 {
+            // P3:切片视图槽 D<len>_<inner>(ct_inst_encode v 码对偶)
+            var j = i + 1
+            var nd = ""
+            while j < encs.len && byte_at(encs, j) != 95 {
+                nd = nd + byte_slice(encs, j, j + 1)
+                j += 1
+            }
+            var nl = dvi(nd)
+            out.push("v" + byte_slice(encs, j + 1, j + 1 + nl))
+            i = j + 1 + nl
         } else if ch == 85 {
             var j = i + 1
             var nd = ""
@@ -2304,6 +2327,12 @@ fn ct_inst_arg_codes(encs: Str) -> List[Str] {
 // P0-A:实例化码 → 具体型别节点(TPar 槽代入源;嵌套实例递归还原,
 // 标量码还原 I32/Str/Bool/I64;ct_ty_code 对还原节点往返同码)
 fn ct_inst_ty_node(code: Str) -> List[Str] {
+    if code.len > 1 && byte_at(code, 0) == 118 {
+        // P3:切片视图码还原 Slice 节点(ct_ty_code Slice 臂往返同码 v<ec>)
+        var nt = mk("Slice")
+        nt.push(ct_inst_ty_node(byte_slice(code, 1, code.len)))
+        return nt
+    }
     if code.len > 2 && byte_slice(code, 0, 2) == "u:" {
         var nt = mk("Named")
         var ta = mk("TArgs")

@@ -3122,6 +3122,25 @@ bin/ctron-chk 精确产出 `E4010: 使用 fs 能力超出 manifest(caps) 声明:
 - heap:本日 P0-1 已清账(none 臂修翻绿);扁平 R 族 DIFF:维持(基线同
   指纹,optstr/boxalias emit 往返面)。
 
+## 2026-10-23 泛型槽 slice 视图键位(第一批)——vi 恐慌清除,余缝精化
+
+**落库(trans_ty.ct)**:①`ct_inst_encode` v 码臂:键 `D<len>_<inner>`(长度
+前缀消歧镜像 U 形,inner 原文携带含 u:/嵌套 v);②`ct_inst_arg_codes` D 臂
+对偶解码(前缀 v 还原);③`ct_inst_ty_node` Slice 节点还原(ct_ty_code
+Slice 臂往返同码);④`ct_mono_subst_ty` Slice 下钻臂(T[] 槽型参代入)。
+**随批(trans_expr.ct)**:parallel.map/reduce fn 值实参臂——非 Closure 实参
+(裸引用/fn 值)取 trampoline fnptr 直填 ct_fn1/ct_fn2 槽(iter 薄包装
+parallel_map 族旧径 panic"closure 参数个数";捕获闭包维持 ct_emit_clo
+挂账口径)。
+
+**验证**:iter.ct emit 越过 vi panic(panic 清零;RawSeq__D 键符号 ×57
+两制一致);spot 23 夹具(泛型/fn 值族)全绿;smoke --full **242 ok / 0
+fail**(+fx_byteslice_arg);native.sh rc=0。
+**余缝(同面下一段,精化入账)**:iter emit cc 败于 vt_Seq vtable——
+`t_MapSeq__II` 前置声明序 + 嵌套实例(u:RawSeq__D2_viI)尾缀推导歧义
+(ret 注解径 __II vs 字面量径 __IID2_vi 两符号并存)= MapSeq 嵌套实例
+typedef/符号单源化,iter/T16 面下一段。
+
 ## 2026-10-22 P4/W3d 落地(256 档 bg / 16 档 fg 默认不对称面复核)
 
 **复核结论(挂账兑现)**:不对称面真身 = `sgr_fg` 16 档缺 v<0 直通——
