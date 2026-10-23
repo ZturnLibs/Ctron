@@ -3288,3 +3288,20 @@ x/y 双 -1(§13 隐)。
 **门**:tui 阶梯 **17/17**(s16 入列;s14 焦点闸无回归)。本子批
 delta = pkgs/tui 组件面 + 夹具,编译器核零改动(2f6a73b3 后 trans_* /
 driver_* 未触),smoke 门承前批 244 ok / 0 fail 不赘跑。
+
+## 2026-10-24 iter/T16 v2 立项(泛型 impl trait per-instance vtable;设计位批,未实施)
+
+**现态定界**(trans_emit.ct:312 ct_vtable_emit):泛型 trait(TPs 非空)
+vt 跳过发射(共享 vt = 构造性错码:impl 方法接收者 = 具体型,共享槽型
+cc 硬错);树内零 &Seq 胖指针用户(实测)→ 跳过 = 零破坏,impl 方法
+UFCS/Drop 走既有路径。v2 = 首个泛型 trait 胖指针用户落地前必开。
+
+**两径待裁**:
+- **径 A(推荐)**:vt 常量 per-(trait, 具体型) 命名
+  (`ct_vt_<trait>_<type>`,`#ifndef` 守卫,镜像 CT_FVAL 判例),发射点 =
+  既有单态化点复用,胖指针构造点查表引用;增量最小,ABI 不变。
+- **径 B**:去 vt 常量,impl 方法直引(槽 = 函数指针字面)——§3.5
+  spec vt 槽结构随改,存量 C ABI 面波动。
+
+**验收预设**:泛型 trait(&Seq 族)胖指针构建 + 方法调用,双臂一致;
+非泛型 trait vt 逐字不变(存量快照比对)。
