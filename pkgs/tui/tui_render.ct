@@ -84,6 +84,16 @@ pub fn hbox(kids: List[TuiTree]) -> TuiTree {
     return t
 }
 
+// P3/§16:overlay 容器——子树全绘于同一矩形(后写覆盖,无流式分割);
+// len 型子居中(w/h 取 wval/hval,超界钳制),非 len 子占满。mask 暗化
+// = §16 在册债(不做),本容器只定层序。
+pub fn overlay(kids: List[TuiTree]) -> TuiTree {
+    var t = tree_new()
+    let me = tree_node(t, "overlay", "", "", "", 0, "", 0)
+    merge_kids(t, me, kids)
+    return t
+}
+
 // 单行文本(不折行)
 pub fn text(s: Str) -> TuiTree {
     var t = tree_new()
@@ -550,6 +560,52 @@ fn paint_node(b: TuiBuf, t: TuiTree, idx: I32, r: LR, th: Theme) -> Result[I32, 
             }
         }
         return Ok(0)
+    }
+    if tag == "overlay" {
+        // P3/§16:overlay 子全绘于同一矩形(后写覆盖);len 型子居中
+        let pr = paint_kids_overlay(b, t, t.nfc[idx], r, th)
+        match pr {
+            Err(m) => {
+                return Err(m)
+            }
+            Ok(_) => {
+            }
+        }
+        return Ok(0)
+    }
+    return Ok(0)
+}
+
+// P3/§16:overlay 子走查——len 型子居中矩形(超界钳制),非 len 子占满 r;
+// 后写覆盖(树序即 z 序)。mask 暗化 = §16 在册债。
+fn paint_kids_overlay(b: TuiBuf, t: TuiTree, head: I32, r: LR, th: Theme) -> Result[I32, Str] {
+    var k = head
+    while k >= 0 {
+        var kr = r
+        if t.wmode[k] == "len" {
+            var w2 = t.wval[k]
+            if w2 > r.w {
+                w2 = r.w
+            }
+            var h2 = r.h
+            if t.hmode[k] == "len" {
+                var h3 = t.hval[k]
+                if h3 > r.h {
+                    h3 = r.h
+                }
+                h2 = h3
+            }
+            kr = lr(r.x + (r.w - w2) / 2, r.y + (r.h - h2) / 2, w2, h2)
+        }
+        let pr = paint_node(b, t, k, kr, th)
+        match pr {
+            Err(m) => {
+                return Err(m)
+            }
+            Ok(_) => {
+            }
+        }
+        k = t.ns[k]
     }
     return Ok(0)
 }

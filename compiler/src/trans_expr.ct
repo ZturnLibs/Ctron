@@ -2238,8 +2238,29 @@ fn ct_call_args_tg(ag: List[Str], from: I32, env: List[Str], file: List[Str], ca
     var i: I32 = from
     while i < ag.len {
         if i > from { args = args + ", " }
-        var ac = ct_typeof(ag[i], env, file)
         var pc = "i"
+        if callee != "" && i - 1 < pcs.len { pc = pcs[i - 1] }
+        // P3:实参位 List 字面量(dialog_layer opts 族)——内联 ctron_list 构造
+        //(旧 ct_expr:ArrLit 仅 let 初值位 panic;元素按 L 族码 cast)
+        if ag[i][0] == "ArrLit" {
+            var al9 = ag[i]
+            var ec9 = byte_slice(pc, 1, pc.len)
+            var s9 = "(\{ ctron_list* _al = ctron_list_new();"
+            var k9: I32 = 1
+            while k9 < al9.len {
+                var ex9 = ct_expr(al9[k9], env, file)
+                if ec9 == "s" || ec9 == "N" {
+                    s9 = s9 + " ctron_list_push(_al, (const char*)(" + ex9 + "));"
+                } else {
+                    s9 = s9 + " ctron_list_push(_al, (const char*)(long)(ct_i)(" + ex9 + "));"
+                }
+                k9 += 1
+            }
+            args = args + s9 + " _al; })"
+            i += 1
+            continue
+        }
+        var ac = ct_typeof(ag[i], env, file)
         if callee != "" && i - 1 < pcs.len { pc = pcs[i - 1] }
         // CC1 批2:实参-形参码相容守卫(仅声明在案形参码;内建调用 pc 默认 "i"
         // 不查)——Str 族↔数值/布尔族错位旧经 ct_arg_cast 尾行裸直通成错码。

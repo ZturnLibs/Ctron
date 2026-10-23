@@ -43,3 +43,36 @@ fn w_kids1(a: TuiTree) -> List[TuiTree] {
     l.push(a)
     return l
 }
+
+// P3/W4 批2:dialog 居中 overlay 层(§14/§16)——overlay 全帧矩形内
+// double 盒居中(w = 给定;h = lines+4:边框2+标题1+内容1... opts 行另计)。
+// 键面(应用转接,§14):←/→/Tab 换钮、Enter 确认、Esc 取消;focus = 选中
+// 钮下标(accent 高亮)。mask 暗化 = §16 在册债(不做)。
+pub fn dialog_layer(title: Str, lines: List[Str], opts: List[Str], focus: I32, w: I32) -> TuiTree {
+    var kids = List[TuiTree]()
+    kids.push(text(title))
+    var li: I32 = 0
+    while li < lines.len {
+        kids.push(text(lines[li]))
+        li += 1
+    }
+    var okids = List[TuiTree]()
+    var oi: I32 = 0
+    while oi < opts.len {
+        var ocls = ""
+        if oi == focus {
+            ocls = "accent"
+        }
+        okids.push(with_cls(text(opts[oi]), ocls))
+        if oi + 1 < opts.len {
+            okids.push(text("  "))
+        }
+        oi += 1
+    }
+    kids.push(hbox(okids))
+    let inner = vbox(kids)
+    let b = box(w_kids1(inner), "double")
+    let bw = with_w(b, w)
+    let bh = with_h(bw, lines.len + 4)
+    return overlay(w_kids1(bh))
+}

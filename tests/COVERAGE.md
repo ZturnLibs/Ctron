@@ -3245,3 +3245,30 @@ default 前景被涂黑。修 = 16 档 v<0 直通补臂(无 SGR = 终端默认)�
 经门面 re-export,发射臂链 tui_term.c)——16 档 fg-default-len=0(修前
 4 字节黑码)/bg=0;256 档 5/5(\e[39m/\e[49m 直通不变);24bit 5/5;
 tui 阶梯 14/14 零回归(s7_color 四档+NO_COLOR 在册)。
+
+## 2026-10-24 P0-1 收口批(s15_dialog 入梯 + ArrLit 实参位臂)——conc 八例/G2 双残差实证已闭
+
+**s15_dialog(W4 批2 dialog 层序面)**:tests/tui/s15_dialog——
+dialog_layer(title, lines, opts, focus, w) 居中 overlay(§14/§16;后写
+覆盖=树序即 z 序,len 型子居中钳制,钮 accent 高亮)。mask 暗化 =
+§16 在册债不做(代码注已档,账留)。夹具五点断言:main-body 直绘 +
+边框 ╔/═/确认/正文/选项行(取消 x6、确定 x12)。**宽字符断言判例**:
+d_expect_text n = 显示格宽(全角 ?=2 格);宽字符尾格 buf_at 返回 ""
+(wd 槽),段串接后按字素比对。
+
+**新立发射臂(trans_expr.ct ct_call_args_tg)**:实参位 ArrLit——旧
+ct_expr:ArrLit 仅 let 初值位 panic;现按形参 L 族码内联
+`({ ctron_list* _al = ctron_list_new(); push…; _al; })`(Str/N =
+(const char*) 直推;余 = (const char*)(long)(ct_i) 槽式)。
+
+**双残差勘定**(账本旧注过时,本轮实证闭):
+- conc 八例(F64 32.0↔32 spawn 边界 + opti32 两面):fx_* 46/46 +
+  conc_* 7/7 双臂 diff 零分歧——已随前批(23a-2 钉+R 蹦床臂)覆盖;
+- G2 蹦床:fx_fnval_str 在册(fx_fnval_str.ct 已落 Str 形参/返回全宽
+  面),acc31 cast 阶梯 s/N 臂即修,03h widen 标量看护同绿。
+
+**判例**:build.sh 与 native.sh 严禁并发——本轮自举首败
+「发射失败(无产物落盘)」= cc_emit.ct 重写竞态假象,清场复跑 rc=0。
+
+**门**:tui 阶梯 **16/16**(s15 入列);smoke --full **244 ok /
+0 fail**;native.sh rc=0(bin 全刷新)。

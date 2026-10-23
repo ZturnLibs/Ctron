@@ -1,0 +1,38 @@
+// s15_dialog —— W4 批2:dialog 居中 overlay 层(§14/§16;mask = §16 在册债不做)
+// 断言(40×12 帧,w=30,H=lines+4=5 → 盒 x5..34 y3..7):
+//   ①主树文本于 0,0 透出(层序 = 主树后 dialog 覆盖中部);
+//   ②盒顶边框 y=3;③标题 y=4;④内容行 y=5;⑤opts 行 y=6(选中 accent 文本面)。
+use tui.{ test, d_expect_text, theme_default, text, vbox, overlay, dialog_layer, TuiTree, Event }
+
+struct M2 {
+    var n: I32
+}
+
+fn vw(m: M2) -> TuiTree {
+    let main = text("main-body")
+    let dlg = dialog_layer("确认", ["删除 3 项?"], ["取消", "确定"], 1, 30)
+    var kids = List[TuiTree]()
+    kids.push(main)
+    kids.push(dlg)
+    return overlay(kids)
+}
+
+fn up(m: M2, e: Event) {
+    m.n = m.n + 1
+}
+
+fn main() -> I32 {
+    var m = M2 { n: 0 }
+    test[M2](vw, up, m, theme_default(), 40, 12, |tt| {
+        d_expect_text(tt, 0, 0, 10, "main-body ")
+        d_expect_text(tt, 5, 3, 1, "╔")
+        d_expect_text(tt, 6, 3, 4, "════")
+        d_expect_text(tt, 6, 4, 4, "确认")
+        d_expect_text(tt, 6, 5, 10, "删除 3 项?")
+        d_expect_text(tt, 6, 6, 4, "取消")
+        d_expect_text(tt, 6, 6, 4, "取消")
+        d_expect_text(tt, 12, 6, 4, "确定")
+    })
+    println("s15_dialog-probe ok")
+    return 0
+}

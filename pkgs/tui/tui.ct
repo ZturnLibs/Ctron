@@ -17,12 +17,12 @@ use std.unicode.{cp_at}
 use std.str.{index_of}
 use tui.tui_buffer.{buf_new, buf_put, buf_put_attr, buf_put_wide, buf_fill, buf_line, str_w, cp_wide, buf_diff, buf_at, buf_fg_at}
 use tui.tui_layout.{solve_sizes, LR, lr}
-use tui.tui_render.{render, vbox, hbox, text, para, bar, box, spacer, with_id, with_h, with_w, with_cls, with_al, with_title, wrap, tree_attach, bound}
+use tui.tui_render.{render, overlay, vbox, hbox, text, para, bar, box, spacer, with_id, with_h, with_w, with_cls, with_al, with_title, wrap, tree_attach, bound}
 use tui.tui_theme.{theme_default, parse_color, sgr_fg, sgr_bg, color_level, color_mono, color_16, color_256, color_true, ansi16, ansi256}
 use tui.tui_event.{poll_ev, ev_none, ev_key, ev_char, ev_mouse, ev_resize, ev_act, ev_tick, k_up, k_down, k_left, k_right, k_home, k_end, k_pgup, k_pgdn, k_ins, k_del, k_enter, k_tab, k_backspace, k_esc}
 use tui.tui_driver.{run_app, test, d_key, d_frame, d_expect_text, d_cursor_x, d_cursor_y}
 use tui.tui_parse.{tui_parse}
-use tui.tui_widgets.{input}
+use tui.tui_widgets.{input, dialog_layer}
 // test/d_* 家族持出(批C → 批C-3:合并泄漏已愈,残余=闭包形参无签型,见 tui_driver.ct 头注)
 
 // ---- 窄桥(tui_term.c;发射臂) ----
