@@ -3272,3 +3272,19 @@ ct_expr:ArrLit 仅 let 初值位 panic;现按形参 L 族码内联
 
 **门**:tui 阶梯 **16/16**(s15 入列);smoke --full **244 ok /
 0 fail**;native.sh rc=0(bin 全刷新)。
+
+## 2026-10-24 P4/W4 批2 二期(textarea 多行)——行列二维光标 + 失焦隐意落地
+
+**textarea 组件**(tui_widgets;§14):value 按 \n 分行,cx/cy = 字素
+列/行二维;活动行 input 一期同构三段(before/cursor 标记/after)承载
+§13 光标请求(marks 取首对,单标记天然兼容),余行纯 text;行高 =
+行数,空行占位。s16_textarea 夹具四景:三行逐行渲染 + (cx=2,cy=1)
+→ (x=3,y=2);cy 切行 y 随行 x 重计;空中行光标列 = 边框 1;失焦 =
+x/y 双 -1(§13 隐)。
+
+**input 一期补面**:光标标记 focus 闸门——旧 mark 无条件置(§13
+「失焦=隐」意图未落),现 focused 才置标;s14 既有景全绿无回归。
+
+**门**:tui 阶梯 **17/17**(s16 入列;s14 焦点闸无回归)。本子批
+delta = pkgs/tui 组件面 + 夹具,编译器核零改动(2f6a73b3 后 trans_* /
+driver_* 未触),smoke 门承前批 244 ok / 0 fail 不赘跑。

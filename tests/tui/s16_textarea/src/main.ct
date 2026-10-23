@@ -1,0 +1,73 @@
+// s16_textarea —— W4 批2 二期:textarea 多行 value / 光标行列二维化(§13/§14)
+// 断言:①三行渲染逐行(d_expect_text);②光标二维 (cx=2, cy=1) → d_cursor_x/y;
+// ③cy 切行 → y 随行、x 重计;④空行行光标列 = 边框 1;⑤失焦 = -1(§13 隐)。
+// 形态:test[M]/headless;textarea 组件 = tui_widgets 二期(input 一期同构)。
+use tui.{ test, d_expect_text, d_cursor_x, d_cursor_y, theme_default, textarea, TuiTree, Event }
+
+struct M2 {
+    var value: Str
+    var cx: I32
+    var cy: I32
+}
+
+fn vw(m: M2) -> TuiTree {
+    return textarea("body", m.value, m.cx, m.cy, true)
+}
+
+fn vw2(m: M2) -> TuiTree {
+    return textarea("body", m.value, m.cx, m.cy, false)
+}
+
+fn up(m: M2, e: Event) {
+}
+
+fn main() -> I32 {
+    let v = "alpha\nbe\nc"
+    var m = M2 { value: v, cx: 2, cy: 1 }
+    test[M2](vw, up, m, theme_default(), 20, 6, |tt| {
+        d_expect_text(tt, 1, 1, 5, "alpha")
+        d_expect_text(tt, 1, 2, 2, "be")
+        d_expect_text(tt, 1, 3, 1, "c")
+        // cy=1(第 2 行),cx=2 → 光标 = 边框 1 + 2 = 列 3,行 2
+        if d_cursor_x(tt) != 3 {
+            panic("tui s16: cursor x at (2,1)")
+        }
+        if d_cursor_y(tt) != 2 {
+            panic("tui s16: cursor y at cy=1")
+        }
+    })
+    var m2 = M2 { value: v, cx: 0, cy: 2 }
+    test[M2](vw, up, m2, theme_default(), 20, 6, |tt| {
+        // cy=2(第 3 行),cx=0 → 光标 = 边框 1,行 3
+        if d_cursor_x(tt) != 1 {
+            panic("tui s16: cursor x at (0,2)")
+        }
+        if d_cursor_y(tt) != 3 {
+            panic("tui s16: cursor y at cy=2")
+        }
+    })
+    var m3 = M2 { value: "x\n\ny", cx: 0, cy: 1 }
+    test[M2](vw, up, m3, theme_default(), 20, 6, |tt| {
+        // 空中行:光标列 = 边框 1(行仅边框偏移)
+        if d_cursor_x(tt) != 1 {
+            panic("tui s16: cursor x at blank row")
+        }
+        if d_cursor_y(tt) != 2 {
+            panic("tui s16: cursor y at blank row")
+        }
+        d_expect_text(tt, 1, 1, 1, "x")
+        d_expect_text(tt, 1, 3, 1, "y")
+    })
+    var m4 = M2 { value: v, cx: 1, cy: 0 }
+    test[M2](vw2, up, m4, theme_default(), 20, 6, |tt| {
+        // 失焦:无光标请求 = -1(§13 隐)
+        if d_cursor_x(tt) != -1 {
+            panic("tui s16: unfocused x hidden")
+        }
+        if d_cursor_y(tt) != -1 {
+            panic("tui s16: unfocused y hidden")
+        }
+    })
+    println("s16_textarea-probe ok")
+    return 0
+}

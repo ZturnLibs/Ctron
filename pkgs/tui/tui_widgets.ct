@@ -23,11 +23,13 @@ pub fn input(aid: Str, value: Str, cur: I32, focused: Bool) -> TuiTree {
     let off = cp_off(value, cur)
     let before = text(byte_slice(value, 0, off))
     let after = text(byte_slice(value, off, value.len))
-    // 光标标记:空 text + cls=cursor(paint 期收 r.x/r.y;占位零宽)
-    let cm = with_cls(text(""), "cursor")
+    // 光标标记:空 text + cls=cursor(paint 期收 r.x/r.y;占位零宽);
+    // 失焦不置标(§13「失焦=隐」意图落地,s16 同构)
     let kids = List[TuiTree]()
     kids.push(before)
-    kids.push(cm)
+    if focused {
+        kids.push(with_cls(text(""), "cursor"))
+    }
     kids.push(after)
     let row = hbox(kids)
     let bcls = "muted"
@@ -42,6 +44,46 @@ fn w_kids1(a: TuiTree) -> List[TuiTree] {
     var l = List[TuiTree]()
     l.push(a)
     return l
+}
+
+// W4 批2 二期:textarea 多行(§14)——value 按 \n 分行,cx/cy = 字素列/行二维;
+// 活动行以 input 一期同构三段(before/cursor 标记/after)承载 §13 光标请求,
+// 其余行纯 text。行高 = 行数,宽随内容(box 自适应);focused 同 input 边框。
+pub fn textarea(aid: Str, value: Str, cx: I32, cy: I32, focused: Bool) -> TuiTree {
+    var lines = List[Str]()
+    var st: I32 = 0
+    var i: I32 = 0
+    while i < value.len {
+        if byte_at(value, i) == 10 {
+            lines.push(byte_slice(value, st, i))
+            st = i + 1
+        }
+        i += 1
+    }
+    lines.push(byte_slice(value, st, value.len))
+    var rows = List[TuiTree]()
+    var ri: I32 = 0
+    while ri < lines.len {
+        if ri == cy && focused {
+            let ln = lines[ri]
+            let off = cp_off(ln, cx)
+            var rk = List[TuiTree]()
+            rk.push(text(byte_slice(ln, 0, off)))
+            rk.push(with_cls(text(""), "cursor"))
+            rk.push(text(byte_slice(ln, off, ln.len)))
+            rows.push(hbox(rk))
+        } else {
+            rows.push(text(lines[ri]))
+        }
+        ri += 1
+    }
+    let v = vbox(rows)
+    let bcls = "muted"
+    if focused {
+        bcls = "accent"
+    }
+    let b = box(w_kids1(v), bcls)
+    return with_id(b, aid)
 }
 
 // P3/W4 批2:dialog 居中 overlay 层(§14/§16)——overlay 全帧矩形内
