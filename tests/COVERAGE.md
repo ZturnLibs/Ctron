@@ -3176,6 +3176,10 @@ iter cc 实败维持)。真身 = **泛型 impl 的 trait 面 v2**——vtable �
 iter.ct:9「前奏 class 直 impl trait 派发不挂」自登记之 v2 位)。设计位批,
 非小钉。
 
+**随批清账(2026-10-24)**:iter 4c 翻绿严校四零(emit/cc/native/interp)+
+parity 后 known 清账——smoke **244 ok / 0 fail**(4c 26 模块 parity 绿、
+known 0);4c known 集全空,后续新欠账再登记。
+
 ## 2026-10-23 P3 落地(并行内建一等闭包值)——捕获闭包过 parallel.map/reduce
 
 **机制**:C 运行时模板补 `ct_clop_call1/2`(clop 双路:env==哨兵 → 裸 fn 直调;

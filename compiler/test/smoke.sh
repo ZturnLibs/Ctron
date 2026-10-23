@@ -650,13 +650,13 @@ P
     emit_knownred=0
     emit_newred=0
     emit_flipped=""
-    # 4c known 欠账表:2026-10-23 opt 清账(R 返回蹦床配型臂,cc/run/parity
-    # 严格校验绿);iter 维持在册——真余缝 = 泛型 impl trait 面 v2(per-instance
-    # vtable,vt_Seq 槽 t_MapSeq__II 未声明;校验注:diffn 断言须带 .got 存在性
-    # 检查,缺文件时 grep -c '^[<>]' 恒 0 = 假绿,本机两次踩中后改严)
+    # 4c known 欠账表:2026-10-23 全清——opt(R 返回蹦床配型臂)+iter(泛型槽
+    # slice 键 D 形 + 泛型 impl vt 跳过)随 P3 批翻绿,严校(emit/cc/native/
+    # interp 四零 + parity)实证;余面 = 泛型 impl trait 面 v2(per-instance
+    # vtable,设计位批)入账不再挡 parity
     case $(uname) in
-        Darwin) KNOWN4C=" iter " ;;
-        *)      KNOWN4C=" iter " ;;
+        Darwin) KNOWN4C=" " ;;
+        *)      KNOWN4C=" " ;;
     esac
     for f in "$ROOT"/lib/std/*.ct; do
         b=$(basename "$f" .ct)
