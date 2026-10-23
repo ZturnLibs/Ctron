@@ -1,0 +1,45 @@
+// s14_input —— W4 批2:input 真 LED 光标全链(§13 cx/cy 请求 → 帧尾定位)
+// 断言:①focused input 的 buf.cx = 边框内光标列(字素下标换算);
+// ②cur 推进(字素)→ cx 随之;③失焦/无标记 = cx −1。
+// 形态:test[M]/d_* headless(d_cursor_x/y 新面);input 组件 = tui_widgets 一期。
+use tui.{ test, d_key, d_cursor_x, d_cursor_y, theme_default, input, TuiTree, Event }
+
+struct M1 {
+    var value: Str
+    var cur: I32
+}
+
+fn vw(m: M1) -> TuiTree {
+    return input("name", m.value, m.cur, true)
+}
+
+fn up(m: M1, e: Event) {
+}
+
+fn main() -> I32 {
+    var m = M1 { value: "abc", cur: 3 }
+    test[M1](vw, up, m, theme_default(), 20, 5, |tt| {
+        // cur=3(尾)→ 光标列 = 边框 1 + 前段 3 = 4(0 基);行 = 边框 1
+        if d_cursor_x(tt) != 4 {
+            panic("tui s14: cursor x at tail")
+        }
+        if d_cursor_y(tt) != 1 {
+            panic("tui s14: cursor y")
+        }
+    })
+    var m2 = M1 { value: "abc", cur: 1 }
+    test[M1](vw, up, m2, theme_default(), 20, 5, |tt| {
+        // cur=1 → 光标列 = 边框 1 + 1 = 2
+        if d_cursor_x(tt) != 2 {
+            panic("tui s14: cursor x at 1")
+        }
+    })
+    var m3 = M1 { value: "ab", cur: 0 }
+    test[M1](vw, up, m3, theme_default(), 20, 5, |tt| {
+        if d_cursor_x(tt) != 1 {
+            panic("tui s14: cursor x at 0")
+        }
+    })
+    println("s14_input-probe ok")
+    return 0
+}

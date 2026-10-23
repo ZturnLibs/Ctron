@@ -489,6 +489,12 @@ fn paint_node(b: TuiBuf, t: TuiTree, idx: I32, r: LR, th: Theme) -> Result[I32, 
         return Ok(0)
     }
     if tag == "text" {
+        // P3/§13:光标标记节点(cls=cursor)——paint 期收 its 格位请求
+        //(marks 共享表 push 对 render 调用方可见;帧尾取首对定位)
+        if t.cls[idx] == "cursor" {
+            b.marks.push(r.x)
+            b.marks.push(r.y)
+        }
         let row = r.y
         put_aligned_line(b, r, row, t.txt[idx], t.al[idx], cls_fg(t.cls[idx], th), cls_attr(t.cls[idx]))
         return Ok(0)
@@ -758,6 +764,11 @@ pub fn render(tree: TuiTree, w: I32, h: I32, th: Theme) -> Result[TuiBuf, Str] {
         }
         Ok(_) => {
         }
+    }
+    // P3/§13:光标请求解析(首对胜出;无请求 = -1 隐)
+    if b.marks.len >= 2 {
+        b.cx = b.marks[0]
+        b.cy = b.marks[1]
     }
     return Ok(b)
 }

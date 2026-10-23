@@ -45,7 +45,22 @@ fn frame_out(front: TuiBuf, tree: TuiTree, w: I32, h: I32, th: Theme) -> TuiBuf 
         }
     }
     out(buf_diff(front, b2))
+    // P3/§13:帧尾光标定位(请求在 = \e[y+1;x+1H;无请求不动,终端态保持)
+    if b2.cx >= 0 {
+        if b2.cy >= 0 {
+            out("\u{1b}[" + (b2.cy + 1).to_string() + ";" + (b2.cx + 1).to_string() + "H")
+        }
+    }
     return b2
+}
+
+// P3/§13:headless 光标断言面(tt.v.buf.cx;−1 = 无请求)
+pub fn d_cursor_x[M](tt: Box[TuiTest[M]]) -> I32 {
+    return tt.v.buf.cx
+}
+
+pub fn d_cursor_y[M](tt: Box[TuiTest[M]]) -> I32 {
+    return tt.v.buf.cy
 }
 
 // 主循环(§8 生命周期;§18 退出协议:tui.quit → rc)

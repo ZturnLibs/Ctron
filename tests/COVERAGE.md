@@ -3180,6 +3180,33 @@ iter.ct:9「前奏 class 直 impl trait 派发不挂」自登记之 v2 位)。�
 parity 后 known 清账——smoke **244 ok / 0 fail**(4c 26 模块 parity 绿、
 known 0);4c known 集全空,后续新欠账再登记。
 
+## 2026-10-24 P4/W4 批2 落地(input 真 LED 光标;§13 全链)——组件库一期
+
+**交付(pkgs/tui/tui_widgets.ct 新建;§14 的 pkgs/tui_widgets 拆分 = 二期,
+门面 re-export 已通)**:
+- `input(aid, value, cur, focused)`:box(cls focused?accent:muted)>
+  hbox>[text 前段, 光标标记(cls=cursor 空节点), text 后段];cur = 字素
+  下标(cp_off 续字节跟随;区间判定 = unicode.ct 惯例)。
+- §13 光标全链:paint 期 text 臂 cls==cursor → marks.push(r.x/r.y)
+  (TuiBuf.marks 共享表,paint_node 值拷贝下 list push 可见)→ render 解析
+  首对 → TuiBuf.cx/cy → tui_driver frame_out 帧尾 `\e[y+1;x+1H` 定位;
+  无请求 = 不动(终端态保持)。
+- headless 断言面:d_cursor_x/d_cursor_y(tt.v.buf.cx/cy;镜像 d_frame
+  字段读绕行式)。
+**随修(先在面,探针暴露)**:同 fn 双 for-in-List `t_li`/`ctron_i` 固定名
+重定义 cc 错——LI 臂匿名 C 块包裹(块作用域天然唯一)。
+**转义判例三踩**:驱动插入行 `\}` = E1001(driver_emit:434 判例)8 处随修;
+`\{` 合法、`}` 恒原样。`&` 非表达式运算符(T01 bit.* 内建族)——续字节判定
+改区间比较(unicode.ct:105 惯例)。
+**E5030 合并名**:tui_widgets 助手 kids1 撞夹具同名(s2/s6_panic)→
+w_kids1 改名(合并名单名槽纪律)。
+
+**门**:tui 阶梯 **15/15**(s14_input 入列;全链断言 cur=0/1/3 三点
+cursor x=1/2/4 + y=1);db 50/0;plugins 10/1(在册);smoke **244/0**。
+**余(textareas 二期/dialog overlay/焦点路由器 §13 二期)**:input 一期
+落地后按同构接(dialog = overlay 层序 §16 + mask;textareas = 多行 value
++ 光标行列二维化),vtable 面 v2 设计位批照旧。
+
 ## 2026-10-23 P3 落地(并行内建一等闭包值)——捕获闭包过 parallel.map/reduce
 
 **机制**:C 运行时模板补 `ct_clop_call1/2`(clop 双路:env==哨兵 → 裸 fn 直调;

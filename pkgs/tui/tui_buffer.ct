@@ -23,7 +23,7 @@ pub fn buf_new(w: I32, h: I32) -> TuiBuf {
         wd.push(0)
         i += 1
     }
-    return TuiBuf { w: w, h: h, chs: chs, fg: fg, bg: bg, bold: bold, under: under, rev: rev, wd: wd }
+    return TuiBuf { w: w, h: h, chs: chs, fg: fg, bg: bg, bold: bold, under: under, rev: rev, wd: wd, marks: List[I32](), cx: 0 - 1, cy: 0 - 1 }
 }
 
 fn buf_idx(b: TuiBuf, x: I32, y: I32) -> I32 {

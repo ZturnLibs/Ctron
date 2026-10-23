@@ -1,0 +1,45 @@
+// tui_widgets.ct —— W4 组件库(§14;input 一期:真 LED 光标全链)
+// 形态:pkgs/tui 域内子文件(§14 的 pkgs/tui_widgets 拆分 = 二期;门面 re-export 已通)。
+// input:props value/cur(字素下标)/focused;结构 = box(cls focused?accent:muted)
+// + [text 前段, cursor 标记(cls=cursor;渲染期收格位), text 后段]。
+// 光标请求全链(§13):paint 期 marks.push 格位 → render 解析 cx/cy →
+// driver 帧尾 \e[y;xH 定位;失焦/无标记 = 无请求即隐。
+
+fn cp_off(s: Str, n: I32) -> I32 {
+    // 字素(码点)下标 → 字节偏移(UTF-8 续字节跟随首字节;区间判定 = unicode.ct 惯例)
+    var i: I32 = 0
+    var k: I32 = 0
+    while i < s.len && k < n {
+        i += 1
+        while i < s.len && byte_at(s, i) >= 128 && byte_at(s, i) < 192 {
+            i += 1
+        }
+        k += 1
+    }
+    return i
+}
+
+pub fn input(aid: Str, value: Str, cur: I32, focused: Bool) -> TuiTree {
+    let off = cp_off(value, cur)
+    let before = text(byte_slice(value, 0, off))
+    let after = text(byte_slice(value, off, value.len))
+    // 光标标记:空 text + cls=cursor(paint 期收 r.x/r.y;占位零宽)
+    let cm = with_cls(text(""), "cursor")
+    let kids = List[TuiTree]()
+    kids.push(before)
+    kids.push(cm)
+    kids.push(after)
+    let row = hbox(kids)
+    let bcls = "muted"
+    if focused {
+        bcls = "accent"
+    }
+    let b = box(w_kids1(row), bcls)
+    return with_id(b, aid)
+}
+
+fn w_kids1(a: TuiTree) -> List[TuiTree] {
+    var l = List[TuiTree]()
+    l.push(a)
+    return l
+}
