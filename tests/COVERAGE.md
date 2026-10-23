@@ -3121,6 +3121,13 @@ bin/ctron-chk 精确产出 `E4010: 使用 fs 能力超出 manifest(caps) 声明:
   编组族,P0-2 同域延伸)。
 - heap:本日 P0-1 已清账(none 臂修翻绿);扁平 R 族 DIFF:维持(基线同
   指纹,optstr/boxalias emit 往返面)。
+- **sorted_by × 闭包 interp-sem 面(2026-10-23 勘定)**:`sorted_by(xs,
+  |a:I32,b:I32|->Bool)` emit 臂绿(asc=1 2 3);interp sem E2010
+  「期望 n:I32 实得 n:Bool」——n = sorted_by 体 `var n = xs.len`,K 被误绑
+  **Bool**(闭包返回槽误占第一型参槽;参数槽 I32×2 未用于绑定)。入口 =
+  sem_type tce Closure 臂(sem_type.ct:1017+)的 FnType 逐参注入/终统一
+  配对;单一化器 v1「任一侧未知放行」口径下的 K 绑定序 = 修复面。
+  interim 路径:emit 臂可用(用户 emit 运行)。
 - **opt 族面复勘(2026-10-23 探针)**:①闭包捕获 struct 值(`|| { p.x }`)
   interp/emit 双臂绿(捕获写侧 ct_wrap_i 堆盒 + 读侧解引用既有通装);②
   struct 双参比较器穿 fn 值间接调用(`apply2(cmp, p1, p2)`,u: 双参堆盒
