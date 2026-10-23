@@ -137,7 +137,14 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 }
                 println("#ifndef CT_CBTR_" + e[1])
                 println("#define CT_CBTR_" + e[1])
-                println("static ct_i " + anm + "(" + asig + ") \{")
+                // P3:R(Result)返回蹦床——签名/体随 aret 配型(ct_res 原样返回,
+                // 调用位 #fret 原型化同型;旧恒 ct_i 强转 struct = cc 硬错,opt 族)
+                var aret = ct_fn_ret(file, e[1])
+                var rty31 = "ct_i"
+                if seq2(aret, "R") {
+                    rty31 = "ct_res"
+                }
+                println("static " + rty31 + " " + anm + "(" + asig + ") \{")
                 var acall = ""
                 ai = 0
                 while ai < pcs5.len {
@@ -170,7 +177,6 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     }
                     ai += 1
                 }
-                var aret = ct_fn_ret(file, e[1])
                 if aret.len > 2 && byte_slice(aret, 0, 2) == "u:" {
                     // P0-A:u:-返回 = 堆盒指针(ct_i;双侧同约定,调用位 #fret 解盒)
                     println("return (\{ " + ct_ctype(aret) + "* _rb = (" + ct_ctype(aret) + "*)ctron_amalloc(sizeof(" + ct_ctype(aret) + ")); *_rb = t_" + e[1] + "(" + acall + "); (ct_i)(long)_rb; });")
@@ -179,6 +185,9 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 } else if seq2(aret, "v") {
                     // void 返回:调用后回 0((ct_i) 作用于 void 调用为非法 C)
                     println("t_" + e[1] + "(" + acall + "); return 0;")
+                } else if seq2(aret, "R") {
+                    // P3:R(Result)返回 = ct_res 原样(rty31 已配 ct_res 签名)
+                    println("return t_" + e[1] + "(" + acall + ");")
                 } else {
                     println("return (ct_i)t_" + e[1] + "(" + acall + ");")
                 }
@@ -2761,7 +2770,12 @@ fn ct_fval_emit(file: List[Str], nm: Str, tag: Str) -> Str {
         }
         println("#ifndef CT_FVAL_" + anm31)
         println("#define CT_FVAL_" + anm31)
-        println("static ct_i " + anm31 + "(" + asig31 + ") \{")
+        // P3:R(Result)返回蹦床——签名/体随 ret31 配型(ct_res 原样,镜像 cbtr R 臂)
+        var frty31 = "ct_i"
+        if seq2(ret31, "R") {
+            frty31 = "ct_res"
+        }
+        println("static " + frty31 + " " + anm31 + "(" + asig31 + ") \{")
         var aargs31 = ""
         ai31 = 0
         while ai31 < far31 {
@@ -2809,6 +2823,9 @@ fn ct_fval_emit(file: List[Str], nm: Str, tag: Str) -> Str {
                     if seq2(ret31, "v") {
                         // void 返回:调用后回 0((ct_i) 作用于 void 调用为非法 C,六红 s33 族病灶)
                         println("t_" + nm + "(" + aargs31 + "); return 0;")
+                    } else if seq2(ret31, "R") {
+                        // P3:R 返回 = ct_res 原样(frty31 已配 ct_res 签名)
+                        println("return t_" + nm + "(" + aargs31 + ");")
                     } else {
                         println("return (ct_i)t_" + nm + "(" + aargs31 + ");")
                     }
