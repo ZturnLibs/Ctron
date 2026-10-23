@@ -1,0 +1,23 @@
+// fx_resret.ct —— R(Result)返回蹦床回归钉(P3;opt 族销账钉)
+// 修前:cbtr/fval 蹦床恒 ct_i 签名,R 返回强转 struct = cc 硬错
+// (lib/std/opt.ct emit 面同根);修后蹦床签名随 aret 配 ct_res、原样返回,
+// 调用位 #fret 原型化 ct_res 同型。
+fn try2(f: Bool) -> Result[I32, Str] {
+    if f {
+        return Ok(1)
+    }
+    return Err("no")
+}
+
+fn main() -> I32 {
+    let g = try2
+    match g(true) {
+        Ok(v) => println("ok=" + v.to_string())
+        Err(e) => println("err=" + e)
+    }
+    match g(false) {
+        Ok(v) => println("ok=" + v.to_string())
+        Err(e) => println("err=" + e)
+    }
+    return 0
+}

@@ -3140,11 +3140,12 @@ parallel_map 族旧径 panic"closure 参数个数";捕获闭包维持 ct_emit_cl
 挂账口径)。
 
 **验证**:iter.ct emit 越过 vi panic(panic 清零;RawSeq__D 键符号 ×57
-两制一致);spot 23 夹具(泛型/fn 值族)全绿;smoke --full **242 ok / 0
-fail**(+fx_byteslice_arg);native.sh rc=0。
-**余缝(同面下一段,根归修正)**:iter emit cc 败于 vt_Seq vtable 槽
-`t_MapSeq__II`——非 typedef 前置序(517 长键 typedef 先于 584 vtable,序无
-恙),亦非单纯尾缀歧义:真身 = **泛型 impl 的 trait 面 v2**——vtable 结构
+两制一致);spot 23 夹具(泛型/fn 值族)全绿;smoke --full 242 ok;native.sh
+rc=0。
+**余缝(同面下一段,根归修正;严校后维持红)**:iter emit cc 败于 vt_Seq
+vtable 槽 `t_MapSeq__II`——首验 diffn=0 = 缺 .got 假绿(diff 断言未带
+存在性检查,缺文件 grep '^[<>]' 恒 0;改严——断言须带 .got 存在性——后
+iter cc 实败维持)。真身 = **泛型 impl 的 trait 面 v2**——vtable 结构
 按 impl 实例共享(vt_Seq 单名),槽型却须 per-instance Self
 (t_MapSeq__IU13_RawSeq__D1_iI);impl 面 SELF 码浅推(d[3][1] 裸名 + 缺省
 槽码)与体面长键并存即双符号。修 = trait 面 per-instance vtable 设计
