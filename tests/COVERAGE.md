@@ -3153,6 +3153,33 @@ iter cc 实败维持)。真身 = **泛型 impl 的 trait 面 v2**——vtable �
 iter.ct:9「前奏 class 直 impl trait 派发不挂」自登记之 v2 位)。设计位批,
 非小钉。
 
+## 2026-10-23 P3 落地(并行内建一等闭包值)——捕获闭包过 parallel.map/reduce
+
+**机制**:C 运行时模板补 `ct_clop_call1/2`(clop 双路:env==哨兵 → 裸 fn 直调;
+否则 env-first shim)+ `ct_pmap_par_c/ct_pred_par_c`(List)与
+`ct_pmap_par_ac/ct_pred_par_ac`(定长数组 base/n/w64)四变体(worker 经
+clop 双路逐元素);trans_expr parallel.map/reduce 臂——Closure 字面量统一
+`ct_emit_clov`(一等闭包值,捕获/非捕获 env-first shim),非 Closure(fn 值:
+裸引用蹦床箱/捕获闭包 shim 皆是 clop)走 _c 变体。旧径 = 非 Closure 实参
+取 `->fn` 裸 fnptr(捕获 shim 无 env 即错)+ Closure 字面量直接
+panic"非捕获闭包包含捕获"。
+
+**语义注记**:不纯闭包(如逐调用 +k)在 reduce 的分块/顺序语义下值固有不同
+(native 分块=606 vs interp 顺序=306)——并行语义固有,非缺陷;parity 钉取
+逐元素 map(并行安全)+ 纯 reduce。
+**interp 侧另见**:pv2 探针 interp 报 W8030 unused:k(capture 分析与 native
+不一致)——并行+捕获的 interp 面 = v2 后续账。
+
+**回归钉**:fx_pmapclo.ct(定长数组接收者;捕获闭包 map 逐元素 110/130 +
+裸闭包 map + 纯 reduce)入册 smoke 3b。**先在面随探针暴露**:同 fn 双
+for-in-List `t_li`/`ctron_i` 固定名重定义 cc 错——LI 臂匿名 C 块包裹修复
+(`\{ t_li 声明 … } \}`,块作用域天然唯一)。
+**转义判例再踩**:驱动插入行 `\}` = E1001 非法转义(driver_emit:434 判例
+「GUI-12 实证勿被旧注带偏」)——8 处随修;`\{` 合法、`}` 恒原样。
+
+**门**:fx_pmapclo interp/emit 双臂 rc=0 diffn=0;pv1(map)rc=0;smoke
+--full **244 ok / 0 fail**;native.sh rc=0(bin 全刷新)。
+
 ## 2026-10-22 P4/W3d 落地(256 档 bg / 16 档 fg 默认不对称面复核)
 
 **复核结论(挂账兑现)**:不对称面真身 = `sgr_fg` 16 档缺 v<0 直通——

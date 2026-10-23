@@ -864,19 +864,36 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     var mart = ct_typeof(ag[1], env, file)
                     if or2(mart == "L", ct_is_tlcode(mart)) {
                     } else {
+                        if mart.len > 1 && byte_at(mart, 0) == 97 {
+                            // P3:定长数组接收者(a<N><ec>)→ _ac clop 变体
+                            //(base/n/w64;捕获闭包与 fn 值统一 ct_clop 值)
+                            var an6 = a_count(mart)
+                            var aec = byte_slice(mart, mart.len - 1, mart.len)
+                            var aw6 = "0"
+                            if or2(aec == "6", aec == "7") {
+                                aw6 = "1"
+                            }
+                            var aclo = ""
+                            if ag[2][0] == "Closure" {
+                                aclo = ct_emit_clov(e, ag[2], env, file)
+                            } else {
+                                aclo = "(ct_clop)(" + ct_expr(ag[2], env, file) + ")"
+                            }
+                            return "ct_pmap_par_ac((void*)(" + marr + "), " + an6 + ", " + aw6 + ", (ct_clop)(" + aclo + "))"
+                        }
                         panic("emit:parallel 目标限 List")
                         return ""
                     }
                     var mclo = ""
                     if ag[2][0] == "Closure" {
-                        mclo = ct_emit_clo(e, ag[2], env, file, 1)
+                        // P3:闭包字面量 → 一等闭包值(ct_emit_clov;env-first shim,
+                        // 捕获/非捕获统一)——旧 ct_emit_clo 裸 fnptr 径捕获即 panic
+                        mclo = ct_emit_clov(e, ag[2], env, file)
                     } else {
-                        // P3:fn 值实参(iter 薄包装 parallel_map 族)——裸引用
-                        // 蹦床 fnptr 直填 ct_fn1 槽(ct_pmap_par 裸调 ABI 同构);
-                        // 捕获闭包仍走 ct_emit_clo(一等闭包值挂账族)
-                        mclo = "(ct_fn1)(((ct_clop)(" + ct_expr(ag[2], env, file) + "))->fn)"
+                        // P3:fn 值实参(iter 薄包装 parallel_map 族)——同为 clop 值
+                        mclo = "(ct_clop)(" + ct_expr(ag[2], env, file) + ")"
                     }
-                    return "ct_pmap_par((ctron_list*)(" + marr + "), " + mclo + ")"
+                    return "ct_pmap_par_c((ctron_list*)(" + marr + "), (ct_clop)(" + mclo + "))"
                 }
                 if m == "reduce" {
                     if ag.len < 4 {
@@ -887,12 +904,12 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     var rinit = ct_expr(ag[2], env, file)
                     var rclo = ""
                     if ag[3][0] == "Closure" {
-                        rclo = ct_emit_clo(e, ag[3], env, file, 2)
+                        // P3:同 map——一等闭包值统一(env-first shim)
+                        rclo = ct_emit_clov(e, ag[3], env, file)
                     } else {
-                        // P3:fn 值实参同 map(双参 ct_fn2)
-                        rclo = "(ct_fn2)(((ct_clop)(" + ct_expr(ag[3], env, file) + "))->fn)"
+                        rclo = "(ct_clop)(" + ct_expr(ag[3], env, file) + ")"
                     }
-                    return "ct_pred_par((ctron_list*)(" + rarr + "), (ct_i)(" + rinit + "), " + rclo + ")"
+                    return "ct_pred_par_c((ctron_list*)(" + rarr + "), (ct_i)(" + rinit + "), (ct_clop)(" + rclo + "))"
                 }
                 panic("emit:parallel." + m)
                 return ""

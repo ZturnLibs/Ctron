@@ -2022,16 +2022,18 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         }
         var ity = ct_typeof(it, env, file)
         if ity == "LI" {
-            // for x in List[I32]:槽经 long 取标量
+            // for x in List[I32]:槽经 long 取标量。
+            // P3:匿名 C 块包裹 t_li(块作用域天然唯一——同 fn 双 List for-in
+            // 旧固定名 t_li/ctron_i 即重定义 cc 错;ctron_i 本就 for 内作用域)
             var larr = ct_expr(it, env, file)
-            eln("ctron_list* t_li = (ctron_list*)(" + larr + ");", env)
+            eln("\{ ctron_list* t_li = (ctron_list*)(" + larr + ");", env)
             var rli = ct_reg_line("li", "L")
             if rli.len > 0 { eln(rli, env) }
             eln("if (ct_frn.spn < 32) \{ ct_frn.sv[ct_frn.spn] = ct_frn.pn; ct_frn.spn += 1; }", env)
             eln("for (int64_t ctron_i = 0; ctron_i < t_li->n; ctron_i++) \{", env)
             eln("    int32_t t_" + v0 + " = (int32_t)(long)t_li->items[ctron_i];", env)
             ct_block(body, env_bind(env, v0, "i"), file, hreg)
-            eln("}", env)
+            eln("} }", env)
             eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -= 1; }", env)
             return env
         }

@@ -1,0 +1,26 @@
+// fx_pmapclo.ct —— P3:parallel 内建一等闭包值(捕获闭包过并行 map)回归钉
+// 修前:非 Closure 实参走 ct_emit_clo 裸 fnptr 径,捕获即 panic"非捕获闭包
+// 包含捕获";修后统一 ct_emit_clov clop 值 + ct_pmap_par_c/ct_pred_par_c
+// (ct_clop_call1/2 双路:哨兵直调/闭包 env-first)。逐元素 map = parity 安全面
+// (不纯 reduce 的分块/顺序差 = 并行固有语义,不入 parity 钉)。
+fn main() -> I32 {
+    let k = 100
+    var xs: I32[3] = [1, 2, 3]
+    let w = |x: I32| -> I32 {
+        return x * 10 + k
+    }
+    let mapped = parallel.map(xs, w)
+    assert_eq(mapped.len, 3)
+    assert_eq(mapped[0], 110)
+    assert_eq(mapped[2], 130)
+    let b2 = parallel.map(xs, |x: I32| -> I32 {
+        return x + 1
+    })
+    assert_eq(b2[0], 2)
+    assert_eq(b2[2], 4)
+    let r = parallel.reduce(xs, 0, |a: I32, b: I32| -> I32 {
+        return a + b
+    })
+    assert_eq(r, 6)
+    return 0
+}
