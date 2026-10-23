@@ -685,7 +685,7 @@ P
         fi
     done
     if [ $emit_newred -eq 0 ]; then
-        ok "std 发射臂 parity 绿($emit_green 模块;known $emit_knownred 待 trans 线:闭包结构值/比较器形参)"
+        ok "std 发射臂 parity 绿($emit_green 模块;known $emit_knownred 待 trans 线:泛型 impl trait 面 v2(iter))"
     fi
     if [ -n "$emit_flipped" ]; then
         bad "发射臂翻绿待清账:$emit_flipped(从 known 移除)"
