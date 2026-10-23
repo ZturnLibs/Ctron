@@ -317,6 +317,12 @@ fn ct_vtable_emit(file: List[Str]) {
         var d = file[i]
         if d[0] == "Trait" {
             var tn = d[1]
+            // P3/iter-T16 v2 定界:泛型 trait(TPs 非空)的共享 vtable = 构造性
+            // ill-typed——槽型含 TPAr 默认码(t_MapSeq__II 无 typedef 可引用,
+            // cc 硬错),真面 = per-instance vtable(v2 设计位批)。树内零
+            // &Seq 胖指针用户(实测)→ 泛型 trait 跳过 vt 发射(impl 方法
+            // standalone fn 与 UFCS 直调面不受涉);非泛型 trait 保持原样。
+            var tpgen = d[2].len > 1
             var has_impl = ct_trait_used_as_ref(file, tn)
             var j: I32 = 1
             while j < file.len && !has_impl {
@@ -325,7 +331,7 @@ fn ct_vtable_emit(file: List[Str]) {
                 }
                 j += 1
             }
-            if has_impl {
+            if has_impl && !tpgen {
                 println("typedef struct vt_" + tn + " vt_" + tn + ";")
                 println("struct vt_" + tn + " \{")
                 var tits = d[4]
@@ -364,6 +370,20 @@ fn ct_vtable_emit(file: List[Str]) {
     i = 1
     while i < file.len {
         var d = file[i]
+        // P3:泛型 trait(tn2 TPs 非空)→ impl 段全跳(vt struct/常量槽型
+        // TPAr 默认码 ill-typed;方法 standalone fn 保留供 UFCS 直调)
+        var skip9 = false
+        if d[0] == "Impl" {
+            var j9: I32 = 1
+            while j9 < file.len {
+                if file[j9][0] == "Trait" && seq2(file[j9][1], ty_head(d[2])) {
+                    skip9 = file[j9][2].len > 1
+                    j9 = file.len
+                }
+                j9 += 1
+            }
+        }
+        if !skip9 {
         if d[0] == "Impl" && d[3].len > 1 && d[3][0] == "Named" && ct_trait_used_as_ref(file, ty_head(d[2])) {
             var tn2 = ty_head(d[2])
             var cn = d[3][1]
@@ -438,22 +458,36 @@ fn ct_vtable_emit(file: List[Str]) {
                 k2 += 1
             }
             // vtable 常量
-            println("static const vt_" + tn2 + " vt_" + tn2 + "_for_" + cn + " = \{")
-            var k3: I32 = 1
-            var first3 = true
-            while k3 < tits2.len {
-                var tit3 = tits2[k3]
-                if tit3[0] == "Method" {
-                    if !first3 {
-                        println(",")
-                    }
-                    print("    ." + tit3[1] + " = vt_thk_" + tn2 + "_" + tit3[1] + "_" + cn)
-                    first3 = false
+            // P3:泛型 trait(tn2 TPs 非空)→ 常量同跳(①vt struct 已省;
+            // 槽型 TPAr 默认码 ill-typed;方法 standalone fn 保留供 UFCS 直调)
+            var tpgen4 = false
+            var j4: I32 = 1
+            while j4 < file.len {
+                if file[j4][0] == "Trait" && seq2(file[j4][1], tn2) {
+                    tpgen4 = file[j4][2].len > 1
+                    j4 = file.len
                 }
-                k3 += 1
+                j4 += 1
             }
-            println("")
-            println("};")
+            if !tpgen4 {
+                println("static const vt_" + tn2 + " vt_" + tn2 + "_for_" + cn + " = \{")
+                var k3: I32 = 1
+                var first3 = true
+                while k3 < tits2.len {
+                    var tit3 = tits2[k3]
+                    if tit3[0] == "Method" {
+                        if !first3 {
+                            println(",")
+                        }
+                        print("    ." + tit3[1] + " = vt_thk_" + tn2 + "_" + tit3[1] + "_" + cn)
+                        first3 = false
+                    }
+                    k3 += 1
+                }
+                println("")
+                println("};")
+            }
+        }
         }
         i += 1
     }
