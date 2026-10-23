@@ -3128,6 +3128,22 @@ bin/ctron-chk 精确产出 `E4010: 使用 fs 能力超出 manifest(caps) 声明:
   sem_type tce Closure 臂(sem_type.ct:1017+)的 FnType 逐参注入/终统一
   配对;单一化器 v1「任一侧未知放行」口径下的 K 绑定序 = 修复面。
   interim 路径:emit 臂可用(用户 emit 运行)。
+
+## 2026-10-23 P3 落地(sorted_by×闭包 interp-sem 修复)——K 误绑 Bool 根因闭环
+
+**根因链(插桩实证:retK 到达闭体时已是 kind 串 n:I32)**:泛型省略
+TypeArgs 调用的闭包/fn 值实参——tce Call 臂以**外层 retK**(main -> I32 的
+kind 节点)穿闭包体;tce Closure 臂的 FnType 门(`retK[0]=="FnType"`)永不
+匹配 → 体 return 按外层期望查 → E2010.ret「期望 n:I32 实得 n:Bool」
+(n = sorted_by 体 `var n = xs.len`,K 若被误绑 Bool 即此形;本例 K 未绑,
+直接外层 I32 撞)。
+**修(sem_type.ct tce Call 臂)**:fn 型形参(Param[3][0]=="FnType")的
+实参穿**形参的 FnType 节点**作 retK——Closure 臂门匹配,逐参注入 FnT 槽型
+(TPAr 未绑 = 体内未知放行「任一侧未知」口径;具体绑定由发射面单化承担)。
+泛型省略 TypeArgs 形与非泛型同式(§4.7 返回位闭包适配同款)。
+**验证**:sorted_by(xs, |a,b|->Bool)拼装径+产品 bin 双径 `asc=1 2 3` rc=0
+(E2010 清);genfn/cmpst 探针零回归。插桩痕迹已撤([clo]/[ret] env 门控
+临时件)。
 - **opt 族面复勘(2026-10-23 探针)**:①闭包捕获 struct 值(`|| { p.x }`)
   interp/emit 双臂绿(捕获写侧 ct_wrap_i 堆盒 + 读侧解引用既有通装);②
   struct 双参比较器穿 fn 值间接调用(`apply2(cmp, p1, p2)`,u: 双参堆盒

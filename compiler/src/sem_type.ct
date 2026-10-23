@@ -848,7 +848,28 @@ fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[
         }
         var i2: I32 = 1
         while i2 < ag.len {
-            tce(file, ag[i2], tc, loc, envT, retK, diags)
+            // P3:fn 型形参的闭包/fn 值实参——穿形参的 FnType 节点作 retK
+            //(§4.7 返回位闭包适配同款;旧穿外层 retK——闭包体 return 按外层
+            // 期望查,泛型 fn 值形参(sorted_by less 族)即 E2010.ret 误报)
+            var fthit = false
+            var ftn2 = mk("FnType")
+            if cal[0] == "Ident" {
+                var gd3 = find_gdecl(file, rt)
+                if gd3.len > 0 {
+                    var ps3 = gd3[3]
+                    if i2 < ps3.len && ps3[i2][0] == "Param" && ps3[i2][3][0] == "FnType" {
+                        // 泛型省略 TypeArgs 形:FnType 内 TPAr 未绑 = 未知放行
+                        //(体内 K 槽未知;具体绑定由发射面单化承担)
+                        ftn2 = ps3[i2][3]
+                        fthit = true
+                    }
+                }
+            }
+            if fthit {
+                tce(file, ag[i2], tc, loc, envT, ftn2, diags)
+            } else {
+                tce(file, ag[i2], tc, loc, envT, retK, diags)
+            }
             i2 += 1
         }
         return
