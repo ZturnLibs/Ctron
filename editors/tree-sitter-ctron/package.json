@@ -1,0 +1,21 @@
+{
+  "name": "tree-sitter-ctron",
+  "version": "0.1.0",
+  "description": "Ctron (.ct) grammar for tree-sitter — Helix / Zed / nvim-treesitter",
+  "main": "bindings/node",
+  "keywords": [
+    "ctron",
+    "tree-sitter",
+    "incremental"
+  ],
+  "license": "MIT",
+  "tree-sitter": [
+    {
+      "scope": "source.ctron",
+      "file-types": [
+        "ct"
+      ],
+      "injection-regex": "^ctron$"
+    }
+  ]
+}

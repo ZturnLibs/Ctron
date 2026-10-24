@@ -1,0 +1,23 @@
+{
+  "grammars": [
+    {
+      "name": "ctron",
+      "scope": "source.ctron",
+      "path": ".",
+      "file-types": [
+        "ct"
+      ],
+      "highlights": "queries/highlights.scm"
+    }
+  ],
+  "metadata": {
+    "version": "0.1.0",
+    "license": "MIT",
+    "description": "Ctron (.ct) grammar for tree-sitter — Helix / Zed / nvim-treesitter",
+    "authors": [
+      {
+        "name": "Ctron project"
+      }
+    ]
+  }
+}

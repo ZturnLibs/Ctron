@@ -1,0 +1,51 @@
+/// 简单视图组件
+use app.widgets { Btn }
+
+#[pure]
+@derive(Show, Eq)
+struct Point {
+    pub let x: I32
+    pub let y: I32
+}
+
+enum Color {
+    Red
+    Green(String)
+}
+
+enum Shape {
+    Circle { radius: F64 }
+    Rect   { w: F64, h: F64 }
+}
+
+const MAX: U8 = 255u8
+static let NAME: Str = "hi {name} \n \u{1F600}"
+
+fn wrap(s: Str) -> Str {
+    let xs = [1_000, 0x1f, 1.5e-3f64]
+    let n = xs[0] +% 1
+    let r = xs
+        .map(|x| x * 2)
+        .filter(|x| x > 0)
+    match n {
+        0 => "zero"
+        _ => "other"
+    }
+}
+
+impl Show for Point {
+    pub fn show(&self) -> Str { "pt" }
+}
+
+class Widget {
+    pub var on: Bool
+    pub fn toggle(var self) { self.on = !self.on }
+}
+
+test "smoke" {
+    let w = Widget { on: true }
+    assert(w.on)
+    for i in 0..3 {
+        print("{i}")
+    }
+}

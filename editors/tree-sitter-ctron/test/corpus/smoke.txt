@@ -1,0 +1,548 @@
+==================
+declarations
+==================
+/// 文档注释
+// 行注释
+use std.fs.{Fs, FsError}
+
+#[pure]
+@derive(Show, Eq)
+struct Point {
+    pub let x: I32
+    pub let y: I32
+}
+
+enum Shape {
+    Circle { radius: F64 }
+    Rect
+}
+
+trait Show {
+    fn show(&self) -> Str
+}
+
+impl Show for Point {
+    pub fn show(&self) -> Str { "pt" }
+}
+
+const MAX: U8 = 255u8
+static let NAME: Str = "hi {name} \n \u{1F600}"
+
+fn wrap(s: Str) -> Str {
+    let xs = [1_000, 0x1f, 1.5e-3f64]
+    return xs.len
+}
+
+test "smoke" {
+    let w = Widget { on: true }
+}
+---
+
+(source_file
+  (line_comment)
+  (line_comment)
+  (use_decl
+    (identifier)
+    (identifier)
+    (path
+      (identifier))
+    (path
+      (identifier)))
+  (struct_decl
+    (decorator)
+    (decorator
+      (path
+        (identifier))
+      (path
+        (identifier)))
+    name: (identifier)
+    (field_decl
+      name: (identifier)
+      (path_type
+        (path
+          (identifier))))
+    (field_decl
+      name: (identifier)
+      (path_type
+        (path
+          (identifier)))))
+  (enum_decl
+    name: (identifier)
+    (variant
+      name: (identifier)
+      (field_decl
+        name: (identifier)
+        (path_type
+          (path
+            (identifier)))))
+    (variant
+      name: (identifier)))
+  (trait_decl
+    name: (identifier)
+    (function_decl
+      name: (identifier)
+      (param)
+      (path_type
+        (path
+          (identifier)))))
+  (impl_decl
+    (path
+      (identifier))
+    (path_type
+      (path
+        (identifier)))
+    (function_decl
+      name: (identifier)
+      (param)
+      (path_type
+        (path
+          (identifier)))
+      (string
+        (string_content))))
+  (const_decl
+    name: (identifier)
+    (path_type
+      (path
+        (identifier)))
+    (number))
+  (static_decl
+    name: (identifier)
+    (path_type
+      (path
+        (identifier)))
+    (string
+      (string_content)
+      (interpolation
+        (interp_expr
+          (identifier)))
+      (string_content)
+      (escape_sequence)
+      (string_content)
+      (escape_sequence)))
+  (function_decl
+    name: (identifier)
+    (param
+      name: (identifier)
+      (path_type
+        (path
+          (identifier))))
+    (path_type
+      (path
+        (identifier)))
+    (let_stmt
+      (identifier)
+      (array_literal
+        (number)
+        (number)
+        (number)))
+    (return_stmt
+      (member_expression
+        (identifier)
+        member: (identifier))))
+  (test_decl
+    (string
+      (string_content))
+    (let_stmt
+      (identifier)
+      (struct_literal
+        (path
+          (identifier))
+        (field_init
+          name: (identifier)
+          (boolean))))))
+
+==================
+expressions
+==================
+fn f(n: I32, xs: List[I32]) -> I32? {
+    let a = 1 + 2 * 3 - 4 / 2 % 5
+    let b = a == 7 && n < 10 || n >= 100
+    let c = xs[0] +% 1
+    let d = Simd[F32, 4].splat(2.0f32)
+    let e = obj.field.inner.method(arg, 5)?
+    let g = -n
+    let h = 0..10
+    return match n {
+        0 => "zero"
+        x if x < 0 => "negative"
+        "go" | "stop" => "word"
+        Point { x, y } => "point"
+        (p, q) => "tuple"
+        _ => "other"
+    }
+}
+---
+
+(source_file
+  (function_decl
+    name: (identifier)
+    (param
+      name: (identifier)
+      (path_type
+        (path
+          (identifier))))
+    (param
+      name: (identifier)
+      (path_type
+        (path
+          (identifier))
+        (type_args
+          (path_type
+            (path
+              (identifier))))))
+    (optional_type
+      (path_type
+        (path
+          (identifier))))
+    (let_stmt
+      (identifier)
+      (binary_expression
+        (binary_expression
+          (number)
+          (binary_expression
+            (number)
+            (number)))
+        (binary_expression
+          (binary_expression
+            (number)
+            (number))
+          (number))))
+    (let_stmt
+      (identifier)
+      (binary_expression
+        (binary_expression
+          (binary_expression
+            (identifier)
+            (number))
+          (binary_expression
+            (identifier)
+            (number)))
+        (binary_expression
+          (identifier)
+          (number))))
+    (let_stmt
+      (identifier)
+      (binary_expression
+        (subscript_expression
+          (identifier)
+          (number))
+        (number)))
+    (let_stmt
+      (identifier)
+      (call_expression
+        function: (member_expression
+          (subscript_expression
+            (identifier)
+            (identifier)
+            (number))
+          member: (identifier))
+        (argument_list
+          (number))))
+    (let_stmt
+      (identifier)
+      (try_expression
+        (call_expression
+          function: (member_expression
+            (member_expression
+              (member_expression
+                (identifier)
+                member: (identifier))
+              member: (identifier))
+            member: (identifier))
+          (argument_list
+            (identifier)
+            (number)))))
+    (let_stmt
+      (identifier)
+      (unary_expression
+        (identifier)))
+    (let_stmt
+      (identifier)
+      (binary_expression
+        (number)
+        (number)))
+    (return_stmt
+      (match_expression
+        (identifier)
+        (match_arm
+          (number)
+          (string
+            (string_content)))
+        (match_arm
+          (identifier)
+          (binary_expression
+            (identifier)
+            (number))
+          (string
+            (string_content)))
+        (match_arm
+          (or_pattern
+            (string
+              (string_content))
+            (string
+              (string_content)))
+          (string
+            (string_content)))
+        (match_arm
+          (aggregate_pattern
+            (path
+              (identifier))
+            (field_pattern
+              name: (identifier))
+            (field_pattern
+              name: (identifier)))
+          (string
+            (string_content)))
+        (match_arm
+          (tuple_pattern
+            (identifier)
+            (identifier))
+          (string
+            (string_content)))
+        (match_arm
+          (wildcard)
+          (string
+            (string_content)))))))
+
+==================
+control_and_closures
+==================
+fn g(flag: Bool) -> Void {
+    let z = || 42
+    let h = || -> I32 { 7 }
+    let k = |a: I32, var b| a + b
+    if flag {
+        own(arena) {
+            let m = 1
+        }
+    } else {
+        return
+    }
+    for i in 0..3 {
+        while i < 1 {
+            i += 1
+        }
+    }
+    let s = scope { |sc|
+        let inner = 1
+        sc.done()
+    }
+}
+---
+
+(source_file
+  (function_decl
+    name: (identifier)
+    (param
+      name: (identifier)
+      (path_type
+        (path
+          (identifier))))
+    (path_type
+      (path
+        (identifier)))
+    (let_stmt
+      (identifier)
+      (closure
+        (number)))
+    (let_stmt
+      (identifier)
+      (closure
+        (path_type
+          (path
+            (identifier)))
+        (number)))
+    (let_stmt
+      (identifier)
+      (closure
+        (closure_param
+          (identifier)
+          (path_type
+            (path
+              (identifier))))
+        (closure_param
+          (identifier))
+        (binary_expression
+          (identifier)
+          (identifier))))
+    (if_expression
+      (identifier)
+      (own_expression
+        (identifier)
+        (let_stmt
+          (identifier)
+          (number)))
+      (return_stmt))
+    (for_stmt
+      (identifier)
+      (binary_expression
+        (number)
+        (number))
+      (while_stmt
+        (binary_expression
+          (identifier)
+          (number))
+        (assign_stmt
+          (identifier)
+          (number))))
+    (let_stmt
+      (identifier)
+      (scope_expression
+        (closure_param
+          (identifier))
+        (let_stmt
+          (identifier)
+          (number))
+        (call_expression
+          function: (member_expression
+            (identifier)
+            member: (identifier))
+          (argument_list))))))
+
+==================
+gui view and style
+==================
+use net.{Net_probe, net_close as net_close_fd}
+use http.frm.metrics.{ mx_meta, mx_line }
+
+#[repr(c, aligned(8))]
+struct Chip {
+    var fd: I64
+}
+
+extern "c" fn sum_all(n: I32, ...) -> I64
+
+pub(pkg) fn run(m: Box[M]) -> I32 {
+    return run(TodoApp(m: make()))
+}
+
+view EvS (m: Box[M]) ev fold() {
+  <vbox class="root">
+    <label class="cur">{m.items[m.active]}</label>
+    <button class="b" on:click={setadj(3, -1)}>add</button>
+  </vbox>
+}
+
+style root { direction: column gap: 8 padding: 16 }
+style btn extends base { bg: SURFACE fg: "#ffffff" w: 40 }
+---
+
+(source_file
+  (use_decl
+    (identifier)
+    (path
+      (identifier))
+    (path
+      (identifier))
+    (identifier)
+    (path
+      (identifier)))
+  (use_decl
+    (identifier)
+    (identifier)
+    (identifier)
+    (path
+      (identifier))
+    (path
+      (identifier)))
+  (struct_decl
+    (decorator)
+    name: (identifier)
+    (field_decl
+      name: (identifier)
+      (path_type
+        (path
+          (identifier)))))
+  (function_decl
+    (string
+      (string_content))
+    name: (identifier)
+    (param
+      name: (identifier)
+      (path_type
+        (path
+          (identifier))))
+    (param)
+    (path_type
+      (path
+        (identifier))))
+  (function_decl
+    name: (identifier)
+    (param
+      name: (identifier)
+      (path_type
+        (path
+          (identifier))
+        (type_args
+          (path_type
+            (path
+              (identifier))))))
+    (path_type
+      (path
+        (identifier)))
+    (return_stmt
+      (call_expression
+        function: (identifier)
+        (argument_list
+          (call_expression
+            function: (identifier)
+            (argument_list
+              (labeled_arg
+                (identifier)
+                (call_expression
+                  function: (identifier)
+                  (argument_list)))))))))
+  (view_decl
+    name: (identifier)
+    (identifier)
+    (tag
+      name: (tag_name)
+      (tag_attr
+        (string
+          (string_content))))
+    (tag
+      name: (tag_name)
+      (tag_attr
+        (string
+          (string_content))))
+    (interpolation
+      (interp_expr
+        (identifier)
+        (identifier)
+        (interp_expr
+          (identifier)
+          (identifier))))
+    (tag_close
+      (tag_name))
+    (tag
+      name: (tag_name)
+      (tag_attr
+        (string
+          (string_content)))
+      (tag_attr
+        (interpolation
+          (interp_expr
+            (identifier)
+            (interp_expr
+              (number))
+            (number)))))
+    (markup_text)
+    (tag_close
+      (tag_name))
+    (tag_close
+      (tag_name)))
+  (style_decl
+    (style_prop)
+    (style_word)
+    (style_prop)
+    (number)
+    (style_prop)
+    (number))
+  (style_decl
+    (style_prop)
+    (style_const)
+    (style_prop)
+    (string
+      (string_content))
+    (style_prop)
+    (number)))
