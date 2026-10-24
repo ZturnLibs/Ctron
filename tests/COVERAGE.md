@@ -3421,3 +3421,19 @@ NULL 模型(R1,read_file 族 char* 契约)不受涉保留。std 用户面
 **门**:plugins **11 过 / 0 败**(json_demo emit 复绿,10/1→11/0);
 ffi **35 过 / 3 败**(opt_return 复绿 +1;余 3 = cbox 簇③);smoke
 --full **245 ok / 0 fail**;tui 阶梯 **17/17**;native.sh rc=0。
+
+## 2026-10-25 簇③清:cbox 重复符号——套件双链陈旧拷贝删除;ffi 35/3→38/0
+
+**根**:tests/ffi/cbox{,_dblfree,_useafter}/c_src/ctron_ffi.c = lib/ffi/
+c_src/ctron_ffi.c 的陈旧全等拷贝(T45 批落 lib 正本+夹具副本);cbox 专道
+链接 `$cbd/c_src/*.c` + `$ROOT/lib/ffi/c_src/*.c` 双 glob → 正本+副本双
+定义 = duplicate symbol '_ctron_cbox_take' ×3。
+
+**修**:三副本删除(git rm;box.c = 夹具特有 thing/审计面,保留)。lib
+glob 为正本单源。
+
+**门**:ffi **38 过 / 0 败**(cbox/cbox_dblfree/cbox_useafter 三锚复绿:
+own/borrow/into_raw/free + 审计平衡 + 双违例 panic 语义)。
+
+**余册簇**:②sigv4 golden 值面(s3 2/3);trace c0/c2 emit(另根);
+④bare 通道(环境);⑤crypto_vec known-slow。
