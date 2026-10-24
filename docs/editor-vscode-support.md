@@ -1,6 +1,9 @@
 # Ctron 编辑器支持分析:VSCode 语法高亮、智能提示与工具链集成
 
 状态:**v0.3.0 已交付**(2026-09-05;交接文档见 `superpowers/plans/2026-09-05-editor-lane-HANDOFF.md`)
+- **Vim/Neovim 支持(2026-10-24)**:`editors/vim-ctron/` 落地纯 Vimscript 插件
+  (syntax/indent/ftplugin/ftdetect,规则与本扩展 TextMate grammar 同源对齐,
+  LSP 复用 `server/ctron-lsp.sh`);详见其 README。
 - **v0.5.0 增补(2026-09-17)**:CTML(`.ctml`)与 CTCL(`.ctcl`/`Ctron.lock`)编辑器支持落地——
   各自 TextMate 语法(CTML 绑定/插值内嵌 `source.ctron`;CTCL 按 §6 常见错法标红)+ language-configuration
   + snippets + 扩展侧本地注册表补全/悬浮(`src/ctml.js`/`src/ctcl.js`,数据源为两份冻结规范;
