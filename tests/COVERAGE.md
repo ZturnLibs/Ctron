@@ -3352,4 +3352,5 @@ ill-typed。判例:**15 层 or2 嵌套 = seed eval 静默死(无消息无产物)
 子目录,路径误判「文件消失」虚惊,零损。
 
 **门**:默认烟门 **233 ok / 0 fail**(bin 刷新后,4c iter 复绿);
+smoke --full **245 ok / 0 fail**(bin 刷新后终验;244+trait_obj 双臂门);
 tui 阶梯 **17/17**;native.sh rc=0;trait_obj 双臂 parity 10/2。
