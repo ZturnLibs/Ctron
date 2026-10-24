@@ -216,6 +216,17 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
     // &Trait → t:<Trait>(T25;§3.5 trait 对象 = 胖指针 {data, vtable})
     if nt[0] == "Ref" && nt[1].len > 1 && nt[1][0] == "Named" {
         if ct_is_trait(file, nt[1][1]) {
+            // iter-T16 v2 径A:泛型 trait 引用码携实例后缀(&Seq[I32] → t:Seq__I;
+            // encode 同 u: 泛型字母表——vt struct/常量/调用点/装箱点四处同名)
+            if nt[1].len > 2 && nt[1][2].len > 1 {
+                var suf26 = ""
+                var k26: I32 = 1
+                while k26 < nt[1][2].len {
+                    suf26 = suf26 + ct_inst_encode(ct_ty_code(nt[1][2][k26], file))
+                    k26 += 1
+                }
+                return "t:" + nt[1][1] + "__" + suf26
+            }
             return "t:" + nt[1][1]
         }
         // &T 裸指针(v0.9·三 裁决:路径 1 选项 A——只过界,无取址/解引用语言面):

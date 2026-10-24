@@ -1,0 +1,31 @@
+trait Seq[T] {
+    fn get(self, i: I32) -> T
+    fn count(self) -> I32
+}
+
+struct Bag {
+    let xs: List[I32]
+}
+
+impl Seq[I32] for Bag {
+    fn get(self, i: I32) -> I32 {
+        return self.xs[i]
+    }
+    fn count(self) -> I32 {
+        return self.xs.len()
+    }
+}
+
+fn first(s: &Seq[I32]) -> I32 {
+    return s.get(0)
+}
+
+fn main() -> I32 {
+    var xs = List[I32]()
+    xs.push(10)
+    xs.push(20)
+    var b = Bag { xs: xs }
+    println(first(b).to_string())
+    println(b.count().to_string())
+    return 0
+}

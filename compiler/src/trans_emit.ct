@@ -367,26 +367,33 @@ fn ct_vtable_emit(file: List[Str]) {
         i += 1
     }
     // ② impl thunk + 常量
+    // iter-T16 v2 径A:方法体恒发射(UFCS 具体分派引用,旧 used_as_ref 连坐
+    // 致 t_<T>__<m> 未定义硬错);Thunk/槽/常量 = vt 面,仅胖指用户在册时发射。
+    // 泛型 trait impl 不再跳——vt struct+常量 = per-instance(实例后缀 =
+    // trait targs encode,与 ty 码 t:<Trait>__<enc> 同名;#ifndef 守卫
+    // dedupe 多 impl 同 targs)
     i = 1
     while i < file.len {
         var d = file[i]
-        // P3:泛型 trait(tn2 TPs 非空)→ impl 段全跳(vt struct/常量槽型
-        // TPAr 默认码 ill-typed;方法 standalone fn 保留供 UFCS 直调)
-        var skip9 = false
-        if d[0] == "Impl" {
-            var j9: I32 = 1
-            while j9 < file.len {
-                if file[j9][0] == "Trait" && seq2(file[j9][1], ty_head(d[2])) {
-                    skip9 = file[j9][2].len > 1
-                    j9 = file.len
-                }
-                j9 += 1
-            }
-        }
-        if !skip9 {
-        if d[0] == "Impl" && d[3].len > 1 && d[3][0] == "Named" && ct_trait_used_as_ref(file, ty_head(d[2])) {
+        if d[0] == "Impl" && d[3].len > 1 && d[3][0] == "Named" {
             var tn2 = ty_head(d[2])
+            // Drop impl 排异:方法体归 ct_drop_fn 专道(§6.4),此处重发 = 重定义
+            if tn2.len > 0 && !seq2(tn2, "Drop") {
             var cn = d[3][1]
+            var vtref26 = ct_trait_used_as_ref(file, tn2)
+            // 实例后缀:impl 的 trait targs(Seq[I32] → __I;非泛型 = 空串,码面不变)
+            var vtbase26 = tn2
+            var tpgen26 = false
+            if d[2].len > 2 && d[2][2].len > 1 {
+                tpgen26 = true
+                var suf26 = ""
+                var k26: I32 = 1
+                while k26 < d[2][2].len {
+                    suf26 = suf26 + ct_inst_encode(ct_ty_code(d[2][2][k26], file))
+                    k26 += 1
+                }
+                vtbase26 = tn2 + "__" + suf26
+            }
             // 找 trait 方法集(按声明序)
             var tits2 = List[Str]()
             var j3: I32 = 1
@@ -399,6 +406,7 @@ fn ct_vtable_emit(file: List[Str]) {
             // thunk(impl 方法接收者=具体型,vtable 槽=void* self+非 self 形参;桥接)
             // + 方法体发射(standalone fn 全签名,thunk 与 vtable 消费;T26 带参形)
             var its2 = d[4]
+            var slots26 = List[Str]()
             var k2: I32 = 1
             while k2 < its2.len {
                 var it2 = its2[k2]
@@ -448,29 +456,38 @@ fn ct_vtable_emit(file: List[Str]) {
                     }
                     menv25 = env_bind(menv25, "#frpro", mfrp25)
                     ct_body(it2[5], menv25, file, mr25)
-                    // thunk(返回型=impl 方法返回;void 无 return)
-                    if seq2(mr25, "v") {
-                        println("static void vt_thk_" + tn2 + "_" + it2[1] + "_" + cn + "(void* _s" + thunkp + ") \{ t_" + cn + "__" + it2[1] + "(*(t_" + cn + "*)_s" + thunke + "); }")
-                    } else {
-                        println("static " + ct_ctype(mr25) + " vt_thk_" + tn2 + "_" + it2[1] + "_" + cn + "(void* _s" + thunkp + ") \{ return t_" + cn + "__" + it2[1] + "(*(t_" + cn + "*)_s" + thunke + "); }")
+                    // thunk(vt 面专用,仅胖指用户在册时发射)
+                    if vtref26 {
+                        if seq2(mr25, "v") {
+                            println("static void vt_thk_" + tn2 + "_" + it2[1] + "_" + cn + "(void* _s" + thunkp + ") \{ t_" + cn + "__" + it2[1] + "(*(t_" + cn + "*)_s" + thunke + "); }")
+                        } else {
+                            println("static " + ct_ctype(mr25) + " vt_thk_" + tn2 + "_" + it2[1] + "_" + cn + "(void* _s" + thunkp + ") \{ return t_" + cn + "__" + it2[1] + "(*(t_" + cn + "*)_s" + thunke + "); }")
+                        }
+                        if tpgen26 {
+                            // per-instance vt 槽(具体签型;self 擦除为 void*)
+                            slots26.push("    " + ct_ctype(mr25) + " (*" + it2[1] + ")(void* self" + sigx + ");")
+                        }
                     }
                 }
                 k2 += 1
             }
-            // vtable 常量
-            // P3:泛型 trait(tn2 TPs 非空)→ 常量同跳(①vt struct 已省;
-            // 槽型 TPAr 默认码 ill-typed;方法 standalone fn 保留供 UFCS 直调)
-            var tpgen4 = false
-            var j4: I32 = 1
-            while j4 < file.len {
-                if file[j4][0] == "Trait" && seq2(file[j4][1], tn2) {
-                    tpgen4 = file[j4][2].len > 1
-                    j4 = file.len
+            // vtable 常量(vt 面):泛型 = per-instance(vt_<Trait>__<enc>_for_<Type>,
+            // struct #ifndef 守卫先行);非泛型 = 旧名 vt_<Trait>_for_<Type> 不变
+            if vtref26 {
+                if tpgen26 {
+                    println("#ifndef CT_VTDEF_" + vtbase26)
+                    println("#define CT_VTDEF_" + vtbase26)
+                    println("typedef struct vt_" + vtbase26 + " vt_" + vtbase26 + ";")
+                    println("struct vt_" + vtbase26 + " \{")
+                    var s26: I32 = 0
+                    while s26 < slots26.len {
+                        println(slots26[s26])
+                        s26 += 1
+                    }
+                    println("};")
+                    println("#endif")
                 }
-                j4 += 1
-            }
-            if !tpgen4 {
-                println("static const vt_" + tn2 + " vt_" + tn2 + "_for_" + cn + " = \{")
+                println("static const vt_" + vtbase26 + " vt_" + vtbase26 + "_for_" + cn + " = \{")
                 var k3: I32 = 1
                 var first3 = true
                 while k3 < tits2.len {
@@ -487,7 +504,7 @@ fn ct_vtable_emit(file: List[Str]) {
                 println("")
                 println("};")
             }
-        }
+            }
         }
         i += 1
     }

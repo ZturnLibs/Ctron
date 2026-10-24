@@ -3305,3 +3305,31 @@ UFCS/Drop 走既有路径。v2 = 首个泛型 trait 胖指针用户落地前必�
 
 **验收预设**:泛型 trait(&Seq 族)胖指针构建 + 方法调用,双臂一致;
 非泛型 trait vt 逐字不变(存量快照比对)。
+
+## 2026-10-24 iter/T16 v2 落地(径A)——泛型 trait 对象全链 + 具体型 UFCS 分派 + 成员位 len() 桥
+
+**三缺口一批闭(trans_emit/trans_expr/trans_ty)**:
+1. **具体型收者 trait 方法分派**(泛型/非泛型同缺):旧 Member 调用尾落
+t_<m> 裸名(t_idn2 未声明硬错;旧注「UFCS 直调面不受涉」过时)。新
+ct_impl_method_name(impl self 型码全等匹配,实例码含 targs)→
+t_<声明名>__<m>;mhas 提升形同臂。
+2. **成员位 .len() 桥**(v2 邻案;let 绑定规避纪律根源之一):旧字段收者
+.len() 落 t_len 硬错(p.xs.len() 最小探针实证,树内靠 let 拷贝规避)。
+镜像 Member 读臂五分支(L/tl/定长/N/串)直读。
+3. **泛型 trait per-instance vt(径A)**:ty 码 &Seq[I32] → t:Seq__I
+(ct_inst_encode 同 u: 字母表);vt struct/常量 vt_Seq__I_for_Bag
+(#ifndef 守卫 dedupe 多 impl 同 targs);Thunk/调用点/装箱点四处同名自动。
+方法体恒发射(UFCS 引用,旧 used_as_ref 连坐致未定义);Thunk/槽/常量 =
+vt 面仅胖指用户在册时发射;Drop impl 排异(方法体归 ct_drop_fn 专道,
+重发=重定义——烟门首跑 3 红咬出即修)。
+
+**fx_trait_obj.ct 入册 smoke 3b**:泛型 trait(Seq[I32])+胖指针
+(total: &Seq[I32])+UFCS(b.count())双景——门「trait_obj UFCS 分派+
+泛型胖指针(径A per-instance vt)原生 10/2」。
+
+**在册限**:①内建载体 impl(Seq for List[I32])——L 码擦 targs,分派
+无解,探针留档;②泛型 trait 对象 interp 臂 = eval 桩迹
+("method:…" panic),发射面为准(T25 口径),eval 补面随批登记。
+
+**门**:smoke --full **245 ok / 0 fail**(244 + trait_obj 新门);
+tui 阶梯 **17/17**;native.sh rc=0(bin 全刷新)。

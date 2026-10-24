@@ -1587,6 +1587,23 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 ufargs = ufargs + ct_arg_cast(ucodes[ui3], pcu3, utexts[ui3])
                 ui3 += 1
             }
+            // iter-T16 v2 邻案:成员函数位 .len() 内建直读(镜像 Member 读臂
+            // L/tl/N/定长/串五分支;旧落 t_len 未声明硬错——let 绑定规避
+            // 纪律根源之一)
+            if seq2(m, "len") && utexts.len == 0 {
+                if or2(objt == "L", ct_is_tlcode(objt)) {
+                    return "((ctron_list*)(" + obj + "))->n"
+                }
+                if objt.len >= 3 && byte_slice(objt, 0, 1) == "a" {
+                    return a_count(objt)
+                }
+                if objt == "N" {
+                    return "ctron_len((const void*)(" + obj + "))"
+                }
+                return "strlen((const char*)(" + obj + "))"
+            }
+            // iter-T16 v2:trait impl 方法分派(具体接收者;泛型/非泛型 impl 同一)
+            var imn26 = ct_impl_method_name(file, objt, m)
             if mhas {
                 var mpre = ct_ctype(objt) + " _cmr = " + obj + "; " + mregs
                 var mcall = ct_arg_cast(objt, p0, "_cmr")
@@ -1599,7 +1616,15 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     mcall = mcall + ", " + ct_arg_cast(ucodes[ui4], pcu4, msx)
                     ui4 += 1
                 }
-                return "(\{ " + mpre + " t_" + m + "(" + mcall + "); })"
+                var mfn26 = imn26
+                if mfn26.len == 0 { mfn26 = "t_" + m }
+                return "(\{ " + mpre + " " + mfn26 + "(" + mcall + "); })"
+            }
+            if imn26.len > 0 {
+                if ufargs.len > 0 {
+                    return imn26 + "(" + ct_arg_cast(objt, p0, obj) + ", " + ufargs + ")"
+                }
+                return imn26 + "(" + ct_arg_cast(objt, p0, obj) + ")"
             }
             if ufargs.len > 0 {
                 return "t_" + m + "(" + ct_arg_cast(objt, p0, obj) + ", " + ufargs + ")"
@@ -2190,6 +2215,34 @@ fn ct_cb_ref(file: List[Str], ae: List[Str], ac: Str, ex: Str, pc: Str) -> Str {
 // 实参串:从 ag[from] 起逐个发射,用户 fn 时按形参码插转换;
 // 实参不足按 0 补齐到形参数(镜像 cc.ct 潜伏的缺参调用,如 ty_head 的 2 参 or3 —— 种子
 // 一旦执行即 panic,补 0 仅保证产物可编译,崩路无差分意义)
+// iter-T16 v2:trait impl 方法发射名查找(具体接收者 UFCS 分派)。
+// objt = "u:<名>[__<实例码>]";impl 的 self 型码与 objt 全等(实例码含 targs)
+// 且声明了方法 m → "t_<声明名>__<m>"(与 ct_vtable_emit ② 定义名一致);
+// 未命中 → ""(落既有 t_<m> 内建/STD 臂)。泛型 impl 的 trait targs 不参与
+// 匹配:v1 impl 恒具体(targs 已编码进 self 型码)。
+fn ct_impl_method_name(file: List[Str], objt: Str, m: Str) -> Str {
+    if objt.len > 2 && byte_slice(objt, 0, 2) == "u:" {
+        var i: I32 = 1
+        while i < file.len {
+            var d = file[i]
+            if d[0] == "Impl" && d[3].len > 1 && d[3][0] == "Named" {
+                if ct_ty_code(d[3], file) == objt {
+                    var k: I32 = 1
+                    while k < d[4].len {
+                        var it = d[4][k]
+                        if it[0] == "Method" && seq2(it[1], m) {
+                            return "t_" + d[3][1] + "__" + m
+                        }
+                        k += 1
+                    }
+                }
+            }
+            i += 1
+        }
+    }
+    return ""
+}
+
 fn ct_call_args(ag: List[Str], from: I32, env: List[Str], file: List[Str], callee: Str) -> Str {
     return ct_call_args_tg(ag, from, env, file, callee, mk("None"))
 }

@@ -225,6 +225,18 @@ for cv in spawn chan mutex atomic parallel joinor cancel; do
         bad "conc_$cv 发射/编译失败"
     fi
 done
+# iter-T16 v2 门:trait 对象(UFCS 分派 + 泛型 trait 胖指针 per-instance vt)
+if "$COMP/ctc.sh" emit "$COMP/test/fx_trait_obj.ct" "$T/to.c" > /dev/null 2>&1 \
+   && cc -O1 -w -o "$T/to.bin" "$T/to.c" 2>/dev/null; then
+    timeout 15 "$T/to.bin" > "$T/to.out" 2>&1
+    if grep -qx "10" "$T/to.out" && grep -qx "2" "$T/to.out"; then
+        ok "trait_obj UFCS 分派+泛型胖指针(径A per-instance vt)原生 10/2"
+    else
+        bad "trait_obj 原生输出异: $(tr '\n' '|' < "$T/to.out" | head -1)"
+    fi
+else
+    bad "trait_obj 发射/编译失败"
+fi
 for cv in fnval fnval_str fnfield byteslice_arg resret pmapclo cloval clostr enumres fnret try tlist own generic gstruct gpayload derive optstr boxalias gprobe2 gprobe fmap fs time drop slice simd fnval_multi u64 drop_unwind w8 val_panic_order val_negarith channel_cap128 arr_byval tuple with_expr loop_relet empty_brace as_str_num arr_ret arr_nested bytes opti32 opti32b; do
     if "$COMP/ctc.sh" emit "$COMP/test/fx_$cv.ct" "$T/cn_$cv.c" > /dev/null 2>&1 \
        && cc -O1 -w -o "$T/cn_$cv.bin" "$T/cn_$cv.c" 2>/dev/null; then
