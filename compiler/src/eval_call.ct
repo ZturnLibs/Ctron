@@ -1710,6 +1710,28 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
                 return e4("k", ob.env, vV2(), ob.out)
             }
         }
+        // iter-T16 v2 限②收口:调用形 .len() 内建直读(镜像 eval_expr Nm 读臂
+        // tag5 串/tag8 A·L/tag8 SB 三分支;旧落 call_mem 尾 panic("method:"),
+        // 字段收者咬人——与发射臂 len 桥同源,let 规避纪律根源)
+        if seq2(m, "len") && vals.len == 0 {
+            if recv.tag == 5 {
+                return e4("k", ob.env, vI(recv.s.len), ob.out)
+            }
+            if recv.tag == 8 {
+                if or2(seq2(cx_of(recv)[0], "A"), seq2(cx_of(recv)[0], "L")) {
+                    return e4("k", ob.env, vI(cx_of(recv).len - 1), ob.out)
+                }
+                if seq2(cx_of(recv)[0], "SB") {
+                    var sbl: I32 = 0
+                    var sbi: I32 = 1
+                    while sbi < cx_of(recv).len {
+                        sbl += cx_of(recv)[sbi].len
+                        sbi += 1
+                    }
+                    return e4("k", ob.env, vI(sbl), ob.out)
+                }
+            }
+        }
         if seq2(m, "push") {
             if seq2(cx_of(recv)[0], "L") && vals.len == 1 {
                 cx_of(recv).push(v_box(v_unbox(vals[0])))

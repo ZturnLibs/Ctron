@@ -284,6 +284,19 @@ fn ct_fn(d: List[Str], file: List[Str], pass: Str) {
     ct_body(d[5], penv, file, rc)
 }
 
+// 自由型参判别(v1 启发式):单大写名 = 泛型占位(T/S/K/V 惯例;语言面禁
+// 单大写具体型)。判例:15 层 or2 嵌套 = seed eval 静默死,守卫用平面 if 链。
+fn ct_is_type_param_name(n: Str) -> Bool {
+    if n.len != 1 {
+        return false
+    }
+    var c0 = byte_at(n, 0)
+    if c0 >= 65 && c0 <= 90 {
+        return true
+    }
+    return false
+}
+
 // T25:trait 是否被引用为 &Trait 参数(仅这些产 vtable;Drop/UFCS 走既有路径)
 fn ct_trait_used_as_ref(file: List[Str], tn: Str) -> Bool {
     var i: I32 = 1
@@ -377,8 +390,25 @@ fn ct_vtable_emit(file: List[Str]) {
         var d = file[i]
         if d[0] == "Impl" && d[3].len > 1 && d[3][0] == "Named" {
             var tn2 = ty_head(d[2])
+            // trait targs 具体性守卫:含未解析名(iter.ct 旧式自由型参 T/S)
+            // → 排异(体归单态化道;占位码签名 ill-typed 防线)
+            var conc26 = true
+            if d[2].len > 2 && d[2][2].len > 1 {
+                var k27: I32 = 1
+                while k27 < d[2][2].len {
+                    var tg27 = d[2][2][k27]
+                    if tg27[0] == "Named" {
+                        if ct_is_type_param_name(tg27[1]) {
+                            conc26 = false
+                        }
+                    }
+                    k27 += 1
+                }
+            }
             // Drop impl 排异:方法体归 ct_drop_fn 专道(§6.4),此处重发 = 重定义
-            if tn2.len > 0 && !seq2(tn2, "Drop") {
+            // impl 自身泛型(TPs 非空,iter.ct 的 Seq[T,…] 族)排异:体归单态化
+            // 专用道,此处签名 T/S 落占位码 ill-typed(旧 skip9 同域)
+            if tn2.len > 0 && !seq2(tn2, "Drop") && !(d[1].len > 1 && d[1][0] == "TPs") && conc26 {
             var cn = d[3][1]
             var vtref26 = ct_trait_used_as_ref(file, tn2)
             // 实例后缀:impl 的 trait targs(Seq[I32] → __I;非泛型 = 空串,码面不变)

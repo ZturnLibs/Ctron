@@ -229,10 +229,11 @@ done
 if "$COMP/ctc.sh" emit "$COMP/test/fx_trait_obj.ct" "$T/to.c" > /dev/null 2>&1 \
    && cc -O1 -w -o "$T/to.bin" "$T/to.c" 2>/dev/null; then
     timeout 15 "$T/to.bin" > "$T/to.out" 2>&1
-    if grep -qx "10" "$T/to.out" && grep -qx "2" "$T/to.out"; then
-        ok "trait_obj UFCS 分派+泛型胖指针(径A per-instance vt)原生 10/2"
+    "$COMP/ctc.sh" "$COMP/test/fx_trait_obj.ct" > "$T/to.iv" 2>&1
+    if diff -q "$T/to.out" "$T/to.iv" > /dev/null 2>&1 && grep -qx "10" "$T/to.out" && grep -qx "2" "$T/to.out"; then
+        ok "trait_obj UFCS 分派+泛型胖指针(径A)双臂逐字一致 10/2"
     else
-        bad "trait_obj 原生输出异: $(tr '\n' '|' < "$T/to.out" | head -1)"
+        bad "trait_obj 分歧: $(diff "$T/to.out" "$T/to.iv" 2>/dev/null | head -2 | tr '\n' '|')"
     fi
 else
     bad "trait_obj 发射/编译失败"

@@ -3333,3 +3333,23 @@ vt 面仅胖指用户在册时发射;Drop impl 排异(方法体归 ct_drop_fn �
 
 **门**:smoke --full **245 ok / 0 fail**(244 + trait_obj 新门);
 tui 阶梯 **17/17**;native.sh rc=0(bin 全刷新)。
+
+## 2026-10-24 T16 v2 限②收口(eval len 调用面)+ 守卫补强——双臂 parity 门升级
+
+**eval call_mem 补 .len() 调用面**(eval_call.ct;与发射臂 len 桥同源):
+镜像 eval_expr Nm 读臂三分支(tag5 串/tag8 A·L/tag8 SB);旧字段收者
+`.len()` 调用形落 panic("method:…")——l1 最小探针(零 trait)即咬,
+g3/g5 泛型对象桩迹同根(impl 体内字段 len)。收口后 **fx_trait_obj 双臂
+逐字一致 10/2**,smoke 门升级 emit-only → 双臂 parity diff。
+
+**emit 守卫补强(trans_emit.ct)**:iter.ct 旧式自由型参 impl
+(`impl Seq[T,…] for …`,targs 含未解析单大写名)排异——签名 T/S 落占位码
+ill-typed。判例:**15 层 or2 嵌套 = seed eval 静默死(无消息无产物)**,
+守卫用平面 if 链;单大写名 = 型参启发式(v1;语言面禁单大写具体型)。
+
+**勘误**:bg_59/60/61 连环 3600s 超时 = 后端抖动 + 4c 走滞留 bin 件
+(d1c39fbb,TBs 排异前)双重假象;trans 夹具在 selfhosted/fixtures/
+子目录,路径误判「文件消失」虚惊,零损。
+
+**门**:默认烟门 **233 ok / 0 fail**(bin 刷新后,4c iter 复绿);
+tui 阶梯 **17/17**;native.sh rc=0;trait_obj 双臂 parity 10/2。
