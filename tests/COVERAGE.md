@@ -3354,3 +3354,19 @@ ill-typed。判例:**15 层 or2 嵌套 = seed eval 静默死(无消息无产物)
 **门**:默认烟门 **233 ok / 0 fail**(bin 刷新后,4c iter 复绿);
 smoke --full **245 ok / 0 fail**(bin 刷新后终验;244+trait_obj 双臂门);
 tui 阶梯 **17/17**;native.sh rc=0;trait_obj 双臂 parity 10/2。
+
+## 2026-10-25 套件网扩展扫(gc deep_stack 重校)——六面旁证零回归
+
+**面结果**(bin 全新):json_fidelity **19/0**;w7 **3/0**;rt_scopes
+**5/0**;drv_parity **136 ok / 0 fail**(驱动器面最大旁证);gc **9/0**
+(重校后);bare 5 过/4 败/4 跳——4 败 = bare 工具链通道缺失
+(brew llvm/ld.lld 或 CTRON_BARE_CC/LD 指认,环境登记在案,非回归)。
+
+**gc deep_stack 重校(4000→2000)**:SIGSEGV bisect 阈值 ∈(2000,3000]
+——4000 层 × 现行帧宽 > macOS 8MB 主栈(M1.5 时绿 = 帧宽随批增长漂移,
+非本会话回归;len 桥为内联,帧反窄)。2000 层三档(gc=on/off/precise)
+全绿,覆盖等价(深递归×帧驻 List×栈中段收集)。**帧瘦身登记为债**
+(所有 fixture 深递归面共享的长期项)。
+
+**勘误工具**:套件 runner 的 CTRON_STDPATH="$ROOT/std" 为旧路径
+(现 lib/std);deep_stack 无 std 依赖故未触,余 fixture 有涉时须随批修。

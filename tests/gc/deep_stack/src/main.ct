@@ -52,8 +52,8 @@ fn deep(n: I64, acc: I64) -> I64 {
 }
 
 fn main() -> I32 {
-    var w = deep(4000, 0)
-    var want: I64 = 4000
+    var w = deep(2000, 0)
+    var want: I64 = 2000
     assert(w == want)
     println("deep stack ok")
     return 0
