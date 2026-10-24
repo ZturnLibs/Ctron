@@ -3437,3 +3437,19 @@ own/borrow/into_raw/free + 审计平衡 + 双违例 panic 语义)。
 
 **余册簇**:②sigv4 golden 值面(s3 2/3);trace c0/c2 emit(另根);
 ④bare 通道(环境);⑤crypto_vec known-slow。
+
+## 2026-10-25 簇②勘定:重分类 ⑤(设计慢径)+ E5030 真修——s3 lib 遗留 main 删除
+
+**真修**:pkgs/s3/s3.ct 遗留调试 `fn main`(sha256_hex("x").len 探针)
+——库模块混入入口,use 撞名 E5030,c0/i_basic_time interp 即红。删除。
+
+**重分类**:c0_sigv4_golden 修复后 = seed-interp >900s 未完 = **设计慢径
+非值错**——sha256 位函数走 bit.\* 内建,解释臂 = 文本域按位组合(v1 设计,
+§4.5/T01「发射臂原生 C 位运算,解释臂文本域组合」);最小复现
+sha256_hex("x") 60s 不返同证。⑤类名正:**interp 文本域位算 = 设计慢径**
+(crypto_vec 同根);编译臂原生位运算快径正常。runner 面登记:c0/i_ 族
+须 CTRON_CC 专臂或长预算,套件门待批。
+
+**余册簇**(更新):trace c0/c2 emit(另根);④bare 通道(环境);
+⑤interp 文本域位算设计慢径(s3 c0/i_basic_time、crypto_vec);
+⑦runner 超时/专臂治理(s3/crypto_vec 套件门)。

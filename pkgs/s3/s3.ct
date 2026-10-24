@@ -1,7 +1,4 @@
 use std.crypto.{ sha256_hex }
-fn main() -> I64 {
-    return sha256_hex("x").len
-}
 
 fn s3_nl() -> Str {
     return "\n"
