@@ -3402,3 +3402,22 @@ ctron_cbox_take 重复符号(dedupe 面)。checkout 实证会话前同值。
 会话回归;本会话编译器核六提交零回归。基线红登记待批:①emit struct
 值链面(plugins/ffi/trace 同根,最大簇)②sigv4 golden 值面 ③cbox
 符号 dedupe ④bare 工具链通道(环境)⑤crypto_vec known-slow。
+
+## 2026-10-25 簇①清:Option[Str] 槽模型统一(ct_res)——plugins/ffi 两面复绿
+
+**根**(trans_ty.ct:310 旧特判):Option[Str] 落 "s" NULL 模型,而值面
+(None/Some 字面量、is_some/.or 消费、extern 边界包装)恒 ct_res——槽面
+const char* ← ct_res 初始化,cc 硬错。struct 字段槽咬 plugins json_demo
+(WithLists nick/flag)、let 槽咬 ffi opt_return(var s = cfg_maybe(0)
+边界包装 expr),两面同根。
+
+**修**:特判废除,Option[Str] 统一 "R"(ct_ctype=ct_res);`Str?` 糖
+NULL 模型(R1,read_file 族 char* 契约)不受涉保留。std 用户面
+(strip_prefix/str_get/str_some/enc_get/write_json)本为 ct_res 形,零涟漪。
+
+**勘误**:json_demo「更深层静默死」假象 = 前测用未含本修的 bin/源;
+单根即清,无第二层。trace c0/c2 emit 败 = 另一根(非 ct_res 层),留册。
+
+**门**:plugins **11 过 / 0 败**(json_demo emit 复绿,10/1→11/0);
+ffi **35 过 / 3 败**(opt_return 复绿 +1;余 3 = cbox 簇③);smoke
+--full **245 ok / 0 fail**;tui 阶梯 **17/17**;native.sh rc=0。

@@ -307,11 +307,11 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
     }
     if nt[1] == "ISize" { return "6" }
     // R1 补:显式 Option[Str] 拼写同落 NULL 模型(糖形 Optional 已在函数头)
-    if nt[1] == "Option" && nt.len > 2 && nt[2].len > 1 {
-        if seq2(ct_ty_code(nt[2][1], file), "s") {
-            return "s"
-        }
-    }
+    // iter-T16 后续/簇①:Option[Str] 旧特判落 "s"(NULL 模型)废除——
+    // 值面(None/Some 字面量、is_some/or 消费)恒 ct_res,槽面 "s" = 模型
+    // 冲突(struct 字段/let 槽 const char* ← ct_res 初始化,cc 硬错;
+    // plugins json_demo/ffi opt_return/trace corpus 三面同根)。Option[Str]
+    // 统一 "R";Str? 糖 NULL 模型(R1,read_file 族)不受涉保留。
     if or2(nt[1] == "Result", nt[1] == "Option") { return "R" }
     if nt[0] == "Named" && nt.len > 2 && nt[2].len > 1 {
         // 泛型 struct 实例化注解:Pair[I32, Str] → u:Pair__I_S(实参限标量/Str)
