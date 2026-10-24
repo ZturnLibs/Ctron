@@ -3370,3 +3370,18 @@ tui 阶梯 **17/17**;native.sh rc=0;trait_obj 双臂 parity 10/2。
 
 **勘误工具**:套件 runner 的 CTRON_STDPATH="$ROOT/std" 为旧路径
 (现 lib/std);deep_stack 无 std 依赖故未触,余 fixture 有涉时须随批修。
+
+## 2026-10-25 套件网扩展扫·第二批(plugins/trace 基线勘定 + trace 修正 +1)
+
+**第二批结果**:pkg 全链路绿;doctest 9/0;wasm 1/0/7 跳(环境);log 9/0;
+metrics 7/0;ndjson 8/0;pb 17/0;**drv_parity 136/0**(第一批,驱动器面
+最大旁证);crypto_vec 300s 超时(seed 纯解释重算面,登记 known-slow)。
+
+**plugins 10/1 = 在册基线**(前两批门同值):json_demo emit 面静默错编
+(WithLists Option[Str] 槽 ct_res 初始化,账本 3032 行在册)——checkout
+6f2b70e2 三发射面 bisect 实证会话前同红,非本会话回归。
+
+**trace 4/3 → 5/2(+1)**:c2_from_req interp 红根 = arrfit 严检
+(9aea1313,非本会话)× 老松夹具(256 声明 ×269 零字面量)——裁齐 256
+后 interp 复绿。余 2 败(c0/c2 emit)= 会话前同红(checkout 实证),
+归 emit struct 值链面在册债同族,批规模登记。
