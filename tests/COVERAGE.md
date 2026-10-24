@@ -3385,3 +3385,20 @@ metrics 7/0;ndjson 8/0;pb 17/0;**drv_parity 136/0**(第一批,驱动器面
 (9aea1313,非本会话)× 老松夹具(256 声明 ×269 零字面量)——裁齐 256
 后 interp 复绿。余 2 败(c0/c2 emit)= 会话前同红(checkout 实证),
 归 emit struct 值链面在册债同族,批规模登记。
+
+## 2026-10-25 套件网扩展扫·第三批(db/thread 族全绿;s3/ffi 基线勘定)
+
+**第三批结果**:db **50/0**(23b 面);thread **10/0**;tasks **21/0**;
+fio PASS;steno **24/0**(parked A/B 之 soak 面实为可跑且绿)。
+
+**s3 2/3(基线)**:c0_sigv4_golden interp+emit + i_basic_time interp
+——checkout 6f2b70e2 四面 bisect 实证会话前同值,非本会话回归。
+
+**ffi 34/4(基线)**:opt_return = Option[Str] 槽 ct_res 初始化 cc 败
+(与 plugins json_demo 同根,emit struct 值链面在册债);cbox ×3 =
+ctron_cbox_take 重复符号(dedupe 面)。checkout 实证会话前同值。
+
+**扩展扫总结论**:23 面过、7 面基线红全部 pre-session bisect 实证非本
+会话回归;本会话编译器核六提交零回归。基线红登记待批:①emit struct
+值链面(plugins/ffi/trace 同根,最大簇)②sigv4 golden 值面 ③cbox
+符号 dedupe ④bare 工具链通道(环境)⑤crypto_vec known-slow。
