@@ -3510,3 +3510,19 @@ exec /opt/homebrew/opt/llvm/bin/clang -Wno-error=implicit-function-declaration \
 ```
 CTRON_BARE_CC=<包装器> CTRON_BARE_LD=/opt/homebrew/opt/lld/bin/ld.lld。
 链接面收官后 bare 门 5 过/4 败 → 预期全绿。
+
+## 2026-10-25 ④bare 通道收官推进:brew qemu + rustup builtins——5 过→13 过/2 败/0 跳
+
+**链路通**:rustup target add(thumbv7em/riscv32imac;内含 compiler_
+builtins rlib,重试后下载成功)+ ld.lld 架构感知包装(file -b 探 .o
+架构,per-target 追加 builtins rlib)+ brew qemu(netduinoplus2/virt
+半主机跑面)。**跑门 6 新过**:08_bare/Pool 族双靶真跑+违例 panic 语义
+全数绿。
+
+**余 2 败 = ⑦转正面实语义**:08_bare 双靶真跑 = "arena OOM" 早退——
+Arena.fixed(1024) + zeros[U32](256) 应恰合,疑发射/rt 面 arena 对齐
+尾差(off-by-pad),O1 未蔽。**批规模登记**:bare-rt arena 对齐/容量
+语义批(⑦转正收官);qemu 半主机跑面已通,复现零障碍。
+
+**环境增量**(登记):brew llvm/lld/qemu 三件;rustup thumbv7em+
+riscv32imac 双 target;包装器双件存 .w0/(barecc.sh/bareld.sh)。
