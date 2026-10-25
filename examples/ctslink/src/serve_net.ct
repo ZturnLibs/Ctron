@@ -184,8 +184,8 @@ fn rd_parse(url: Str) -> RdTarget {
 }
 
 fn rd_incr(fd: I64, code: Str) -> I64 {
-    let rbuf: I64[4096] = [0]
-    let scr: I64[512] = [0]
+    let rbuf: I64[4096] = [0] ** 4096
+    let scr: I64[512] = [0] ** 512
     let fill = Box[RdsCell64](RdsCell64 { v: 0 })
     if redis_send_cmd_fd(fd, redis_incr_cmd(rd_key(code)), scr) != 0 {
         return 0 - 1
@@ -198,8 +198,8 @@ fn rd_incr(fd: I64, code: Str) -> I64 {
 }
 
 fn rd_get(fd: I64, code: Str) -> I64 {
-    let rbuf: I64[4096] = [0]
-    let scr: I64[512] = [0]
+    let rbuf: I64[4096] = [0] ** 4096
+    let scr: I64[512] = [0] ** 512
     let fill = Box[RdsCell64](RdsCell64 { v: 0 })
     if redis_send_cmd_fd(fd, redis_get_cmd(rd_key(code)), scr) != 0 {
         return 0
@@ -222,7 +222,7 @@ fn rd_connect(url: Str) -> I64 {
         return 0 - 1
     }
     let hb = pg_str_bytes(t.host)
-    let hostl: I64[256] = [0]
+    let hostl: I64[256] = [0] ** 256
     var i: I64 = 0
     while i < hb.len && i < 256 {
         hostl[i] = hb[i]
@@ -250,7 +250,7 @@ fn pg_boot(dsn: Str) -> I64 {
         dbname = pgd_user(d)
     }
     let hb = pg_str_bytes(pgd_host(d))
-    let hostl: I64[256] = [0]
+    let hostl: I64[256] = [0] ** 256
     var hi: I64 = 0
     while hi < hb.len && hi < 256 {
         hostl[hi] = hb[hi]
@@ -261,8 +261,8 @@ fn pg_boot(dsn: Str) -> I64 {
         println("ctslink: pg 连接失败,行存储走内存")
         return 0 - 1
     }
-    let rbuf: I64[4096] = [0]
-    let scr: I64[512] = [0]
+    let rbuf: I64[4096] = [0] ** 4096
+    let scr: I64[512] = [0] ** 512
     let fill = Box[PgCell64](PgCell64 { v: 0 })
     pg_send_msg_fd(fd, pg_startup_msg(pgd_user(d), dbname, "ctslink"), scr)
     let s = pg_scram_handshake_fd(fd, rbuf, fill, scr, pgd_user(d), pgd_pass(d), pg_scram_nonce())
@@ -281,8 +281,8 @@ fn pg_boot(dsn: Str) -> I64 {
 }
 
 fn pg_exec(fd: I64, sql: Str) -> I64 {
-    let rbuf: I64[4096] = [0]
-    let scr: I64[512] = [0]
+    let rbuf: I64[4096] = [0] ** 4096
+    let scr: I64[512] = [0] ** 512
     let fill = Box[PgCell64](PgCell64 { v: 0 })
     if pg_send_msg_fd(fd, pg_query_msg(sql), scr) != 0 {
         return 0 - 1
@@ -316,7 +316,7 @@ fn pg_boot(dsn: Str) -> I64 {
         dbname = pgd_user(d)
     }
     let hb = pg_str_bytes(pgd_host(d))
-    let hostl: I64[256] = [0]
+    let hostl: I64[256] = [0] ** 256
     var hi: I64 = 0
     while hi < hb.len && hi < 256 {
         hostl[hi] = hb[hi]
@@ -327,8 +327,8 @@ fn pg_boot(dsn: Str) -> I64 {
         println("ctslink: pg 连接失败,行存储走内存")
         return 0 - 1
     }
-    let rbuf: I64[4096] = [0]
-    let scr: I64[512] = [0]
+    let rbuf: I64[4096] = [0] ** 4096
+    let scr: I64[512] = [0] ** 512
     let fill = Box[PgCell64](PgCell64 { v: 0 })
     pg_send_msg_fd(fd, pg_startup_msg(pgd_user(d), dbname, "ctslink"), scr)
     let s = pg_scram_handshake_fd(fd, rbuf, fill, scr, pgd_user(d), pgd_pass(d), pg_scram_nonce())
@@ -365,7 +365,7 @@ fn main() {
             return b[0]
         },
         read: |fd, cap| {
-            let buf: I64[4096] = [0]
+            let buf: I64[4096] = [0] ** 4096
             let n = ctron_net_read_t(fd, buf, 4096, 5000)
             if n <= 0 {
                 return ""
