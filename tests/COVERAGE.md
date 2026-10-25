@@ -3502,6 +3502,17 @@ sha256_hex("x") = 2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a48
 (bit.xor_i64 等 → eval_host 内建,宿主 C 位算直返,逐算子小改)——
 ②小批可先行(20 op 形 × 宿主分派),①为长期。
 
+## 2026-10-25 ⑤补勘:发射面本有 C 级 ns_bit 快径;慢径=自举 interp 专属;内联臂撤回
+
+**对照定谳**:发射臂 sha256_hex = 1.9s 全程值正确(emitted C 之 ns_bit =
+编译器 rt 级 C 实现=原生快径,恒在);慢径 = **自举 ctron-cc interp 专属**
+——eval_call 之 ns_bit = Ctron 移植文本域组合(自举无位算语言面可表达,
+移植降级);种子 rt_bit = __int128 原生(已快)。内联 C 位算臂两度尝试 =
+撤回(产物已含快径,臂冗余;且踩 seq2/切片两判例)。
+
+**⑤真批口径**:自举 interp 位算快径 = 语言位算面(新增算子或内建直返
+逃逸)或解释器 GC 回收,语言/运行时协同设计批,待裁。
+
 ## 2026-10-25 ④bare 通道进度:brew llvm+lld 就位,编译面已通;链接面待 builtins
 
 **通道搭建**:brew install llvm(clang-23)+ brew install lld(ld.lld/
