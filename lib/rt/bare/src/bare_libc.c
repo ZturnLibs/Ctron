@@ -292,8 +292,10 @@ char* getenv(const char* name) { (void)name; return 0; }
 
 /* ---------------- 堆面:静态池 bump(预算化;无 free) ----------------
  * 发射 C 的切片字面量面(ctron_amalloc)在 bare 下被引用时自此取材;
- * 池尽 = 返回 0(调用方响亮路径)。16KiB 预算计入 100KB 体积口径(.bss)。 */
-static unsigned char ct_heap_pool[16384];
+ * 池尽 = 返回 0(调用方响亮路径)。32KiB(2026-10-25:16KiB 下 test 驱动
+ * 串拼接中途耗尽,08_bare 双靶 OOM;32KiB 后 .bss≈116KB < 128KB SRAM,
+ * 链接器自证)。 */
+static unsigned char ct_heap_pool[32768];
 static size_t ct_heap_off = 0;
 void* malloc(size_t n) {
     n = (n + 15) & ~(size_t)15;

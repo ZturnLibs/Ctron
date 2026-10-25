@@ -3528,3 +3528,13 @@ malloc → NULL → panic("arena OOM")),先于测试块,非显式 Arena.fixed �
 
 **环境增量**(登记):brew llvm/lld/qemu 三件;rustup thumbv7em+
 riscv32imac 双 target;包装器双件存 .w0/(barecc.sh/bareld.sh)。
+
+## 2026-10-25 ④尾清:裸机堆池 16KiB→32KiB——bare 门 15 过/0 败/0 跳 全绿
+
+**根定**:test 驱动串拼接 = 有限量(三测试块×少数断言),16KiB 池不足;
+netduinoplus2 = 128KB SRAM,池 32KiB 后 .bss≈116KB 仍留 12KB 余量——
+链接器自证(ld.lld 溢出即红)。一行预算修。
+
+**门**:bare **15 过 / 0 败 / 0 跳**(08_bare/Pool 族双靶真跑+违例语义+
+审计平衡全数绿)。**④全簇闭**(工具链+runtime 预算);runtime 调平批
+销账(池预算即调平本体,驱动去隐式分配=长期卫生项不挡门)。
