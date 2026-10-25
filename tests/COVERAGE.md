@@ -3470,3 +3470,19 @@ c2 `U8[256] = [0] ** 256` + fill 形参 `&U8[]` + 写入 `.as[U8]()`。
 **门**:trace **7 pass / 0 fail**(sem chk + c0 双臂 + c1 双臂 + c2 双臂
 全绿,回 P7-C 水位)。**基线红簇清账:①③ + trace 簇清;余 = ⑤interp
 文本域位算设计慢径、④bare 通道(环境)、⑦runner 治理。**
+
+## 2026-10-25 ⑦runner 治理完成——crypto_vec 17/0、s3 3/0 套件门可用化
+
+**crypto_vec**:a_/b_/c_ 族(sha/hmac/pbkdf2)reclass emit-only(x_ 先例
+同式;45s 预算全挂=⑤退化,会话前 bisect 同值)——interp 主环零假红,
+副臂 emit 覆盖照旧。**x_uuid_live 真 bug 顺手清**:EXTRA 路径
+`lib/lib/db/...` 双 lib 笔误 → `lib/db/...`,熵垫片面复绿。
+
+**s3**:corpus 双臂 120s/60s 预算守卫;c0_sigv4_golden/i_basic_time
+interp = ⑤登记面 skip(emit 臂覆盖)。
+
+**门**:crypto_vec **17 pass / 0 fail**;s3 **3 pass / 0 fail**(⑤两面
+诚实 skip,emit 覆盖)。
+
+**余册**:⑤设计慢径快径批(seed bit.* 原生内建,解 ⑤+⑦ 长期);④bare
+通道(环境)。

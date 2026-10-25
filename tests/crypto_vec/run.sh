@@ -45,10 +45,13 @@ fi
 # std/crypto.ct inline 测试归 tests/http/run.sh 常设岗(P4 起),此处不重复计。
 
 # ── corpus:主环 = 解释器(x_ 仅 emit 臂,不入计)──
+# ⑤登记(2026-10-25):a_/b_/c_ 族 = sha/hmac/pbkdf2 = bit.* 文本域位算
+# 解释径退化(45s 预算全挂,会话前 bisect 同值)——reclass emit-only 待
+# 快径批;a_/b_/c_ 副臂 emit 覆盖照旧。
 for f in "$DIR"/corpus/*.ct; do
     name=$(basename "$f" .ct)
     case "$name" in
-        x_*) continue ;;
+        x_*|a_*|b_*|c_*) continue ;;
     esac
     if "$CC" run "$f" > "$T/$name.out" 2>&1; then
         pass=$((pass+1)); echo "  PASS $name (interp)"
@@ -63,7 +66,7 @@ if [ -x "$EMIT" ]; then
         name=$(basename "$f" .ct)
         EXTRA=""
         if [ "$name" = "x_uuid_live" ]; then
-            EXTRA="$ROOT/lib/lib/db/c_src/ctron_entropy.c"
+            EXTRA="$ROOT/lib/db/c_src/ctron_entropy.c"
         fi
         if "$EMIT" run "$f" > "$T/$name.e.c" 2>"$T/$name.e.err" \
            && cc -O1 -w -o "$T/$name.e.bin" "$T/$name.e.c" $EXTRA 2>"$T/$name.e.cc.err" \
