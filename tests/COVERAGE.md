@@ -3526,6 +3526,24 @@ sha256_hex("x") = 2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a48
 (生产面),interp 慢径仅测试基建触,套件门已 emit-only 治理(17/0、3/0)。
 **⑤挂账形态 = P5-B 关联批,无独立待裁。**
 
+## 2026-10-25 ⑤perf-fix 落地:bit_comb 逐字符直算(O(len²)→O(len))——interp sha 不可完成→356s 完成值正确
+
+**sample 定位**(macOS sample,5s):热点 = t_bit_comb + t_c6divmod
+(617 样本簇;per-bit c6divmod 长除 = O(len²)/算子,位算主导)。
+bit_comb 重写 = and/or/xor 逐字符直算(MSB 尾对齐,mode 三臂,反转+
+前导零收敛 = c6can 同口径);shl/shr/not 不涉(本 O(len))。
+
+**净效**:sha256_hex("x") interp = 超时不可完成 → **356s 完成值正确
+(2d711642…,与发射臂逐字同)**;重采样 = bit_comb/c6divmod 热点消
+(残余 = 纯解释开销 × 文本算术 = v1 设计,gc 4% 小头)。
+
+**门**:bt 隔离四算子值全对(3/1/16/2);smoke --full **245 ok /
+0 fail**(零回归);legacy 死码清除。
+
+**余**:⑤残余慢 = 解释器常数开销(v1 设计;语言位算符=永不挪用律禁行);
+P5-B 精确 GC = 大幅收益候选(独立批)。套件门 = ⑦治理态即终态
+(crypto_vec 17/0、s3 3/0)。
+
 ## 2026-10-25 ⑤探针锚点终录(下会话入口)
 
 - **最小复现**:`use std.crypto.{sha256_hex}; println(sha256_hex("x"))` 经

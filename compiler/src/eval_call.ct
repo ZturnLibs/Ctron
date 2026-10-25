@@ -2063,45 +2063,59 @@ fn bit_sfold(u: Str, bits: I32, signed: Bool) -> Str {
 }
 // 逐位组合:a/b 非负文本(< 2^bits);mode 0=and 1=or 2=xor
 fn bit_comb(bits: I32, a: Str, b: Str, mode: I32) -> Str {
-    var aa = a
-    var bb = b
-    var acc = "0"
-    var pw = "1"
+    // ⑤P5-B:per-char 直算(O(len);旧 per-bit c6divmod 长除 = O(len²),
+    // sha 全链位算主导耗时,sample 实证 bit_comb+c6divmod 热点)。
+    // a/b = 规范二进制文本(MSB 先,无前导零,"0"=零);mode 0=and 1=or 2=xor。
+    var al = a.len
+    var bl = b.len
+    var ml = al
+    if bl > ml { ml = bl }
+    var rev = ""
     var i: I32 = 0
-    while i < bits {
-        if aa == "0" {
-            if mode == 0 {
-                // and:剩余位恒 0,直接累计完毕
-                return acc
-            }
-            if aa == "0" && bb == "0" {
-                // or/xor:双方剩余位全 0,直接完成(高位零值早退,省满 64 轮)
-                return acc
-            }
+    while i < ml {
+        var ca = 0
+        if i < al {
+            ca = byte_at(a, al - 1 - i) - 48
         }
-        var qa = c6divmod(aa, "2")
-        var qb = c6divmod(bb, "2")
+        var cb = 0
+        if i < bl {
+            cb = byte_at(b, bl - 1 - i) - 48
+        }
         var on = false
-        var b1 = bit_rest(qa) == "1"
-        var b2 = bit_rest(qb) == "1"
         if mode == 0 {
-            on = b1 && b2
+            on = ca == 1 && cb == 1
         }
         if mode == 1 {
-            on = b1 || b2
+            on = ca == 1 || cb == 1
         }
         if mode == 2 {
-            on = b1 != b2
+            on = ca != cb
         }
         if on {
-            acc = c6add(acc, pw)
+            rev = rev + "1"
+        } else {
+            rev = rev + "0"
         }
-        aa = bit_quot(qa)
-        bb = bit_quot(qb)
-        pw = c6add(pw, pw)
         i += 1
     }
-    return acc
+    // 反转回 MSB 先 + 前导零收敛(c6can 同口径)
+    var out = ""
+    var j: I32 = ml - 1
+    while j >= 0 {
+        out = out + byte_slice(rev, j, j + 1)
+        j -= 1
+    }
+    var k: I32 = 0
+    while k < out.len - 1 {
+        if byte_at(out, k) != 48 {
+            break
+        }
+        k += 1
+    }
+    if k > 0 {
+        return byte_slice(out, k, out.len)
+    }
+    return out
 }
 fn bit_width(w: Str) -> I32 {
     if w == "i32" || w == "u32" {
