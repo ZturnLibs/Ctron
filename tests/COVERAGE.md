@@ -3487,6 +3487,21 @@ interp = ⑤登记面 skip(emit 臂覆盖)。
 **余册**:⑤设计慢径快径批(seed bit.* 原生内建,解 ⑤+⑦ 长期);④bare
 通道(环境)。
 
+## 2026-10-25 ⑤精确根定:bit_comb→bit_quot→ct_gc_alloc 自旋(lldb 实证)——批规模确证
+
+**实证**:sha256_hex("x") interp 挂,lldb 附着栈 =
+`t_ns_bit → t_bit_comb → t_bit_quot → ct_gc_alloc(+152 自旋)`。
+位算文本域组合逐算子产字符串垃圾 → 解释器堆不回收(P5-B 在册
+c-rust-divergences)→ gc_alloc O(n²) 化 = 秒级算法秒→小时。
+
+**发射臂对照**:bin/ctron-emit 路同夹具 1.9s 全程,
+sha256_hex("x") = 2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881
+(RFC 6234 正确值)。双臂值等价、耗时悬殊 = 纯解释器面。
+
+**批入口(待批)**:①解释器 GC 回收(P5-B 本账)②bit_comb 原生化
+(bit.xor_i64 等 → eval_host 内建,宿主 C 位算直返,逐算子小改)——
+②小批可先行(20 op 形 × 宿主分派),①为长期。
+
 ## 2026-10-25 ④bare 通道进度:brew llvm+lld 就位,编译面已通;链接面待 builtins
 
 **通道搭建**:brew install llvm(clang-23)+ brew install lld(ld.lld/
