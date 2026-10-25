@@ -3526,6 +3526,20 @@ sha256_hex("x") = 2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a48
 (生产面),interp 慢径仅测试基建触,套件门已 emit-only 治理(17/0、3/0)。
 **⑤挂账形态 = P5-B 关联批,无独立待裁。**
 
+## 2026-10-25 ⑤探针锚点终录(下会话入口)
+
+- **最小复现**:`use std.crypto.{sha256_hex}; println(sha256_hex("x"))` 经
+  bin/ctron-cc = 40s+ 无输出挂(pty 伪终端证非缓冲假象);同夹具**发射臂
+  1.9s 值正确**(2d711642…);bt.ct(裸 bit.* 四算子隔离)interp=快——
+  挂面 = sha 全链求值径,非 bit.* 算子本体
+- **回归窗口**:P5-B 登记时代 interp「≈10 块压缩等效」预算内 → 现挂;
+  pre-session(6f2b70e2)bisect 同挂 → 窗口 ∈(P5-B, 6f2b70e2),多批漂移
+- **lldb 实证栈**(挂时):t_ns_bit → t_bit_comb → t_bit_quot →
+  ct_gc_alloc 自旋;对照栈(健康时)待下会话抓
+- **下会话入口**:①健康对照栈抓取(短 sha 于 P5-B-era bins)②漂移批
+  git-bisect(编译器 src,~15 候选)③bit_comb 逐轮 print-bisect
+  (pty 破缓冲法已验)
+
 ## 2026-10-25 P5-B 增量落地:size-class 桶化(正交)+ 自旋真根确证(保守栈钉死零回收)
 
 **落地**(driver_emit ct_gc_alloc):分配尺寸 2 的幂桶化——sb 类数恒定
