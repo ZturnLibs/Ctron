@@ -843,3 +843,16 @@ suite 收口(Task 5):tests/ 一致性测试集 **77/79 双侧,与基线零扩大
 - **est 为发射期启发式**:256+96×(Let 节点+形参) 封顶 32768,非精确帧宽——C 发射
   后宿主 cc 自由布局,T34 判决书同源结论(精确栈图不可得);低估由 rt 侧
   RT_MS_MARGIN(2048)+guard 触顶诊断兜底,「生长优先、诊断保底」双层语义。
+- **bit.\* 解释臂文本域组合 = v1 设计慢径**(2026-10-25 定谳):发射臂经
+  ns_bit = rt 级 C 位算(sha256_hex 全链 1.9s 值正确);自举 ctron-cc
+  解释臂 = 逐位 c6divmod 长除(bit_comb O(len²))+ 解释器堆不回收
+  (gc_alloc 保守栈钉死,bit_comb→bit_quot→gc_alloc 自旋 lldb 实证)
+  —— sha256_hex("x") interp ≈356s(bit_comb 逐字符直算 O(len) 重写后;
+  旧 O(len²) 形态超时不可完成),值双臂逐字同。套件治理:crypto_vec
+  a_/b_/c_ 族、s3 c0/i_basic_time interp = emit-only/skip(⑦登记)。
+  终解候选 = 解释器堆回收(P5-B 本账;size-class 桶化已试=双面哈希
+  corrupt 撤回,盲试禁令)或语言位算符(永不挪用律 §4.0 禁行)。
+- **Option[Str] 槽模型 = ct_res 统一**(2026-10-25 簇①清):旧 "s"
+  NULL 模型特判废除(值面 None/Some/is_some/.or 恒 ct_res,槽面 char*
+  ← ct_res = cc 硬错);Option[Str] 统一 "R"。`Str?` 糖 NULL 模型
+  (read_file 族 char* 契约)保留不受涉。

@@ -437,7 +437,7 @@ std 迭代链就是"双型参 trait + UFCS 自由函数"的组合样板——`tr
 ## ⑦ v0 边界(已知限制)
 
 - **trait 声明本身不写 `pub`**——v0 无 pub trait 语法位,trait 接口面跨模块恒可见;可见性只标在成员上。
-- **trait 对象仅 `&Trait` 只读借用**;owned 形态 `Box[&Trait]` 是预留位,未落地。
+- **trait 对象仅 `&Trait` 只读借用**;泛型形 `&Seq[I32]`(T16 v2 径A:实例后缀 t:Seq__I,per-instance vtable,UFCS 具体分派)已落地双臂;owned 形态 `Box[&Trait]` 是预留位,未落地。impl 自身再带自由型参(`impl Seq[T,…] for …`)为单态化专道,不作对象。
 - **`&Trait` 保守非 Send**;含 `var` 字段的 class 整体非 Send,跨任务须经 `Mutex`。
 - `impl` 的型参**全部钉死**才能落地(`impl Iterator[I32] for Counter`);"实现方再泛化"的形态是 `impl[T] ... for Type[T]`。
 - 前奏符号可被本地声明遮蔽(有 lint 提示),但孤儿规则挡住的是 impl,不是名字。
