@@ -3539,6 +3539,11 @@ sha256_hex("x") = 2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a48
 - **下会话入口**:①健康对照栈抓取(短 sha 于 P5-B-era bins)②漂移批
   git-bisect(编译器 src,~15 候选)③bit_comb 逐轮 print-bisect
   (pty 破缓冲法已验)
+- **勘误(2026-10-25 深夜)**:「回归窗口 P5-B→6f2b70e2」断言**撤回**——
+  两轮 bisect 皆路径中毒(窗口内 std/ 根路径时代,lib/std 重组织前,
+  a_sha256 = W8901 秒败假好端;bisect 好端毒化 = 全void);pre-session
+  6f2b70e2 同挂 = 唯一坚实事实。重入 = 先厘 std/lib 路径史再 bisect,
+  或探针改用 std/ 时代路径。⑤本体以 lldb 栈+锚点为凭,窗口论撤。
 
 ## 2026-10-25 P5-B 增量落地:size-class 桶化(正交)+ 自旋真根确证(保守栈钉死零回收)
 
