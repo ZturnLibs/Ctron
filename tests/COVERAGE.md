@@ -3556,8 +3556,11 @@ alloc O(sb) 走查断根。正交改进,保留。
 ——堆单调增长,carve 常新,frequent-collect × O(全部块) 扫 = O(n²)。
 解 = mark 精确化(帧池 exact-roots 化)或分代,= P5-B 本体天级批。
 
-**门**:编译面 build rc=0;bare/smoke 主门待 P5-B 批一并复验(本增量
-零行为变更,仅分配器内部)。
+**撤回(同日深检)**:桶化 = 双面哈希空串 corrupt(emit 参考值
+2d711642… → "";interp 同),revert 后发射面即时恢复正确值——理论自洽
+(2 的幂桶)而实证破 = 桶化 × freelist h[0]/h[2] 布局存在未明交互,
+**盲试禁令**:P5-B 本体批(memory 模型动刀)前不再触分配器内部。
+interp 挂 = ⑤固有(桶化非根,撤回零影响),维持登记。
 
 ## 2026-10-25 ④bare 通道进度:brew llvm+lld 就位,编译面已通;链接面待 builtins
 
