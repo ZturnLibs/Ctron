@@ -3486,3 +3486,27 @@ interp = ⑤登记面 skip(emit 臂覆盖)。
 
 **余册**:⑤设计慢径快径批(seed bit.* 原生内建,解 ⑤+⑦ 长期);④bare
 通道(环境)。
+
+## 2026-10-25 ④bare 通道进度:brew llvm+lld 就位,编译面已通;链接面待 builtins
+
+**通道搭建**:brew install llvm(clang-23)+ brew install lld(ld.lld/
+ld64.lld);CTRON_BARE_CC 包装器(llvm-23 严格告警降宽:implicit-fn/int、
+int-conversion、incompatible-fn-ptr、deprecated-non-prototype、
+return-mismatch、incompatible-pointer-types 六旗)。
+
+**面推进**:工具链缺失 4 败 → 编译面全通(6 errors→2→0);链接面新阶段
+= `__aeabi_uldivmod/dcmpun/dadd` 未定义 = ARM EABI compiler-rt builtins
+缺(brew llvm 不带交叉 builtins)。**rustup target add**(thumbv7em/
+riscv32imac,内含 compiler_builtins.rlib)下载遇 static.rust-lang.org
+超时(网络抖动),待重试;备选 = docker ctron-bare-tools(通道②)。
+
+**包装器判例**(通道③用法,3 行可复现):
+```
+#!/bin/sh
+exec /opt/homebrew/opt/llvm/bin/clang -Wno-error=implicit-function-declaration \
+  -Wno-error=implicit-int -Wno-error=int-conversion \
+  -Wno-error=incompatible-function-pointer-types -Wno-error=deprecated-non-prototype \
+  -Wno-error=return-mismatch -Wno-error=incompatible-pointer-types "$@"
+```
+CTRON_BARE_CC=<包装器> CTRON_BARE_LD=/opt/homebrew/opt/lld/bin/ld.lld。
+链接面收官后 bare 门 5 过/4 败 → 预期全绿。
