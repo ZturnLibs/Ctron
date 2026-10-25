@@ -3520,9 +3520,11 @@ builtins rlib,重试后下载成功)+ ld.lld 架构感知包装(file -b 探 .o
 全数绿。
 
 **余 2 败 = ⑦转正面实语义**:08_bare 双靶真跑 = "arena OOM" 早退——
-Arena.fixed(1024) + zeros[U32](256) 应恰合,疑发射/rt 面 arena 对齐
-尾差(off-by-pad),O1 未蔽。**批规模登记**:bare-rt arena 对齐/容量
-语义批(⑦转正收官);qemu 半主机跑面已通,复现零障碍。
+**细化(2026-10-25 深诊)**:OOM = 启动期隐式分配(amalloc → 裸机
+malloc → NULL → panic("arena OOM")),先于测试块,非显式 Arena.fixed 面
+(fixed(1024)+zeros(1024B) 恰合,bump 守卫正确);根 = test 驱动框架
+启动路径隐式分配 × 裸机堆预算。修 = 驱动框架启动去隐式分配或裸机堆
+扩容(runtime 调平批);显式 arena 面本体无涉。
 
 **环境增量**(登记):brew llvm/lld/qemu 三件;rustup thumbv7em+
 riscv32imac 双 target;包装器双件存 .w0/(barecc.sh/bareld.sh)。
