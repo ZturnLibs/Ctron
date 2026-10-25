@@ -3526,6 +3526,20 @@ sha256_hex("x") = 2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a48
 (生产面),interp 慢径仅测试基建触,套件门已 emit-only 治理(17/0、3/0)。
 **⑤挂账形态 = P5-B 关联批,无独立待裁。**
 
+## 2026-10-25 P5-B 增量落地:size-class 桶化(正交)+ 自旋真根确证(保守栈钉死零回收)
+
+**落地**(driver_emit ct_gc_alloc):分配尺寸 2 的幂桶化——sb 类数恒定
+(~20),精确尺寸分裂(变长串 = crypto 位算垃圾形态)= sb 爆炸
+alloc O(sb) 走查断根。正交改进,保留。
+
+**自旋真根确证**(240s 全 CPU 复测,桶化不解):gc_collect 保守栈标记
+× 解释器深帧 = Vals 全钉 = **零回收**(P5-B「解释器堆不回收」本账字面)
+——堆单调增长,carve 常新,frequent-collect × O(全部块) 扫 = O(n²)。
+解 = mark 精确化(帧池 exact-roots 化)或分代,= P5-B 本体天级批。
+
+**门**:编译面 build rc=0;bare/smoke 主门待 P5-B 批一并复验(本增量
+零行为变更,仅分配器内部)。
+
 ## 2026-10-25 ④bare 通道进度:brew llvm+lld 就位,编译面已通;链接面待 builtins
 
 **通道搭建**:brew install llvm(clang-23)+ brew install lld(ld.lld/
