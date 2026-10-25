@@ -20,12 +20,12 @@ fn main() -> I64 {
     if eqs(t.sid, "00f067aa0ba902b7") == false { return 4 }
     if t.fl != 1 { return 5 }
     // 序列化 55 字节逐字节对拍
-    var b: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var b: U8[64] = [0] ** 64
     let n = tp_ser(b, 64, 0, t)
     if n != 55 { return 6 }
     var i: I32 = 0
     while i < g.len {
-        if b[i.as[I64]()] != byte_at(g, i).as[I64]() { return 7 }
+        if b[i].as[I64]() != byte_at(g, i).as[I64]() { return 7 }
         i += 1
     }
     return 0

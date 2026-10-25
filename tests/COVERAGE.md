@@ -3453,3 +3453,20 @@ sha256_hex("x") 60s 不返同证。⑤类名正:**interp 文本域位算 = 设�
 **余册簇**(更新):trace c0/c2 emit(另根);④bare 通道(环境);
 ⑤interp 文本域位算设计慢径(s3 c0/i_basic_time、crypto_vec);
 ⑦runner 超时/专臂治理(s3/crypto_vec 套件门)。
+
+## 2026-10-25 trace 簇清:c0/c2 缓冲槽域修正(I64 槽→U8 字节槽)——7/0 全绿
+
+**根**:lib/http/frm/trace.ct 四 fn 形参 = `&U8[]`(u8 视图,1 字节步进),
+corpus 传 I64[64/256] 槽数据——interp 结构式无 stride 遮蔽;发射臂视图
+读写字节位=错位,提取空值/序列化错写,断言 rc=1。c1 无缓冲面绿=自洽旁证。
+
+**修**(夹具侧字节域自洽,lib 不动):c0 `var b: U8[64] = [0] ** 64`;
+c2 `U8[256] = [0] ** 256` + fill 形参 `&U8[]` + 写入 `.as[U8]()`。
+
+**判例**:repeat 字面量语法 = `[elem] ** count`(EX_REPEAT/TOK_POW),
+`[0; N]` 分号形 = E1001(词法级分号禁令,合语);trim 用平铺字面量时
+勿混分号形。
+
+**门**:trace **7 pass / 0 fail**(sem chk + c0 双臂 + c1 双臂 + c2 双臂
+全绿,回 P7-C 水位)。**基线红簇清账:①③ + trace 簇清;余 = ⑤interp
+文本域位算设计慢径、④bare 通道(环境)、⑦runner 治理。**

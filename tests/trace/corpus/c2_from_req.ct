@@ -12,10 +12,10 @@ fn eqs(a: Str, b: Str) -> Bool {
 }
 
 // 请求头区落 lane(调用方填 ASCII 行;返回长度)
-fn fill(buf: &I64[], s: Str) -> I64 {
+fn fill(buf: &U8[], s: Str) -> I64 {
     var i: I32 = 0
     while i < s.len {
-        buf[i.as[I64]() ] = byte_at(s, i).as[I64]()
+        buf[i] = byte_at(s, i).as[U8]()
         i += 1
     }
     return s.len.as[I64]()
