@@ -2895,7 +2895,11 @@ ct_field_ty_node 探针/代码侧 `->v`),无 v 字段(t_TuiTest)→ 载荷左值
 - ctcl_check --selftest ALL GREEN;s13 manifest 1/1
 - meta_check:本机 Python 3.9.6 不支持 `str | None` 注解(对端 3.10+ 全绿 627 文件
   =环境项)
-- gui 阶梯:本机缺 freetype dlg 子模块(环境项,对端在册)
+- gui 阶梯:本机缺 freetype dlg 子模块(环境项,对端在册)——
+  **2026-10-26 复核销账**:vendor/gui 三件(clay/freetype/raylib)与
+  build 产物(libfreetype.a 等)俱全,gui 阶梯实跑 s71/s72 等连片
+  [ok](全阶梯时长>15min,900s 窗口截断非失败);子模块形态已被
+  vendoring 批取代
 
 **批C-2 计划 Wave 4 收官;批C 全链路关闭。**
 
