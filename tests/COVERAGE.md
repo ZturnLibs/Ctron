@@ -3573,6 +3573,20 @@ v1 设计常数)。⑤慢 = 解释器常数 × 文本算术,GC 非瓶颈——**
 - **下会话入口**:①健康对照栈抓取(短 sha 于 P5-B-era bins)②漂移批
   git-bisect(编译器 src,~15 候选)③bit_comb 逐轮 print-bisect
   (pty 破缓冲法已验)
+## 2026-10-27 Stage 2 正式 A/B 通过——stenolog 双实现对拍关账
+
+**语料**:真 sherpa-ncnn(sense-voice-int8-2025-09-09)三段真实转写
+(zh/en/yue.wav → 文本事件 JSONL)。**双实现签链**:Ctron steno-verify
+vs Rust steno-cli 同钥同语料 → **签名链逐字节一致**;交叉互验双向
+「OK stenolog.v1: 3 events, chain intact, signatures valid」,链头
+94b67f2a… 双侧同。语料+产物入库 tests/steno/stage2/。
+
+**license 面**:跨实现 parity 常设门绿(签名逐字节一致+双向互验,
+RFC 8032 定钥)。
+
+**关账**:steno 泳道 Stage 2 = 通过;「解释器堆不回收」P5-B 本账另册
+(降级挂账,重启条件在册)。**steno 阻塞项销账。**
+
 - **Stage 2 阻塞解除(2026-10-26)**:秘本仓 = **github.com/ZturnLibs/
   steno-cli**(main=4 提交)——B 侧参照实现(stenolog.v1/stenolicense.v1
   忠实移植 + §4 CLI + golden 对拍 4/4 + 跨实现 parity 常设门:双实现签名
