@@ -3578,6 +3578,14 @@ v1 设计常数)。⑤慢 = 解释器常数 × 文本算术,GC 非瓶颈——**
   忠实移植 + §4 CLI + golden 对拍 4/4 + 跨实现 parity 常设门:双实现签名
   逐字节一致+双向互验)已推送。**余 = 真 sherpa-ncnn 集成与真实语料**
   (秘本侧资产)。工具面 A/B(链/license 双实现互拍)即刻可跑。
+- **真 sherpa 集成完成(2026-10-27)**:「想办法解决」——sherpa-ncnn
+  本就开源(k2-fsa,MIT+公开模型),无需私有资产:源码 cmake 构建
+  (57s;c-api 仅流式面,sense-voice 走 C++ shim:extern-C 离线识别三件,
+  cmake 目标化+双重 include 修正[tuple 先于 memory_resource;-I csrc
+  遮蔽系统 math.h 致 libc++ tuple 不定,判例]);公开模型
+  sense-voice-int8-2025-09-09 断点续传 219MB。**steno-cli 真引擎端到端:
+  zh.wav →「开放时间早上九点至下午五点」**(3.3s 含加载)。license 面
+  七测补齐(sign_license 信封核对镜像 oracle)。**Stage 2 全要素就绪。**
 - **勘误(2026-10-25 深夜)**:「回归窗口 P5-B→6f2b70e2」断言**撤回**——
   两轮 bisect 皆路径中毒(窗口内 std/ 根路径时代,lib/std 重组织前,
   a_sha256 = W8901 秒败假好端;bisect 好端毒化 = 全void);pre-session
