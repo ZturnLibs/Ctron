@@ -3573,6 +3573,11 @@ v1 设计常数)。⑤慢 = 解释器常数 × 文本算术,GC 非瓶颈——**
 - **下会话入口**:①健康对照栈抓取(短 sha 于 P5-B-era bins)②漂移批
   git-bisect(编译器 src,~15 候选)③bit_comb 逐轮 print-bisect
   (pty 破缓冲法已验)
+- **Stage 2 阻塞解除(2026-10-26)**:秘本仓 = **github.com/ZturnLibs/
+  steno-cli**(main=4 提交)——B 侧参照实现(stenolog.v1/stenolicense.v1
+  忠实移植 + §4 CLI + golden 对拍 4/4 + 跨实现 parity 常设门:双实现签名
+  逐字节一致+双向互验)已推送。**余 = 真 sherpa-ncnn 集成与真实语料**
+  (秘本侧资产)。工具面 A/B(链/license 双实现互拍)即刻可跑。
 - **勘误(2026-10-25 深夜)**:「回归窗口 P5-B→6f2b70e2」断言**撤回**——
   两轮 bisect 皆路径中毒(窗口内 std/ 根路径时代,lib/std 重组织前,
   a_sha256 = W8901 秒败假好端;bisect 好端毒化 = 全void);pre-session
