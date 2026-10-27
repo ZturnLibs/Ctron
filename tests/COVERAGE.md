@@ -3551,7 +3551,20 @@ bit_comb 已 O(len) 重写(sha interp 不可完成→356s 值正确);P5-B 精确
 (启动期隐式 amalloc×裸机堆预算,32KiB 池已解 08_bare,余=驱动框架
 卫生项不挡门)。
 
-## 2026-10-25 P5-B 终审:证据性降级(rewrite 后 gc=4% 小头,非瓶颈)
+## 2026-10-27 W5b 触发证据落地:编译链解析税实测 ≈60–80%——烘焙批立项成立
+
+**实测**(seed-interp,cc_run 24K 行编译链):
+- parse-only(ctc.sh ast)= **2m32.6s**
+- 全链 emit(parse+sem+emit-C)= 2m0.6s
+- 小夹具 parse 基线 = 1.3s
+- **解析税 ≈ 60–80%**(ast 含 dump 打印上浮,量级成立)
+
+**判定**:W5b 触发条件(解析税 profile 实证)**达标**——编译期烘焙
+(解析 AST 缓存/持久化)候选收益 ≈ 编译链 2–3× 加速。**W5b 由
+触发式 parked 转正式候选批**,规模 = AST 序列化/加载(ctc ast S1a
+.ctast 底座已存:b1ecf247)+ 缓存键(源哈希),批规模 = 中。
+
+**⑦余留**:仅 W5c(enum 换装/Windows Console/主题分发包,触发式维持)。
 
 **重采样定谳**(bit_comb O(len) rewrite 后):gc_collect/alloc/mkword
 = 合计 ~4% 样本(171/4282),主导 = 纯解释开销(t_run_stmt/eval 链 =
