@@ -2061,61 +2061,93 @@ fn bit_sfold(u: Str, bits: I32, signed: Bool) -> Str {
     }
     return u
 }
-// 逐位组合:a/b 非负文本(< 2^bits);mode 0=and 1=or 2=xor
-fn bit_comb(bits: I32, a: Str, b: Str, mode: I32) -> Str {
-    // ⑤P5-B:per-char 直算(O(len);旧 per-bit c6divmod 长除 = O(len²),
-    // sha 全链位算主导耗时,sample 实证 bit_comb+c6divmod 热点)。
-    // a/b = 规范二进制文本(MSB 先,无前导零,"0"=零);mode 0=and 1=or 2=xor。
-    var al = a.len
-    var bl = b.len
-    var ml = al
-    if bl > ml { ml = bl }
+// 十进制非负文本 → 二进制文本(MSB 先)
+fn bit_dec2bin(t: Str) -> Str {
+    var v = c6can(t)
+    if v == "0" {
+        return "0"
+    }
     var rev = ""
-    var i: I32 = 0
-    while i < ml {
-        var ca = 0
-        if i < al {
-            ca = byte_at(a, al - 1 - i) - 48
-        }
-        var cb = 0
-        if i < bl {
-            cb = byte_at(b, bl - 1 - i) - 48
-        }
-        var on = false
-        if mode == 0 {
-            on = ca == 1 && cb == 1
-        }
-        if mode == 1 {
-            on = ca == 1 || cb == 1
-        }
-        if mode == 2 {
-            on = ca != cb
-        }
-        if on {
+    while v != "0" {
+        var qr = c6divmod(v, "2")
+        if bit_rest(qr) == "1" {
             rev = rev + "1"
         } else {
             rev = rev + "0"
         }
-        i += 1
+        v = bit_quot(qr)
     }
-    // 反转回 MSB 先 + 前导零收敛(c6can 同口径)
     var out = ""
-    var j: I32 = ml - 1
+    var j: I32 = rev.len - 1
     while j >= 0 {
         out = out + byte_slice(rev, j, j + 1)
         j -= 1
     }
-    var k: I32 = 0
-    while k < out.len - 1 {
-        if byte_at(out, k) != 48 {
-            break
-        }
-        k += 1
-    }
-    if k > 0 {
-        return byte_slice(out, k, out.len)
-    }
     return out
+}
+
+// 二进制文本(MSB 先)→ 十进制文本(Horner ×2)
+fn bit_bin2dec(t: Str) -> Str {
+    var r = "0"
+    var i: I32 = 0
+    while i < t.len {
+        if byte_at(t, i) == 49 {
+            r = c6add(c6mul(r, "2"), "1")
+        } else {
+            r = c6mul(r, "2")
+        }
+        i += 1
+    }
+    return r
+}
+
+// 逐位组合:a/b 十进制非负文本(< 2^bits);mode 0=and 1=or 2=xor
+fn bit_comb(bits: I32, a: Str, b: Str, mode: I32) -> Str {
+    // W5-修正(2026-10-28):恢复 8bc586db T01 原版语义——ffdc6fe9 perf 改写
+    // (逐字符直算)把十进制文本误当二进制逐位读,and(12,10)=10、not(41)=垃圾,
+    // crypto/bit_ops 全线红(bin 重建后暴露;Oct-25 旧 bin 一直掩盖)。
+    // 本版 = T01 ÷2 链 + 权重累加(pw=2^i 每轮翻倍,on 位 acc+=pw);
+    // ffdc6fe9 的 O(len) 目标语义上不可达(c6 域十进制,位提取必须除法链),
+    // perf 回归在册:crypto bin 臂待实测重定门。
+    var aa = c6can(a)
+    var bb = c6can(b)
+    var acc = "0"
+    var pw = "1"
+    var i: I32 = 0
+    while i < bits {
+        if aa == "0" {
+            if mode == 0 {
+                // and:剩余位恒 0,直接累计完毕
+                return acc
+            }
+            if bb == "0" {
+                // or/xor:双方剩余位全 0,直接完成(高位零值早退,省满 64 轮)
+                return acc
+            }
+        }
+        var qa = c6divmod(aa, "2")
+        var qb = c6divmod(bb, "2")
+        var on = false
+        var b1 = bit_rest(qa) == "1"
+        var b2 = bit_rest(qb) == "1"
+        if mode == 0 {
+            on = b1 && b2
+        }
+        if mode == 1 {
+            on = b1 || b2
+        }
+        if mode == 2 {
+            on = b1 != b2
+        }
+        if on {
+            acc = c6add(acc, pw)
+        }
+        aa = bit_quot(qa)
+        bb = bit_quot(qb)
+        pw = c6add(pw, pw)
+        i += 1
+    }
+    return acc
 }
 fn bit_width(w: Str) -> I32 {
     if w == "i32" || w == "u32" {
