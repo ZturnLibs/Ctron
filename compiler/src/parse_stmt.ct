@@ -298,6 +298,13 @@ fn p_block(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
                 }
                 if nx == "}" {
                     adv(cur)
+                    // R2b 尾分类契约(解析层显式化):尾槽成员 = NL 折叠后紧跟 }
+                    // 的表达式(空白只决定「是否为尾」);值/语句性由节点 tag 显式
+                    // 判定——裸语句类 tag(Match/Try/If/While/For)= 语句尾(臂内
+                    // return 位,ct_is_value 黑名单同款类集),裸值 = 值尾,
+                    // "None" 哨兵 = 无尾。消费面:ct_body/ct_prescan_tail/
+                    // run_block(eval_run 尾槽求值)。形状包裹方案已勘定否决
+                    // (sem 九走查器/单态化/spawn 体直读裸 tag,包裹=静默弱化面)
                     nb.push(e)
                     tailSet = true
                     go = false

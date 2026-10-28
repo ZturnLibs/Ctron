@@ -31,7 +31,7 @@ Option/Result 的 C 表示按**生产者**分裂为三族,match 分派按**旁�
 - **`#elem:<名>`/`#cerr` env 侧条目族**(IP-01 批落地):绑定点的元素码侧条目,env 自然贯穿。
 - **`ct_err_elem_of`/`ct_opt_elem_of`**(trans_ty):从返回型节点提 Ok/E 侧码。
 - **ct_res 通用臂**:Some/None/Ok/Err 四臂 match 发射、`.or/.expect/is_some` 族、R-branch 全部就绪。
-- **尾判定缺口**:ct_stmts 无「尾位」标志穿线(统一批前置)。
+- **尾判定缺口**:ct_stmts 无「尾位」标志穿线(统一批前置)。✅ 已销(2026-10-28,R2b:`#tailpos` env 穿线,见 §4 R2b 条)
 
 ## 2. 目标
 
@@ -61,6 +61,7 @@ Option/Result 作用户形参/本地位/返回值三位置获得正确 C 表示;
 **B 先行,分两批**:
 - **批 R1(Str? 族)**:✅ 已落地(ca79e556,2026-10-19)。实现与设计有二偏离:①翻面点=ct_ty_code(`Str?` 解析为 **Optional 节点**非 Named-Option,检查先于 Named 闸);②构造线程以 `ct_optstr_unr` 适配器替代(#cerr 同族侧标记免穿线)。
 - **批 R2(其余载荷)**:✅ **R2a 零码改完成(2026-10-20 验证)**——R1 的 Optional 臂(`非 Str → "R"`)使 `I32?`/`Result[T,E]` 取码 "R",而 `ct_ctype("R")` 本就返回 `ct_res`(塌缩真身=Optional 节点无臂落 "i",非 ctype)。形参/注解 let/返回/直构实参/`.or`/`?` 传播全链双臂逐字一致;fx 语料转正=fx_opti32/fx_opti32b(smoke 名单随批)。**余 R2b=尾判定统一**(语句位 match 非块值臂提前返回误用面;需 ct_stmts 尾标志穿线,值臂落暂存形),设计裁决项:尾/语句位两制是否保留(尾值臂 return 位=fx_optstr 依赖,语句位=解释臂语义)。
+  - ✅ **R2b 落地(2026-10-28)**——`#tailpos` env 穿线(spec 前置缺口 :34 销):fn/闭包/子块尾位 match 的 OK/ERR 非块值臂转 return 位(interp 尾值语义对齐;修复前 emit 落空 UB,fx_restail 双臂实证);SOME/NONE return 位与中位「丢弃+写法纪律」两制**保留**(裁决=勘定收束③,fx_optstr 金源不动);死码 ct_match_value/尾分派 If 值形撤(不可达实证);解析层尾分类契约显式化(形状包裹否决:sem 走查器裸 tag 直读静默弱化面)。fx_restail 入 smoke。局限登记见 COVERAGE 同日批(嵌套中位误染/If-Try 尾位同族/值位块 match 未勘定)。
 - 方案 A 作为码形清整理想态,**非前置**。
 
 ## 5. 关联

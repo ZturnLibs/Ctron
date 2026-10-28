@@ -1,0 +1,24 @@
+// fx_restail —— fn 尾位 match 的 OK/ERR 非块值臂 = return 位(R2b (d) 修复面;
+// 2026-10-28 #tailpos 穿线)。修复前:emit 臂 OK/ERR 臂体合成 Expr 语句丢弃,
+// 非 void fn 落空不返回(UB 类);interp 臂尾槽求值返回臂值 —— 双臂分歧。
+// 修复后:尾位值臂 return(interp 尾值语义对齐);SOME/NONE 口径不变(fx_optstr)。
+fn grade(r: Result[I32, Str]) -> I32 {
+    match r {
+        Ok(v) => v
+        Err(_) => 0 - 1
+    }
+}
+fn shout(r: Result[I32, Str]) -> I32 {
+    match r {
+        Ok(v) => v * 2
+        Err(_) => 42
+    }
+}
+test "res tail arms" {
+    println(grade(Ok(7)))
+    println(grade(Err("boom")))
+    println(shout(Ok(21)))
+    assert_eq(grade(Ok(7)), 7)
+    assert_eq(grade(Err("x")), 0 - 1)
+    assert_eq(shout(Err("abcd")), 42)
+}

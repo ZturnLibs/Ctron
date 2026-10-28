@@ -3714,3 +3714,36 @@ fmt 2 红、lex/parse/run/native 各 1 红——与 stash 基线指纹**逐套�
 泛型 TypeArgs 直调 dirty fn 不建边——直触面由运行期 cap_hit 全型兜底,
 仅跨函数传播走语法摘要。E6020(comptime 纯度)不随本批扩展,维持
 直接触能力口径,传播化另立裁决。
+
+## 2026-10-28 R2b 尾判定统一:#tailpos 穿线——fn/闭包尾位 OK/ERR 非块值臂转 return 位
+
+**修复面**(spec §4 R2b;勘定收束③「误用面」家族的尾位新分歧,侦察新发现
+在册 (d)):fn/闭包/子块**尾位** match 的 OK/ERR 非块值臂,emit 原合成
+Expr 语句丢弃 → 非 void fn 落空不返回(UB 类);interp 尾槽求值返回臂值
+(eval_run:437)。实证 before:fx_restail emit 出 `7/7/7`(寄存器残留
+垃圾)vs interp `7/-1/42`。
+
+**机制**(spec 点名「ct_stmts 尾标志穿线」;#fnret 同款 env 先例):
+①ct_body 尾位语句路绑 `#tailpos`(trans_stmt);②trans_conc ct_prescan_tail
+原 `#tail` 死绑定(全仓零消费)转正改名 `#tailpos` 为消费者;③OK/ERR 臂
+非块体三分支:尾位 void 臂(ct_typeof=v 或 ct_arm_void_call 内建名单:
+assert/assert_eq/assert_ne/panic/println/print/flush_out)委派语句位专道、
+尾位值臂 `return expr;`、中位(无标志)维持 Expr 委派丢弃。**SOME/NONE
+无条件 return 口径不变**(fx_optstr 依赖);中位写法纪律不变(勘定③)。
+
+**死码清整**:ct_match_value 全函数 + pass2 尾分派 Match/If 值形死分支删除
+(不可达:ct_is_value 黑名单先行,勘定收束①;ct_if_value 本体保留——
+trans_expr:596 值位 if 活调用);头部清单注释同步。**解析层尾分类契约**
+显式化(parse_stmt p_block 尾槽注释):尾成员=NL 折叠空白定、值/语句性由
+裸 tag 判;形状包裹方案勘定否决(sem 九走查器 pwalk_e 等显式 tag 分发无
+兜底 + 单态化 mono_e + spawn 体直读裸 tag,包裹=静默弱化面,登记不给后批
+重试)。
+
+**探针**:fx_restail.ct 新增入 smoke 名单(fn 尾 Result match 非块 OK/ERR
+值臂 + 通配 Err 臂)。**实证 after**:双臂 `7/-1/42` 逐字一致。
+
+**局限登记**:①#tailpos 为 env 派生绑定,尾位 match 臂体内**嵌套中位
+match** 会误染 return 位(#fnret 同族,语料回避);②If/Try 尾位非块值臂
+同族分歧不在本批(ct_if_value 值形路径不可达同因;纯表达式臂三值化或臂内
+位置判定=后续批);③值位块 `{ match … }` 尾(BlockExpr 值语境)未勘定。
+E6020 纯度、中位诊断拒绝均不在本批授权面。

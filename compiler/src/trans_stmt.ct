@@ -1,6 +1,6 @@
 // =====================================================================
 // trans_stmt.ct —— 语句与块发射:ct_structs·ct_is_struct·ct_field_ty 用户 struct
-// 表;ct_stmts/ct_stmt 全语句发射(含 ct_match_value match→if 链、值位 if 三元
+// 表;ct_stmts/ct_stmt 全语句发射(含 match 语句臂 R 分支/s 模型/值位 if 三元
 // ct_if_value/ct_is_value、ct_block/ct_body/ct_simple/ct_if_stmt)。
 // =====================================================================
 fn ct_structs(file: List[Str]) -> List[Str] {
@@ -327,82 +327,8 @@ fn ct_ig_elem_code(ty: List[Str], file: List[Str]) -> Str {
     return "1"
 }
 
-// match 作值(当前仅 fn 体尾槽位):Option[Str] 两臂,结果写入 t_mr(<rc> 型)
-fn ct_match_value(e: List[Str], env: List[Str], file: List[Str], rc: Str, hreg: List[Str]) -> List[Str] {
-    eln("const char* t_mv = (const char*)(" + ct_expr(e[1], env, file) + ");", env)
-    eln(ct_ctype(rc) + " t_mr;", env)
-    var rmv = ct_reg_line("mr", rc)
-    if rmv.len > 0 { eln(rmv, env) }
-    var arms = e[2]
-    var someIx: I32 = -1
-    var noneIx: I32 = -1
-    var mi: I32 = 1
-    while mi < arms.len {
-        var arm = arms[mi]
-        var pt = arm[1]
-        if pt[0] == "PatAgg" && pt[1] == "Some" { someIx = mi }
-        if pt[0] == "PatAgg" && pt[1] == "None" { noneIx = mi }
-        mi += 1
-    }
-    if someIx < 0 && noneIx < 0 {
-        panic("ct_match_value:pat")
-        return env
-    }
-    if someIx >= 0 {
-        var armS = arms[someIx]
-        var pt = armS[1]
-        var be = armS[2]
-        eln("if (t_mv != NULL) \{", env)
-        var env3 = dls_push(env)
-        if pt[2][0] == "SubTup" {
-            var b0 = pt[2][1]
-            if b0[0] == "PatId" {
-                eln("const char* t_" + b0[1] + " = t_mv;", env)
-                env3 = env_bind(env3, b0[1], "s")
-            }
-        }
-        if be[0] == "BlockExpr" {
-            var bl = be[1]
-            env3 = ct_stmts(bl, env3, file, "", hreg)
-            var tl = bl[bl.len - 1]
-            if tl[0] == "None" {
-                panic("ct_match_value:arm 无值")
-                return env
-            }
-            eln("t_mr = " + ct_expr(tl, env3, file) + ";", env)
-        } else {
-            eln("t_mr = " + ct_expr(be, env3, file) + ";", env)
-        }
-        dls_pop_emit(env3, file)
-        eln("}", env)
-    }
-    if noneIx >= 0 {
-        var armN = arms[noneIx]
-        var be2 = armN[2]
-        if someIx >= 0 {
-            eln("else \{", env)
-        } else {
-            eln("if (t_mv == NULL) \{", env)
-        }
-        var armn = dls_push(env)
-        if be2[0] == "BlockExpr" {
-            var bl2 = be2[1]
-            var env4 = ct_stmts(bl2, armn, file, "", hreg)
-            var tl2 = bl2[bl2.len - 1]
-            if tl2[0] == "None" {
-                panic("ct_match_value:arm 无值")
-                return env
-            }
-            eln("t_mr = " + ct_expr(tl2, env4, file) + ";", env)
-        } else {
-            eln("t_mr = " + ct_expr(be2, armn, file) + ";", env)
-        }
-        dls_pop_emit(armn, file)
-        eln("}", env)
-    }
-    return env
-}
-
+// 块(闭包体/子块位):语句顺序发射;尾槽无 "None" 哨兵时按语句发射
+// (语句类尾 = 臂内 return 位,勘定收束②闭包尾同此)
 fn ct_block(b: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> List[Str] {
     eln("\{", env)
     var denv = dls_push(env)
@@ -459,6 +385,18 @@ fn ct_if_value(e: List[Str], env: List[Str], file: List[Str]) -> Str {
     return "(" + ct_expr(e[1], env, file) + " ? " + t1 + " : " + t2 + ")"
 }
 
+// 臂体 void 内建调用判(assert 族/panic/println 无值可 return;R2b 尾位分支守卫)
+fn ct_arm_void_call(e: List[Str]) -> Bool {
+    if e[0] != "Call" { return false }
+    if e[1][0] != "Ident" { return false }
+    var n = e[1][1]
+    if or2(n == "assert", n == "assert_eq") { return true }
+    if or2(n == "assert_ne", n == "panic") { return true }
+    if or2(n == "println", n == "print") { return true }
+    if n == "flush_out" { return true }
+    return false
+}
+
 fn ct_is_value(tg: Str) -> Bool {
     if tg == "Match" { return false }
     if tg == "Try" { return false }
@@ -473,6 +411,9 @@ fn ct_is_value(tg: Str) -> Bool {
     return true
 }
 
+// fn 体:语句同 ct_block,但尾表达式在非 void fn 中是返回值(Ctron Block 尾值语义;
+// 尾槽语句类节点按语句发射臂内 return 位;R2b ct_match_value 值形死码已撤——
+// 不可达:ct_is_value 黑名单先行,勘定收束①)
 fn ct_body(b: List[Str], env: List[Str], file: List[Str], rc: Str) -> List[Str] {
     var hreg = List[Str]()
     // P0-A:本 fn 返回码入 env("#fnret")——return 位 N 槽 fn 值调用(mw(…))
@@ -558,21 +499,17 @@ fn ct_body(b: List[Str], env: List[Str], file: List[Str], rc: Str) -> List[Str] 
         // 故语句类尾槽(如末位 match)仍按语句发射(臂内 return 负责退出)
         // RAII(§6.4):尾值先落临时再发 drops(t_rv 沿 t_mr 固定名先例),随后返回
         if or2(rc == "v", !ct_is_value(tl[0])) {
+            // R2b 尾标志穿线(spec §4「ct_stmts 尾标志穿线」;#fnret 同款 env 先例):
+            // 尾位语句 match 的 OK/ERR 非块值臂经 "#tailpos" 转 return 位——
+            // interp 尾位 match 即块值(eval_run 尾槽求值),emit 落空不返回为
+            // UB 类分歧(fx_restail 修复面)。SOME/NONE 四臂无条件 return 口径
+            // 不变;中位语句无标志维持丢弃+写法纪律(勘定收束③)
+            var tenv = env_bind(env2, "#tailpos", "1")
             var es = List[Str]()
             es.push("Expr")
             es.push(tl)
-            env2 = ct_stmt(es, env2, file, hreg)
+            env2 = ct_stmt(es, tenv, file, hreg)
             env2 = dls_pop_emit(env2, file)
-        } else if tl[0] == "Match" {
-            ct_match_value(tl, env2, file, rc, hreg)
-            env2 = dls_pop_emit(env2, file)
-            eln("return t_mr;", fenv)
-        } else if tl[0] == "If" {
-            eln(ct_ctype(rc) + " t_rv = " + ct_if_value(tl, env2, file) + ";", fenv)
-            var rti = ct_reg_line("rv", rc)
-            if rti.len > 0 { eln(rti, fenv) }
-            env2 = dls_pop_emit(env2, file)
-            eln("return t_rv;", fenv)
         } else if tl[0] == "Own" {
             // own 块尾位(§4.9):体平铺;own 尾值即块值,体尾 return 已由语句发射退出
             var ocbody3 = tl[2]
@@ -1726,12 +1663,30 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                     if obe2[0] == "BlockExpr" {
                         ct_block(obe2[1], oenv2, file, hreg)
                     } else {
-                        // 非块臂体 = 合成 Expr 语句委派 ct_stmt(match 语句位丢弃臂值;
-                        // assert/assert_eq 族复用语句位专道;IP-01 W2 随批解锁)
-                        var obe21 = List[Str]()
-                        obe21.push("Expr")
-                        obe21.push(obe2)
-                        ct_stmt(obe21, oenv2, file, hreg)
+                        // 非块臂体三分支:①尾位(#tailpos)void 臂(assert/assert_eq/
+                        // panic/println 族与用户 void fn,ct_typeof=v 判)→ 委派
+                        // ct_stmt 语句位专道;②尾位值臂 → return 位(interp 尾位
+                        // match 即块值,R2b (d) 修复:emit 落空不返回为 UB 类分歧);
+                        // ③中位(无标志)→ 合成 Expr 语句委派,丢弃口径(勘定③)
+                        var okv = ""
+                        if ct_env_has(oenv2, "#tailpos") {
+                            okv = ct_typeof(obe2, oenv2, file)
+                        }
+                        if ct_env_has(oenv2, "#tailpos") && or2(okv == "v", ct_arm_void_call(obe2)) {
+                            var obe21 = List[Str]()
+                            obe21.push("Expr")
+                            obe21.push(obe2)
+                            ct_stmt(obe21, oenv2, file, hreg)
+                        } else if ct_env_has(oenv2, "#tailpos") {
+                            eln("return " + ct_expr(obe2, oenv2, file) + ";", env)
+                        } else {
+                            // 非块臂体 = 合成 Expr 语句委派 ct_stmt(match 语句位丢弃臂值;
+                            // assert/assert_eq 族复用语句位专道;IP-01 W2 随批解锁)
+                            var obe21 = List[Str]()
+                            obe21.push("Expr")
+                            obe21.push(obe2)
+                            ct_stmt(obe21, oenv2, file, hreg)
+                        }
                     }
                     eln("}", env)
                     anySO = true
@@ -1805,11 +1760,26 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                         if ebe[0] == "BlockExpr" {
                             ct_block(ebe[1], eenv, file, hreg)
                         } else {
-                            // 非块臂体 = 合成 Expr 语句委派 ct_stmt(assert 族专道复用)
-                            var ebe1 = List[Str]()
-                            ebe1.push("Expr")
-                            ebe1.push(ebe)
-                            ct_stmt(ebe1, eenv, file, hreg)
+                            // 非块臂体三分支:同 Ok 臂(尾位 void 臂委派专道/尾位值臂
+                            // return 位 R2b (d)/中位 Expr 委派丢弃口径)
+                            var ekv = ""
+                            if ct_env_has(eenv, "#tailpos") {
+                                ekv = ct_typeof(ebe, eenv, file)
+                            }
+                            if ct_env_has(eenv, "#tailpos") && or2(ekv == "v", ct_arm_void_call(ebe)) {
+                                var ebe1 = List[Str]()
+                                ebe1.push("Expr")
+                                ebe1.push(ebe)
+                                ct_stmt(ebe1, eenv, file, hreg)
+                            } else if ct_env_has(eenv, "#tailpos") {
+                                eln("return " + ct_expr(ebe, eenv, file) + ";", env)
+                            } else {
+                                // 非块臂体 = 合成 Expr 语句委派 ct_stmt(assert 族专道复用)
+                                var ebe1 = List[Str]()
+                                ebe1.push("Expr")
+                                ebe1.push(ebe)
+                                ct_stmt(ebe1, eenv, file, hreg)
+                            }
                         }
                         eln("}", env)
                         firstE = false

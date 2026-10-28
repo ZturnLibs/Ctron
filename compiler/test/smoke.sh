@@ -238,7 +238,7 @@ if "$COMP/ctc.sh" emit "$COMP/test/fx_trait_obj.ct" "$T/to.c" > /dev/null 2>&1 \
 else
     bad "trait_obj 发射/编译失败"
 fi
-for cv in fnval fnval_str fnfield byteslice_arg resret pmapclo cloval clostr enumres fnret try tlist own generic gstruct gpayload derive optstr boxalias gprobe2 gprobe fmap fs time drop slice simd fnval_multi u64 drop_unwind w8 val_panic_order val_negarith channel_cap128 arr_byval tuple with_expr loop_relet empty_brace as_str_num arr_ret arr_nested bytes opti32 opti32b; do
+for cv in fnval fnval_str fnfield byteslice_arg resret pmapclo cloval clostr enumres fnret try tlist own generic gstruct gpayload derive optstr boxalias gprobe2 gprobe fmap fs time drop slice simd fnval_multi u64 drop_unwind w8 val_panic_order val_negarith channel_cap128 arr_byval tuple with_expr loop_relet empty_brace as_str_num arr_ret arr_nested bytes opti32 opti32b restail; do
     if "$COMP/ctc.sh" emit "$COMP/test/fx_$cv.ct" "$T/cn_$cv.c" > /dev/null 2>&1 \
        && cc -O1 -w -o "$T/cn_$cv.bin" "$T/cn_$cv.c" 2>/dev/null; then
         timeout 15 "$T/cn_$cv.bin" > "$T/cn_$cv.got" 2>&1

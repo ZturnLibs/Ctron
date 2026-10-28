@@ -304,9 +304,10 @@ fn ct_bound_b(b: List[Str], out: List[Str]) {
 fn ct_prescan_tail(tl: List[Str], penv: List[Str], file: List[Str]) {
     if tl[0] == "None" { return }
     if or2(tl[0] == "Match", tl[0] == "If") {
-        // R2b:闭包/子块尾位 match = 值位(#tail 标记)——臂体 return 位语义经此
-        // 保留;中位语句 match 无标记走语句位(R2b 统一)
-        ct_stmt(tl, env_bind(penv, "#tail", "1"), file, List[Str]())
+        // R2b:闭包/子块尾位 match 穿 "#tailpos"(原 #tail 死绑定 2026-10-28 转正
+        // 为消费者)——OK/ERR 非块值臂据此转 return 位(与 fn 体尾同口径);
+        // SOME/NONE 无条件 return 口径不变;中位语句无标志走语句位(勘定收束③)
+        ct_stmt(tl, env_bind(penv, "#tailpos", "1"), file, List[Str]())
         return
     }
     if tl[0] == "BlockExpr" {
