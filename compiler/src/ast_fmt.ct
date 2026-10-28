@@ -8,13 +8,15 @@
 // byte_slice/dvi 越界显式失败。
 // =====================================================================
 fn ast_read_line(ser: Str, cur: Atomic[I32]) -> Str {
-    var out = ""
+    // W5b 实测修正(2026-10-28):逐字符 byte_slice 拼接 = O(len²) 串构建,
+    // seed-interp 下 load 代价反超 parse;改两通道(先扫换行定界,单次切片)
     var i = cur.load()
-    while i < ser.len && byte_at(ser, i) != 10 {
-        out = out + byte_slice(ser, i, i + 1)
-        i += 1
+    var j = i
+    while j < ser.len && byte_at(ser, j) != 10 {
+        j += 1
     }
-    cur.store(i + 1)
+    var out = byte_slice(ser, i, j)
+    cur.store(j + 1)
     return out
 }
 
@@ -45,4 +47,96 @@ fn ast_load_node(ser: Str, cur: Atomic[I32]) -> List[Str] {
         i += 1
     }
     return node
+}
+
+// =====================================================================
+// W5b entry AST 缓存助手(2026-10-28;计划 docs/superpowers/plans/
+// 2026-10-28-w5b-ast-bake-plan.md)。信任级:开发缓存 = 不可信加速物,
+// 副签校验在壳层(D8-2:驱动内禁 sha);此处仅首记录前缀预检,坏流
+// 由调用方回退全 parse,不中止编译。
+// =====================================================================
+
+// 缓存命中载入:首记录必须 "N "(78 32);否则返回空表(调用方回退)
+fn ast_cache_load(path: Str) -> List[Str] {
+    var empty = List[Str]()
+    let src = read_file(path)
+    match src {
+        Some(sr) => {
+            if sr.len > 2 {
+                if or2(byte_at(sr, 0) != 78, byte_at(sr, 1) != 32) {
+                    return empty
+                }
+                var cur = Atomic[I32](0)
+                return ast_load_node(sr, cur)
+            }
+        }
+        None => {}
+    }
+    return empty
+}
+
+// parse 后序列化(E-AST-UNKNOWN/-SHAPE/DEEP fail-closed → 返回空串,不写缓存;
+// 覆盖缺口只损失命中率,不误伤编译)
+fn ast_ser_file(file: List[Str]) -> Str {
+    var ktags = List[Str]()
+    var kshapes = List[Str]()
+    ast_tables(ktags, kshapes)
+    var out = List[Str]()
+    var r = ast_emit_node(file, ktags, kshapes, out, 0)
+    if r != 0 {
+        return ""
+    }
+    var ser = ""
+    var sj: I32 = 0
+    while sj < out.len {
+        ser = ser + out[sj]
+        sj += 1
+    }
+    return ser
+}
+
+// 以下序列化面自 driver_ast.ct 迁入(W5b 2026-10-28;格式 v1,S1a 底座同款)
+fn ast_emit_str(sv: Str, out: List[Str]) {
+    out.push("S " + (sv.len).to_string() + "\n")
+    out.push(sv)
+    out.push("\n")
+}
+
+fn ast_emit_node(d: List[Str], k: List[Str], v: List[Str], out: List[Str], depth: I32) -> I32 {
+    if depth > 4000 {
+        return -4
+    }
+    var tag = d[0]
+    var sh = ast_shape(k, v, tag)
+    if sh == "?" {
+        println("E-AST-UNKNOWN: 形态表缺标签 " + tag)
+        return -2
+    }
+    var nc = d.len - 1
+    if nc < sh.len {
+        if byte_slice(sh, sh.len - 1, sh.len) != "*" {
+            println("E-AST-SHAPE: " + tag + " 子项 " + (nc).to_string() + " 不足形态 " + sh)
+            return -3
+        }
+    }
+    out.push("N " + tag + " " + (nc).to_string() + "\n")
+    var i: I32 = 1
+    while i < d.len {
+        var kind = ast_kind(sh, i - 1)
+        if kind == "S" {
+            ast_emit_str(d[i], out)
+        } else {
+            if kind == "N" {
+                var r = ast_emit_node(d[i], k, v, out, depth + 1)
+                if r != 0 {
+                    return r
+                }
+            } else {
+                println("E-AST-SHAPE: " + tag + " 槽 " + (i - 1).to_string() + " 非法")
+                return -3
+            }
+        }
+        i += 1
+    }
+    return 0
 }

@@ -3747,3 +3747,28 @@ match** 会误染 return 位(#fnret 同族,语料回避);②If/Try 尾位非块�
 同族分歧不在本批(ct_if_value 值形路径不可达同因;纯表达式臂三值化或臂内
 位置判定=后续批);③值位块 `{ match … }` 尾(BlockExpr 值语境)未勘定。
 E6020 纯度、中位诊断拒绝均不在本批授权面。
+
+## 2026-10-28 W5b as-built:entry AST 缓存机制落地+默认关——load>parse 立项前提证伪
+
+**落地**(计划 docs/superpowers/plans/2026-10-28-w5b-ast-bake-plan.md):
+三驱动(run/check/emit)CTRON_AST_IN/FILL 命中-回填钩子;ctc.sh 键算
+(sha256(源)_sha12(cc_<mode>.ct),T20 同构)+ `<key>.sha` 副签校验 +
+腐坏 rm 回退;ast_emit_str/ast_emit_node 迁 CORE ast_fmt.ct(回填助手
+ast_ser_file/ast_cache_load 同栖);ast_read_line **两通道化**(逐字符
+byte_slice 拼接 = O(len²) 串构建修正);smoke 3r 腿(冷径回填/命中径一致/
+腐坏副签拒收)。**默认关(opt-in CTRON_AST_CACHE=1)**。
+
+**U1 定谳**:「24K 行 cc_run 链」单文件 seed-interp 下 run/emit 双 OOM
+(rc=137 ~2m18)——:3554 基线口径不可复现(输入未点名登记欠账);实测
+改用 lib/std/json.ct(1980 行)。
+
+**核心判定(U2)**:**load 代价 > parse,前提证伪**——json.ct cold 2.75s
+vs warm 3.89–4.10s(两通道修复前 4.5–5.6s;ast_load_node 每节点
+mk/push/Atomic + 递归在 interp 侧重于 lex+parse 线性面)。2–3× 判定
+=**不达成**;当年 44%(S1b 未触)与今 60–80%(:3554)占比数皆为
+roundtrip 双倍口径,非单 parse 税。机制保留默认关;翻转条件 = host 内建
+C 载入或自举 bin 面(load<parse 交叉点),**立项勘误在册**:W5b 触发线
+应锚「load/parse 实测比」而非「parse 占比」。
+
+**正确性门**(opt-in 径):冷/热产物 C 逐字节一致(210200B);腐坏截断
+回退输出不变;E-AST fail-closed 不写缓存。

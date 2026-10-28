@@ -27,6 +27,48 @@ ctc_sha() {
     fi
 }
 
+# W5b entry AST 缓存(计划 docs/superpowers/plans/2026-10-28-w5b-ast-bake-plan.md):
+# 键 = sha256(源)_sha12(cc_<mode>.ct)(T20 同构,编译器版本经 ANCHORVERSION 入键);
+# 副签校验(摘要计算在编排层,D8-2 冻结口径;驱动内禁 sha=356s 慢径)。
+# 坏缓存(缺副签/摘要不符)回退 parse 不中止编译;shasum 缺席 = 缓存禁用。
+# **默认关(opt-in: CTRON_AST_CACHE=1)**:2026-10-28 实测 seed-interp 下
+# ast_load_node 代价 > parse(2K 线 warm 3.9s vs cold 2.75s;两通道修复后仍
+# 1.4×)——立项前提「load ≪ parse」证伪,2–3× 判定不达成(COVERAGE 同日批);
+# 开关保留给后续 host C 载入/自举 bin 面(load<parse 交叉点)翻转。
+ast_cache_env() {
+    if [ "${CTRON_AST_CACHE:-}" != "1" ]; then
+        return 0
+    fi
+    HB=$(command -v shasum 2>/dev/null || command -v sha256sum 2>/dev/null || true)
+    if [ -z "$HB" ]; then
+        return 0
+    fi
+    AST_KEY=$("$HB" "$IN" | cut -d' ' -f1)_$("$HB" "$DIR/build/cc_$1.ct" | cut -d' ' -f1 | cut -c1-12)
+    AST_DIR="$ROOT/.cache/ast"
+    AST_CACHED="$AST_DIR/$AST_KEY.ctast"
+    AST_CACHED_SHA="$AST_DIR/$AST_KEY.sha"
+    mkdir -p "$AST_DIR"
+    if [ -f "$AST_CACHED" ] && [ -f "$AST_CACHED_SHA" ] \
+       && [ "$("$HB" "$AST_CACHED" | cut -d' ' -f1)" = "$(cat "$AST_CACHED_SHA" 2>/dev/null)" ]; then
+        export CTRON_AST_IN="$AST_CACHED"
+    else
+        rm -f "$AST_CACHED" "$AST_CACHED_SHA"
+        export CTRON_AST_FILL="$AST_CACHED"
+        export CTRON_AST_FILL_SHA="$AST_CACHED_SHA"
+        export CTRON_AST_HB="$HB"
+    fi
+    return 0
+}
+
+# 回填副签:驱动实际写入 ctast 时才落 .sha(驱动 parse 带诊断/fail-closed 不写)
+ast_cache_seal() {
+    if [ -n "${CTRON_AST_FILL:-}" ] && [ -n "${CTRON_AST_FILL_SHA:-}" ] && [ -n "${CTRON_AST_HB:-}" ] \
+       && [ -f "${CTRON_AST_FILL:-}" ]; then
+        "$CTRON_AST_HB" "$CTRON_AST_FILL" | cut -d' ' -f1 > "$CTRON_AST_FILL_SHA" 2>/dev/null
+    fi
+    return 0
+}
+
 mode=run
 PROF=full
 TAUSTED=0
@@ -380,10 +422,12 @@ wasm_build_pipeline() {
 case $mode in
     run)
         "$DIR/build.sh" >/dev/null
+        ast_cache_env run
         TMP=$(mktemp /tmp/ctron_cc.XXXXXX)
         sed -e "s|ANCHORINPUT|$IN|" -e "s|ANCHORPROFILE|$PROF|" -e "s|ANCHORLANG|$DIAGLANG|" "$DIR/build/cc_run.ct" > "$TMP"
         "$HOST" run "$TMP"
         rc=$?
+        ast_cache_seal
         ;;
     check)
         FMT=0
@@ -396,10 +440,12 @@ case $mode in
             case $a in --profile=*) PROF=${a#--profile=} ;; esac
         done
         "$DIR/build.sh" >/dev/null
+        ast_cache_env check
         TMP=$(mktemp /tmp/ctron_cc.XXXXXX)
         sed -e "s|ANCHORINPUT|$IN|" -e "s|ANCHORFMT|$FMT|" -e "s|ANCHORPROFILE|$PROF|" -e "s|ANCHORTAUSTED|$TAUSTED|" -e "s|ANCHORDUMPGUI|$DUMPGUI|" -e "s|ANCHORLANG|$DIAGLANG|" "$DIR/build/cc_check.ct" > "$TMP"
         "$HOST" run "$TMP"
         rc=$?
+        ast_cache_seal
         ;;
     emit)
         OUTC=${1:-$(basename "${IN%.ct}").c}
@@ -420,6 +466,8 @@ case $mode in
             exit 0
         fi
         "$DIR/build.sh" >/dev/null
+        # W5b:T20 产物缓存未命中才走编译链;AST 缓存命中可免 parse
+        ast_cache_env emit
         TMP=$(mktemp /tmp/ctron_cc.XXXXXX)
         sed "s|ANCHORINPUT|$IN|" "$DIR/build/cc_emit.ct" | sed "s|ANCHORLANG|$DIAGLANG|" > "$TMP"
         # S4-⑤:emit 管线注入 std 根(dev 布局 seed 宿主三探皆空,std use 曾静默
@@ -432,6 +480,7 @@ case $mode in
             mv "$OUTC.wip" "$OUTC"
             mkdir -p "$CACHE_DIR"
             cp "$OUTC" "$CACHED" 2>/dev/null
+            ast_cache_seal
             echo "ctc.sh: 已发射 $OUTC(编译: cc -O2 $OUTC -o bin;运行: ./bin run $IN)"
             emit_link_summary "$OUTC"
         else

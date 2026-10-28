@@ -40,15 +40,37 @@ fn main() -> I32 {
     let src = read_file("ANCHORINPUT")
     match src {
         Some(s) => {
-            var toks = List[Str]()
-            var lns = List[Str]()
-            var cols = List[Str]()
             var pdiags = List[Str]()
-            // doc-test 提升(§10.4):```c 围栏块 → 文件尾合成 test 块(driver_doctest.ct)
-            var s2 = doctest_lift(s)
-            scan4(s2, toks, lns, cols, pdiags)
-            var cur = Atomic[I32](0)
-            var file = p_file(toks, cur, lns, cols, pdiags)
+            // W5b:CTRON_AST_IN 命中直载(跳过 doctest_lift/scan4/p_file);
+            // CTRON_AST_FILL 非空 = miss 回填(parse 干净才写,E-AST fail-closed)
+            var cachin = env_get("CTRON_AST_IN")
+            var file = List[Str]()
+            var cached = false
+            if cachin.len > 0 {
+                file = ast_cache_load(cachin)
+                if file.len > 1 {
+                    cached = true
+                }
+            }
+            if !cached {
+                var toks = List[Str]()
+                var lns = List[Str]()
+                var cols = List[Str]()
+                // doc-test 提升(§10.4):```c 围栏块 → 文件尾合成 test 块(driver_doctest.ct)
+                var s2 = doctest_lift(s)
+                scan4(s2, toks, lns, cols, pdiags)
+                var cur = Atomic[I32](0)
+                file = p_file(toks, cur, lns, cols, pdiags)
+                var cfill = env_get("CTRON_AST_FILL")
+                if cfill.len > 0 {
+                    if pdiags.len == 0 {
+                        var ser = ast_ser_file(file)
+                        if ser.len > 0 {
+                            fs_write(cfill, ser)
+                        }
+                    }
+                }
+            }
             // 模块加载器(§2):use 解析 → 可见性 → 合并;无 use 时为无感直通
             var ldiags = List[Str]()
             var lstack = List[Str]()

@@ -11,51 +11,10 @@
 //   roundtrip = dump → load → redump 逐字节自比(往返固定点验收)。
 // 输入锚:read_file("ANCHORINPUT")(与 driver_check 同口径;seed 面由 ctc.sh 换靶)。
 // =====================================================================
-fn ast_emit_str(sv: Str, out: List[Str]) {
-    out.push("S " + (sv.len).to_string() + "\n")
-    out.push(sv)
-    out.push("\n")
-}
-
-fn ast_emit_node(d: List[Str], k: List[Str], v: List[Str], out: List[Str], depth: I32) -> I32 {
-    if depth > 4000 {
-        return -4
-    }
-    var tag = d[0]
-    var sh = ast_shape(k, v, tag)
-    if sh == "?" {
-        println("E-AST-UNKNOWN: 形态表缺标签 " + tag)
-        return -2
-    }
-    var nc = d.len - 1
-    if nc < sh.len {
-        if byte_slice(sh, sh.len - 1, sh.len) != "*" {
-            println("E-AST-SHAPE: " + tag + " 子项 " + (nc).to_string() + " 不足形态 " + sh)
-            return -3
-        }
-    }
-    out.push("N " + tag + " " + (nc).to_string() + "\n")
-    var i: I32 = 1
-    while i < d.len {
-        var kind = ast_kind(sh, i - 1)
-        if kind == "S" {
-            ast_emit_str(d[i], out)
-        } else {
-            if kind == "N" {
-                var r = ast_emit_node(d[i], k, v, out, depth + 1)
-                if r != 0 {
-                    return r
-                }
-            } else {
-                println("E-AST-SHAPE: " + tag + " 槽 " + (i - 1).to_string() + " 非法")
-                return -3
-            }
-        }
-        i += 1
-    }
-    return 0
-}
-
+// W5b 迁注(2026-10-28):ast_emit_str/ast_emit_node 迁 CORE ast_fmt.ct
+// ——entry 缓存回填助手(ast_ser_file)三驱动(run/check/emit,均 CORE 拼接)
+// 依赖序列化面;driver_ast 臂经 CORE 共用同一定义。
+// =====================================================================
 fn main() -> I32 {
     var path = "ANCHORINPUT"
     var epath = ctron_entry()
