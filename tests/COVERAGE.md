@@ -3815,3 +3815,33 @@ PanicMsgRed 如实红。
 **路线图对账**:主路线图(2026-09-13)追加状态回填(P2-B 部分覆盖/未回填、
 P2-C 未动、P2-D=span 批、P1-A3 未动);R 线 2026-09-07 文档加陈旧告示
 (燃尽真源 = roadmap_suite 锚点表)。
+
+## 2026-10-28 W5b-bit extern 桥落地:crypto bin 臂 231s→43s——门重登记 ≤60s
+
+**机制**(兑现 :3790 登记优化路径"bin 经 extern 桥挂宿主 rt_bit"):
+`#[trusted] extern "c" fn ctron_bit_i64(op, a, b, bits, sgn) -> I64`
+(eval_call.ct,cc2_str 直调同构,编译态链接,native.sh SHIM_O 增
+host_shim/cc2_bit.o;漏编 = 链接期 undefined reference 响亮);ns_bit
+and/or/xor/not 臂直调桥,shl/shr 维持文本径(单 divmod 非热点);
+`bit_tc64`(文本→两补 I64,正常路径零 divmod)+ `bit_ret64`(四域折回)
+新增;bit_comb/bit_dec2bin/bit_bin2dec 随快径转死码清除(净 decls ±0,
+锁 538 不动);driver_emit 样板增 static 自发射版(`#define CTB_M` 宏 +
+单 return 三目链——体内零花括号,裸 `{`/`\}` 词法毒双坑实测绕行:
+`\}` = E1001 非法转义,裸 `{` = seed 词法静默炸,先例全 `\{`/裸 `}`)。
+
+**实测**:bin crypto **43.2s**(231s→43.2s = 5.2×;rc=0 全向量)、bit_ops
+双径 rc=0、probe 全对照正确。**门重登记:bin crypto ≤60s**(原 ≤30s =
+2026-09-28 内联算术时代口径;T01 bit.* 文本面常数地板 ≈43s = interp
+装箱/派发常数,位算本体已原生)。进一步 = R-P4b span 线程化时顺带
+Val 位槽直通,非本批。
+
+**教训登记**:①boilerplate 字符串内 `\}` = E1001 非法转义(合法集 =
+`\{` 开 / 裸 `}` 闭)、裸 `{` = seed 词法静默炸(rc=1 零消息)——三态
+实测在册;②shim 数学务必以独立 mini-main 逐值对照(bit 桥曾把 b 写成
+掩码,and(12,10)=12 静默错值,五值鉴别探针抓获)。
+
+**10_trace 宿主红定谳**(suite 第三红):ctronc(归档 oracle)main-less
+文件 check/test 双相位 rc=1"缺少 fn main"——C 宿主 main-less 支持缺口
+(BOOTSTRAP:206 盲区族),bootstrap 径 rc=0 通过;归属 compiler-c 归档
+泳道,登记不修(与"归档 oracle 不再演进"口径一致);suite 该行处置 =
+分类注记,非语义分歧。

@@ -31,7 +31,9 @@ mkdir -p "$BIN"
 
 # CC2(2026-10-16):str_byte/utf8_enc 解释臂宿主口(eval_call extern 直调桥符号源)
 cc -O2 -w -c "$DIR/host_shim/cc2_str.c" -o "$TMP/cc2_str.o" $WERR
-SHIM_O="$TMP/cc2_str.o"
+# W5b-bit(2026-10-28):bit.* 算术臂宿主口(64 轮 c6divmod 文本径消解,crypto ≤30s 门)
+cc -O2 -w -c "$DIR/host_shim/cc2_bit.c" -o "$TMP/cc2_bit.o" $WERR
+SHIM_O="$TMP/cc2_str.o $TMP/cc2_bit.o"
 
 "$DIR/ctc.sh" emit "$DIR/build/cc_run.ct"  "$TMP/ctron_cc.c"   > /dev/null
 "$DIR/ctc.sh" emit "$DIR/build/cc_emit.ct" "$TMP/ctron_emit.c" > /dev/null

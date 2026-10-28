@@ -44,6 +44,12 @@ extern "c" fn ctron_prog_args_n() -> I64
 #[trusted]
 extern "c" fn ctron_prog_args_at(i: I64) -> Str
 
+// W5b-bit 桥(2026-10-28):bit.* 算术臂宿主口——host_shim/cc2_bit.c 链接面直调
+// (native.sh SHIM_O;漏编 = 链接期 undefined reference 响亮)。返回 = 宽度 bits
+// 两补、符号扩展至 I64。文本径 64 轮 c6divmod(231s crypto)由本口消解。
+#[trusted]
+extern "c" fn ctron_bit_i64(op: I32, a: I64, b: I64, bits: I32, sgn: I32) -> I64
+
 // FB-8/F5:T[N] 形参值语义——A 记录(数组值)递归深拷(镜像发射位调用点栈拷贝;
 // 旧直传共享记录,被调改元即污染调用方,静默错值)
 fn arr_copy_val(v: Val) -> Val {
@@ -1991,6 +1997,19 @@ fn eval_call(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> Flow {
 // 移位数越界 [0, 宽度) → panic "bit shift range"(检查哲学与索引/溢出一致)。
 // 2^k 文本(k ≤ 64)
 fn bit_p2(k: I32) -> Str {
+    // W5b-bit 热宽直表:umag/tc64 每调用 2 次,64 轮 c6add 链消解
+    if k == 64 {
+        return "18446744073709551616"
+    }
+    if k == 63 {
+        return "9223372036854775808"
+    }
+    if k == 32 {
+        return "4294967296"
+    }
+    if k == 31 {
+        return "2147483648"
+    }
     var r = "1"
     var i: I32 = 0
     while i < k {
@@ -2061,94 +2080,7 @@ fn bit_sfold(u: Str, bits: I32, signed: Bool) -> Str {
     }
     return u
 }
-// 十进制非负文本 → 二进制文本(MSB 先)
-fn bit_dec2bin(t: Str) -> Str {
-    var v = c6can(t)
-    if v == "0" {
-        return "0"
-    }
-    var rev = ""
-    while v != "0" {
-        var qr = c6divmod(v, "2")
-        if bit_rest(qr) == "1" {
-            rev = rev + "1"
-        } else {
-            rev = rev + "0"
-        }
-        v = bit_quot(qr)
-    }
-    var out = ""
-    var j: I32 = rev.len - 1
-    while j >= 0 {
-        out = out + byte_slice(rev, j, j + 1)
-        j -= 1
-    }
-    return out
-}
 
-// 二进制文本(MSB 先)→ 十进制文本(Horner ×2)
-fn bit_bin2dec(t: Str) -> Str {
-    var r = "0"
-    var i: I32 = 0
-    while i < t.len {
-        if byte_at(t, i) == 49 {
-            r = c6add(c6mul(r, "2"), "1")
-        } else {
-            r = c6mul(r, "2")
-        }
-        i += 1
-    }
-    return r
-}
-
-// 逐位组合:a/b 十进制非负文本(< 2^bits);mode 0=and 1=or 2=xor
-fn bit_comb(bits: I32, a: Str, b: Str, mode: I32) -> Str {
-    // W5-修正(2026-10-28):恢复 8bc586db T01 原版语义——ffdc6fe9 perf 改写
-    // (逐字符直算)把十进制文本误当二进制逐位读,and(12,10)=10、not(41)=垃圾,
-    // crypto/bit_ops 全线红(bin 重建后暴露;Oct-25 旧 bin 一直掩盖)。
-    // 本版 = T01 ÷2 链 + 权重累加(pw=2^i 每轮翻倍,on 位 acc+=pw);
-    // ffdc6fe9 的 O(len) 目标语义上不可达(c6 域十进制,位提取必须除法链),
-    // perf 回归在册:crypto bin 臂待实测重定门。
-    var aa = c6can(a)
-    var bb = c6can(b)
-    var acc = "0"
-    var pw = "1"
-    var i: I32 = 0
-    while i < bits {
-        if aa == "0" {
-            if mode == 0 {
-                // and:剩余位恒 0,直接累计完毕
-                return acc
-            }
-            if bb == "0" {
-                // or/xor:双方剩余位全 0,直接完成(高位零值早退,省满 64 轮)
-                return acc
-            }
-        }
-        var qa = c6divmod(aa, "2")
-        var qb = c6divmod(bb, "2")
-        var on = false
-        var b1 = bit_rest(qa) == "1"
-        var b2 = bit_rest(qb) == "1"
-        if mode == 0 {
-            on = b1 && b2
-        }
-        if mode == 1 {
-            on = b1 || b2
-        }
-        if mode == 2 {
-            on = b1 != b2
-        }
-        if on {
-            acc = c6add(acc, pw)
-        }
-        aa = bit_quot(qa)
-        bb = bit_quot(qb)
-        pw = c6add(pw, pw)
-        i += 1
-    }
-    return acc
-}
 fn bit_width(w: Str) -> I32 {
     if w == "i32" || w == "u32" {
         return 32
@@ -2160,6 +2092,46 @@ fn bit_signed(w: Str) -> Bool {
 }
 // 结果构造:入参 t 对有符号宽(i32/i64)为已折叠有符号文本,u32 为无符号幅值
 // (此处折有符号 32 表示——解释器 u32 惯例:4294967295 存 -1),u64 为无符号幅值(7 域)
+// W5b-bit:值文本 → 宽度 bits 两补 I64(负文本按补码;幅值 ≥2^(bits-1) 折负)。
+// 正常路径零 divmod(仅溢出/负值走取模/折叠;p2 热宽直表)。
+fn bit_tc64(t: Str, bits: I32) -> I64 {
+    var neg = t.len > 1 && byte_at(t, 0) == 45
+    var mag = t
+    if neg {
+        mag = byte_slice(t, 1, t.len)
+    }
+    var p2b = bit_p2(bits)
+    if c6abscmp(mag, p2b) >= 0 {
+        var qr = c6divmod(c6can(mag), p2b)
+        mag = bit_rest(qr)
+    }
+    if neg && mag != "0" {
+        mag = c6sub(p2b, mag)
+    }
+    if c6abscmp(mag, bit_p2(bits - 1)) >= 0 {
+        return c6_i64v(c6sub(mag, bit_p2(bits)))
+    }
+    return c6_i64v(mag)
+}
+
+// W5b-bit:桥返回(宽度 bits 两补 I64)按四域折回——i32 vI 直槽;u32/i64 v6
+// (u32 = "4294967295 存 -1" 解释器惯例);u64 幅值文本(负则 +2^64 归位)
+fn bit_ret64(w: Str, rr: I64, ob: List[Str]) -> Flow {
+    if seq2(w, "i32") {
+        return e4("k", ob[1], vI(rr.as[I32]()), ob[3])
+    }
+    if seq2(w, "u32") {
+        return e4("k", ob[1], v6i(rr), ob[3])
+    }
+    if seq2(w, "i64") {
+        return e4("k", ob[1], v6i(rr), ob[3])
+    }
+    if rr < 0 {
+        return e4("k", ob[1], v7(c6add(v6t(v6i(rr)), "18446744073709551616")), ob[3])
+    }
+    return e4("k", ob[1], v7(v6t(v6i(rr))), ob[3])
+}
+
 fn bit_ret(w: Str, u: Str, ob: List[Str]) -> Flow {
     if seq2(w, "i32") {
         return e4("k", ob[1], vI(dvi(u)), ob[3])
@@ -2210,12 +2182,20 @@ fn ns_bit(m: Str, vals: List[Str], ob: List[Str]) -> Flow {
         if seq2(op, "or") {
             md = 1
         }
-        var uc = bit_comb(bits, bit_umag(t1, bits), bit_umag(vals[1][1], bits), md)
-        return bit_ret(w, bit_sfold(uc, bits, sgn), ob)
+        var sgi: I32 = 0
+        if sgn {
+            sgi = 1
+        }
+        var rr = ctron_bit_i64(md, bit_tc64(t1, bits), bit_tc64(vals[1][1], bits), bits, sgi)
+        return bit_ret64(w, rr, ob)
     }
     if seq2(op, "not") {
-        var un = bit_comb(bits, bit_umag(t1, bits), c6sub(bit_p2(bits), "1"), 2)
-        return bit_ret(w, bit_sfold(un, bits, sgn), ob)
+        var sgn2: I32 = 0
+        if sgn {
+            sgn2 = 1
+        }
+        var rr = ctron_bit_i64(3, bit_tc64(t1, bits), 0, bits, sgn2)
+        return bit_ret64(w, rr, ob)
     }
     if or2(seq2(op, "shl"), seq2(op, "shr")) {
         if vals.len < 2 {
