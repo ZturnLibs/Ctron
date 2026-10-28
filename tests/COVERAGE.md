@@ -3795,3 +3795,23 @@ bit.* 文本域往返,非本修正;优化路径 = bin 经 extern 桥挂宿主 rt
 字面量回绕一致,「u32 后缀 eval 回绕」在册债实际已闭合(P1-B 挂账销)。
 **decls 锁**:536→538(bit_dec2bin/bit_bin2dec 转换助手 +2;536 抬锁时漏计
 同批补注)。
+
+## 2026-10-28 R 线 E3070 落地:r3a 翻转 NegGreen + r4b 侦察结论 + 路线图对账
+
+**E3070 闭包可变捕获检查**(compiler-rust/src/check.rs,§4.7 T27 终态):
+Checker 增 `clo_bases` 帧基线栈(Closure 臂入口 push/pop);Assign 臂目标绑定
+帧 idx < 顶基(捕获绑定)+ mutable → **E3070**(含 "Mutex" 文案,对齐自举线
+diag_msg);捕获 let / 闭包外 let 维持 E2080(两码不共燃);嵌套闭包独立
+(帧基线栈)。与自举线 sem_closure.ct 两遍式同判据。锚翻转:r3a_capture_var
+NegPending → **NegGreen("E3070")**,CLI 实证 rc=1 出码;六红套件指纹与基线
+一致零扩大。登记债(两线一致的未拦面):Index/Member 左目变异
+(`arr[i]=x`/`acc.f+=1`)与接收者方法变异面,收窄批处理。
+
+**r4b 侦察结论(不翻转)**:r4b panic 源位置翻转需 parser→AST→interp 全线
+span 线程化——Rust AST 全节点无 span(检查器 Span 均合成 1:1),run_test_file
+签名亦无文件名入参 = R-P4b `#line` 源码映射里程碑正身,独立批次;锚维持
+PanicMsgRed 如实红。
+
+**路线图对账**:主路线图(2026-09-13)追加状态回填(P2-B 部分覆盖/未回填、
+P2-C 未动、P2-D=span 批、P1-A3 未动);R 线 2026-09-07 文档加陈旧告示
+(燃尽真源 = roadmap_suite 锚点表)。

@@ -299,3 +299,25 @@ P2 各 spike 穿插在门禁等待期
   main 落地,本计划只消费 ✓。
 - 占位符:P0 全任务级;P1-A/B 含设计要点与验收;P2 以设计 spike 为交付物
   (设计 spike 本身即任务产出,非占位符)✓。
+
+## 状态对账回填(2026-10-28)
+
+本文档 P2/P3 各切片状态停更于 2026-09 中旬,后续演进由编年台账
+`tests/COVERAGE.md` 承载。2026-10-28 对账:
+
+- **P1 各泳道**:✅ 已完成(挂账子项见 COVERAGE 各批);P1-A3(E2071 解除)
+  仍未动。
+- **P2-A**:comptime 容器值域/Break-Continue 维持暂缓。
+- **P2-B(包清单解析)**:CTCL 清单面已由 config-language-v1(2026-09-16)与
+  T49 lockfile/workspace-add-publish、T50 闭源分发批次**部分覆盖**(manifest
+  schema = tools/ctcl_manifest_schema.ctcl + ctcl_check.py);本切片原文的
+  「解析切片(+诊断码)」完成度未回填,以 T49/T50 批为准。
+- **P2-C(构建配置系统)**:未动(CTCL v1 只落了清单语言,配置求值/发射开关
+  未立项)。
+- **P2-D(精确诊断 span)**:R 线 r4b 锚(panic 源位置)2026-10-28 侦察确认为
+  parser→AST→interp 全线 span 线程化(Rust AST 全节点无 span),独立批次;
+  本切片未动。
+- **P3 远期 4 项**:维持远期;§9 后端矩阵的 WasmGC 分支已由 T38 裁决证伪
+  (重评估触发 = WasmGC 1.0 多宿主落地)。
+- **R 线燃尽**:以 `compiler-rust/tests/roadmap_suite.rs` 为准(绿 5 / 锚 14 /
+  共 19;2026-10-28 r7b E4020、r3a E3070 翻 NegGreen)。
