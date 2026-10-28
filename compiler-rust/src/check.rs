@@ -1,5 +1,5 @@
 //! 语义检查:双向类型检查、Send 三检查点、分配效果、穷尽性、pure/caps/comptime。
-//! 诊断码:E2010/E2020/E2030/E2060/E2061/E2070/E2071/E2072/E3010/E3020/E3031/E3040/E3060/E4010/E4020/E4030/E6010/E6020/W8020。
+//! 诊断码:E2010/E2020/E2030/E2060/E2061/E2070/E2071/E2072/E3010/E3020/E3031/E3040/E3060/E3070/E4010/E4020/E4030/E6010/E6020/W8020。
 //! (E2060/E2061=v0.7 修订三 调用点推断;E2070/E2071/E2072=v0.7 修订二 break/continue)
 
 use crate::ast::{self, Expr};
@@ -941,6 +941,8 @@ pub struct Checker<'a> {
     loop_scope_base: Vec<usize>,
     /// §8.3 E4020:跨函数纯度传播摘要(不动点)——fn 是否(传递地)触能力
     pure_dirty: Vec<bool>,
+    /// §4.7 T27 E3070:各层闭包入口时的 scopes 栈深(绑定帧 idx < 顶基 = 捕获绑定)
+    clo_bases: Vec<usize>,
 }
 
 impl<'a> Checker<'a> {
@@ -955,7 +957,7 @@ impl<'a> Checker<'a> {
             caps_used: HashSet::new(), gc_alloc_fns: HashMap::new(), any_alloc_fns: HashMap::new(),
             trait_method_alloc_map,
             loop_depth: 0, fn_loop_depths: Vec::new(), loop_scope_base: Vec::new(),
-            pure_dirty: Vec::new(),
+            pure_dirty: Vec::new(), clo_bases: Vec::new(),
         };
         // 分配效果定点求解(全部用户 fn)
         let ids: Vec<usize> = (0..sema.fns.len()).collect();
@@ -1925,12 +1927,22 @@ impl<'a> Checker<'a> {
                 // E2080:let 局部不可重赋值(§4.1;var/形参/闭包形参/for·match 模式绑定 mutable=true 放行,
                 // 与自举线/C 宿主 v0.9 门同判据)
                 if let ast::Expr::Ident(n) = target {
-                    let mut gate = false;
-                    for scope in self.scopes.iter().rev() {
-                        if let Some(l) = scope.get(n) { gate = !l.mutable; break; }
+                    let mut hit: Option<(usize, bool)> = None;
+                    for (idx, scope) in self.scopes.iter().enumerate().rev() {
+                        if let Some(l) = scope.get(n) { hit = Some((idx, l.mutable)); break; }
                     }
-                    if gate {
-                        self.err("E2080", format!("对不可变绑定赋值(let 声明):{n} — 需重新赋值请声明为 var"), Span::new(1, 1, 0, 0));
+                    if let Some((idx, mutable)) = hit {
+                        // §4.7 T27 终态:捕获 = 创建时拷贝绑定值(外层再赋值不可见),
+                        // 可变共享仅经 Mutex[T]/Atomic[T]/Global[T] 显式单元——
+                        // 闭包内对捕获 var 赋值 = E3070;捕获 let / 闭包外 let 维持 E2080(两码不共燃)
+                        let captured = self.clo_bases.last().is_some_and(|&b| idx < b);
+                        if mutable {
+                            if captured {
+                                self.err("E3070", format!("闭包可变捕获未显式 Mutex[T] 包装:`{n}`(建议:改用 Mutex[T].with_mut)"), Span::new(1, 1, 0, 0));
+                            }
+                        } else {
+                            self.err("E2080", format!("对不可变绑定赋值(let 声明):{n} — 需重新赋值请声明为 var"), Span::new(1, 1, 0, 0));
+                        }
                     }
                 }
                 let tty = self.expr(target, None);
@@ -2245,6 +2257,9 @@ impl<'a> Checker<'a> {
                     binds.insert(p.name.clone(), Local { ty, mutable: true });
                 }
                 let body_hint = fn_hint.as_ref().map(|(_, r)| r.clone());
+                // §4.7 T27 E3070:闭包入口帧基线——此后 Assign 目标绑定帧 idx < base = 捕获绑定
+                let clo_base = self.scopes.len();
+                self.clo_bases.push(clo_base);
                 self.scopes.push(binds);
                 // v0.7 修订二:闭包体是独立函数边界——清零循环深度,外层深度入栈(E2072 判定依据)
                 let saved_depth = self.loop_depth;
@@ -2255,6 +2270,7 @@ impl<'a> Checker<'a> {
                 self.loop_depth = saved_depth;
                 self.fn_loop_depths = saved_fns;
                 self.scopes.pop();
+                self.clo_bases.pop();
                 Ty::FnTy { params: param_tys, ret: Box::new(bt) }
             }
             Expr::Scope { param, body } => {

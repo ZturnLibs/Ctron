@@ -40,7 +40,9 @@ fn anchors() -> Vec<(&'static str, &'static str, Status)> {
         ("r2b_time.ct", "R-P2b", Status::RunRed),
         // ---- R-P3 闭包/迭代器/模式 ----
         ("r3a_capture.ct", "R-P3a", Status::Green),
-        ("r3a_capture_var.neg.ct", "R-P3a", Status::NegPending("E3070")),
+        ("r3a_capture_var.neg.ct", "R-P3a", Status::NegGreen("E3070")),
+        // 2026-10-28:闭包可变捕获检查落地(check.rs Assign 臂 + Closure 入口帧基线
+        // clo_bases;捕获 var 赋值 → 无 Mutex 包装即 E3070,与自举线 sem_closure 同判据)
         // r3b_adapters/r3b_iter_adapters 已翻转(T16,2026-10-02):适配器链入
         // std/iter.ct(Seq[T,S] get 基惰性适配器 + UFCS 入口),锚迁主套件
         // modules/iter_adapters(多文件包口径:自举臂运行+宿主 pkg check;发射面
