@@ -131,9 +131,10 @@ modules 段宿主pkg 8/10 → 9/10,caps_net 双线绿;R 线 `check.rs` 的
 ### (d) R 线 caps 泛化与 r7b 翻转状态
 
 R 线 E4020(pure 触网)的 caps_used 收集已泛化(见 (b));`tests/roadmap/
-r7b_pure_net.neg.ct` 今天为 **RunRed**——跨函数纯度传播未实现(`#[pure]`
-经间接调用洗白能力调用不产 E4020),翻转待 R 线 std/net 解析就绪,按翻转
-协议迁 NegGreen(E4020)。另:UDP 真回环已入本地门禁(`tests/net/udp_roundtrip`,
+r7b_pure_net.neg.ct` **已翻转 NegGreen("E4020",2026-10-28)**——跨函数纯度
+传播落地(R 线 check.rs `Checker::new()` 纯度定点:直触集 + 命名调用边
+不动点,消费于命名调用臂;实证与局限登记见 COVERAGE 同日批)。里程碑
+完成时按翻转协议迁 check_suite 期望表。另:UDP 真回环已入本地门禁(`tests/net/udp_roundtrip`,
 双 socket :0 协调、字节断言,计入 6/6;500 轮 fd_churn 同在本地门禁);
 nightly 承载 1k/规模面。
 

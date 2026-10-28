@@ -60,9 +60,10 @@ fn anchors() -> Vec<(&'static str, &'static str, Status)> {
         // ---- 09-15 审计批次补登(r6b–r6g/r1a;R 线行为逐件实测锚定) ----
         // r6g:check 双面绿;文件无 test 块,RunRed 对空结果集空泛成立(链接面由 modules/ffi_math 覆盖)
         ("r6g_trusted_extern.ct", "R-P6g", Status::RunRed),
-        // r7b:pure 间接触网(E4020 语义 §8.1/§11.1)—— 跨函数纯度传播未实现,RunRed 空泛成立;
-        // P1 std/net 门面已落地(免费函数面 + &Net 审计锚),R 线纯度/解析就绪后翻转 NegGreen("E4020")
-        ("r7b_pure_net.neg.ct", "R-P7b", Status::RunRed),
+        // r7b:pure 间接触网(E4020 语义 §8.1/§11.1)—— 跨函数纯度传播已落地
+        // (check.rs new() 纯度定点:直触集 + 命名调用边不动点,消费于命名调用臂),
+        // 2026-10-28 RunRed → NegGreen("E4020")
+        ("r7b_pure_net.neg.ct", "R-P7b", Status::NegGreen("E4020")),
     ]
 }
 

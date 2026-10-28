@@ -939,6 +939,8 @@ pub struct Checker<'a> {
     fn_loop_depths: Vec<usize>,
     /// v0.7 修订二 E2071:各层循环体的作用域基线(scopes 索引)
     loop_scope_base: Vec<usize>,
+    /// §8.3 E4020:跨函数纯度传播摘要(不动点)——fn 是否(传递地)触能力
+    pure_dirty: Vec<bool>,
 }
 
 impl<'a> Checker<'a> {
@@ -953,6 +955,7 @@ impl<'a> Checker<'a> {
             caps_used: HashSet::new(), gc_alloc_fns: HashMap::new(), any_alloc_fns: HashMap::new(),
             trait_method_alloc_map,
             loop_depth: 0, fn_loop_depths: Vec::new(), loop_scope_base: Vec::new(),
+            pure_dirty: Vec::new(),
         };
         // 分配效果定点求解(全部用户 fn)
         let ids: Vec<usize> = (0..sema.fns.len()).collect();
@@ -971,6 +974,37 @@ impl<'a> Checker<'a> {
                 if a && !c.any_alloc_fns[&id] { c.any_alloc_fns.insert(id, true); changed = true; }
             }
         }
+        // 纯度传播定点(§8.3 E4020,r7b 翻转):direct = 体内直接触能力(方法调用
+        // 接收者按形参类型/类型名解析为 Cap trait,剥 Ref 与 check_method_call 的
+        // cap_hit 同口径);edges = 命名调用边(Ident 直呼/TypeArgs 泛名/模块限定
+        // 尾段)。闭包体同函数语境(调用发生于宿主 fn 动态范围内)。局限:let 链上
+        // 非形参接收者、fn 值形参调用不识别——直触面由运行期 cap_hit 全型兜底,
+        // 这里只承担跨函数传播;极端洗白形态登记 COVERAGE。
+        let n = sema.fns.len();
+        let mut direct = vec![false; n];
+        let mut edges: Vec<HashSet<usize>> = vec![HashSet::new(); n];
+        let mut fn_ids: HashMap<&str, Vec<usize>> = HashMap::new();
+        for (i, f) in sema.fns.iter().enumerate() {
+            fn_ids.entry(f.name.as_str()).or_default().push(i);
+        }
+        for id in 0..n {
+            let Some(body) = &sema.fns[id].body else { continue };
+            let params: HashMap<&str, &Ty> =
+                sema.fns[id].params.iter().map(|(nm, t)| (nm.as_str(), t)).collect();
+            Self::scan_pure_block(sema, &body.stmts, body.tail.as_deref(), &params, id,
+                &mut direct, &mut edges, &fn_ids);
+        }
+        let mut changed = true;
+        let mut round = 0;
+        while changed && round < 32 {
+            changed = false;
+            round += 1;
+            for f in 0..n {
+                if direct[f] { continue; }
+                if edges[f].iter().any(|g| direct[*g]) { direct[f] = true; changed = true; }
+            }
+        }
+        c.pure_dirty = direct;
         c
     }
 
@@ -1151,6 +1185,161 @@ impl<'a> Checker<'a> {
 
     fn fn_gc_alloc(&self, id: usize) -> bool { self.gc_alloc_fns.get(&id).copied().unwrap_or(false) }
     fn fn_any_alloc(&self, id: usize) -> bool { self.any_alloc_fns.get(&id).copied().unwrap_or(false) }
+
+    // ---------- §8.3 跨函数纯度传播摘要(语法级;消费于 check_ident_call_global) ----------
+
+    fn scan_pure_block(sema: &Sema, stmts: &[ast::Stmt], tail: Option<&ast::Expr>,
+                       params: &HashMap<&str, &Ty>, id: usize,
+                       direct: &mut [bool], edges: &mut [HashSet<usize>],
+                       fn_ids: &HashMap<&str, Vec<usize>>) {
+        for s in stmts {
+            Self::scan_pure_stmt(sema, s, params, id, direct, edges, fn_ids);
+        }
+        if let Some(e) = tail {
+            Self::scan_pure_expr(sema, e, params, id, direct, edges, fn_ids);
+        }
+    }
+
+    fn scan_pure_stmt(sema: &Sema, s: &ast::Stmt, params: &HashMap<&str, &Ty>, id: usize,
+                      direct: &mut [bool], edges: &mut [HashSet<usize>],
+                      fn_ids: &HashMap<&str, Vec<usize>>) {
+        match s {
+            ast::Stmt::Break | ast::Stmt::Continue => {}
+            ast::Stmt::Let { expr, .. } => Self::scan_pure_expr(sema, expr, params, id, direct, edges, fn_ids),
+            ast::Stmt::Return(e) => {
+                if let Some(e) = e { Self::scan_pure_expr(sema, e, params, id, direct, edges, fn_ids); }
+            }
+            ast::Stmt::For { iter, body, .. } => {
+                Self::scan_pure_expr(sema, iter, params, id, direct, edges, fn_ids);
+                Self::scan_pure_block(sema, &body.stmts, body.tail.as_deref(), params, id, direct, edges, fn_ids);
+            }
+            ast::Stmt::While { cond, body } => {
+                Self::scan_pure_expr(sema, cond, params, id, direct, edges, fn_ids);
+                Self::scan_pure_block(sema, &body.stmts, body.tail.as_deref(), params, id, direct, edges, fn_ids);
+            }
+            ast::Stmt::Assign { target, value, .. } => {
+                Self::scan_pure_expr(sema, target, params, id, direct, edges, fn_ids);
+                Self::scan_pure_expr(sema, value, params, id, direct, edges, fn_ids);
+            }
+            ast::Stmt::Expr(e) => Self::scan_pure_expr(sema, e, params, id, direct, edges, fn_ids),
+        }
+    }
+
+    fn scan_pure_expr(sema: &Sema, e: &ast::Expr, params: &HashMap<&str, &Ty>, id: usize,
+                      direct: &mut [bool], edges: &mut [HashSet<usize>],
+                      fn_ids: &HashMap<&str, Vec<usize>>) {
+        use ast::Expr::*;
+        match e {
+            Call { callee, args } => {
+                match &**callee {
+                    Ident(name) => Self::note_call_edge(name, id, edges, fn_ids),
+                    TypeArgs { expr, .. } => {
+                        if let Ident(name) = &**expr { Self::note_call_edge(name, id, edges, fn_ids); }
+                    }
+                    Member { obj, target: ast::MemberTarget::Name(m) } => {
+                        // 接收者直触能力(形参/类型名;Cap trait 判据与运行期同源)
+                        if Self::recv_is_cap(sema, obj, params) { direct[id] = true; }
+                        // 模块限定调用(链前缀构成已注册模块路径)→ 尾段建边
+                        if Self::module_call_fn(sema, callee).is_some() {
+                            Self::note_call_edge(m, id, edges, fn_ids);
+                        }
+                    }
+                    _ => {}
+                }
+                Self::scan_pure_expr(sema, callee, params, id, direct, edges, fn_ids);
+                for a in args {
+                    Self::scan_pure_expr(sema, a, params, id, direct, edges, fn_ids);
+                }
+            }
+            Str { .. } => {}
+            Tuple(v) | Array(v) => {
+                for x in v { Self::scan_pure_expr(sema, x, params, id, direct, edges, fn_ids); }
+            }
+            StructLit { fields, .. } => {
+                for f in fields.iter().filter_map(|f| f.value.as_ref()) {
+                    Self::scan_pure_expr(sema, f, params, id, direct, edges, fn_ids);
+                }
+            }
+            Unary { expr, .. } | Try(expr) => Self::scan_pure_expr(sema, expr, params, id, direct, edges, fn_ids),
+            Binary { lhs, rhs, .. } | Range { from: lhs, to: rhs, .. } => {
+                Self::scan_pure_expr(sema, lhs, params, id, direct, edges, fn_ids);
+                Self::scan_pure_expr(sema, rhs, params, id, direct, edges, fn_ids);
+            }
+            Index { obj, index } => {
+                Self::scan_pure_expr(sema, obj, params, id, direct, edges, fn_ids);
+                Self::scan_pure_expr(sema, index, params, id, direct, edges, fn_ids);
+            }
+            Member { obj, .. } | TypeArgs { expr: obj, .. } => {
+                Self::scan_pure_expr(sema, obj, params, id, direct, edges, fn_ids);
+            }
+            // 闭包体同函数语境:调用发生在宿主 fn 动态范围内
+            Closure { body, .. } => Self::scan_pure_expr(sema, body, params, id, direct, edges, fn_ids),
+            Scope { body, .. } | Own { body, .. } => {
+                Self::scan_pure_block(sema, &body.stmts, body.tail.as_deref(), params, id, direct, edges, fn_ids);
+            }
+            If { cond, then, els } => {
+                Self::scan_pure_expr(sema, cond, params, id, direct, edges, fn_ids);
+                Self::scan_pure_block(sema, &then.stmts, then.tail.as_deref(), params, id, direct, edges, fn_ids);
+                if let Some(e) = els { Self::scan_pure_expr(sema, e, params, id, direct, edges, fn_ids); }
+            }
+            Match { expr, arms } => {
+                Self::scan_pure_expr(sema, expr, params, id, direct, edges, fn_ids);
+                for a in arms {
+                    if let Some(g) = &a.guard {
+                        Self::scan_pure_expr(sema, g, params, id, direct, edges, fn_ids);
+                    }
+                    Self::scan_pure_expr(sema, &a.expr, params, id, direct, edges, fn_ids);
+                }
+            }
+            BlockExpr(b) => {
+                Self::scan_pure_block(sema, &b.stmts, b.tail.as_deref(), params, id, direct, edges, fn_ids);
+            }
+            Int { .. } | Float { .. } | Bool(_) | Void | Ident(_) => {}
+        }
+    }
+
+    /// 接收者触能力直判:形参类型 / 类型名静态面(Clock.now()),剥 Ref 与 cap_hit 同口径
+    fn recv_is_cap(sema: &Sema, obj: &ast::Expr, params: &HashMap<&str, &Ty>) -> bool {
+        let Expr::Ident(x) = obj else { return false };
+        if let Some(&def) = sema.def_by_name.get(x.as_str()) {
+            return sema.defs[def].cap;
+        }
+        let Some(&t) = params.get(x.as_str()) else { return false };
+        let t = match t { Ty::Ref(inner) => inner.as_ref(), other => other };
+        match t {
+            Ty::Named { def, .. } => sema.defs[*def].cap,
+            _ => false,
+        }
+    }
+
+    /// 链前缀构成已注册模块路径 → 模块限定调用,返回被调 fn 名(尾段)
+    fn module_call_fn<'b>(sema: &Sema, e: &'b ast::Expr) -> Option<&'b str> {
+        let mut segs: Vec<&'b str> = Vec::new();
+        let mut cur = e;
+        loop {
+            match cur {
+                Expr::Ident(n) => { segs.push(n.as_str()); break; }
+                Expr::Member { obj, target: ast::MemberTarget::Name(n) } => { segs.push(n.as_str()); cur = obj; }
+                Expr::TypeArgs { expr, .. } => { cur = expr; }
+                _ => return None,
+            }
+        }
+        segs.reverse();
+        let (last, prefix) = segs.split_last()?;
+        for k in (1..=prefix.len()).rev() {
+            if sema.mods.iter().any(|m| m.path == prefix[..k].join(".")) {
+                return Some(*last);
+            }
+        }
+        None
+    }
+
+    fn note_call_edge(name: &str, id: usize, edges: &mut [HashSet<usize>],
+                      fn_ids: &HashMap<&str, Vec<usize>>) {
+        if let Some(gs) = fn_ids.get(name) {
+            for g in gs { edges[id].insert(*g); }
+        }
+    }
 
     fn scan_gc_alloc(&self, block: &ast::Block, seen: &mut HashSet<String>) -> bool {
         self.scan_block_gc(&block.stmts, block.tail.as_deref(), seen)
@@ -2515,6 +2704,11 @@ impl<'a> Checker<'a> {
                     Symbol::Fn(id) => {
                         if self.in_own && self.fn_gc_alloc(id) {
                             self.err("E3040", format!("own 块内调用含 GC 分配的函数 `{}`(allocation in own block);改为 arena 或移出", name), Span::new(1, 1, 0, 0));
+                        }
+                        // §8.3 跨函数纯度传播:#[pure] 调用(传递地)触能力 fn → E4020
+                        // (r7b「pure 包装层不洗白能力调用」;摘要见 new() 纯度定点)
+                        if self.pure_ctx && self.pure_dirty.get(id).copied().unwrap_or(false) {
+                            self.err("E4020", "`#[pure]` 函数含副作用:能力(capability)调用即 I/O".into(), Span::new(1, 1, 0, 0));
                         }
                         let f = &self.sema.fns[id];
                         if f.is_comptime && self.is_comptime_call_self(name) { /* 自递归在预算期处理 */ }

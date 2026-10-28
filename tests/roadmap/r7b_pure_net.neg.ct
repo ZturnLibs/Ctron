@@ -1,8 +1,9 @@
 // r7b_pure_net.neg.ct —— pure 函数触网能力 = E4020(R-P7b)
 // 锚点:P1 std/net 门面已落地(免费函数面 + trait Net 审计锚,2026-09-20);
 // 本件钉「pure 包装层不洗白能力调用」的语义(§8.1/§11.1):sneaky 以 #[pure]
-// 间接调用 &Net 形参的能力 fn —— 跨函数纯度传播未实现,今天 E4020 不产出
-// (RunRed);R 线解析/纯度就绪后按翻转协议迁 NegGreen(E4020)。
+// 间接调用 &Net 形参的能力 fn。跨函数纯度传播已落地(2026-10-28,R 线
+// check.rs new() 纯度定点:直触集 + 命名调用边不动点)→ E4020 产出,
+// 翻转 NegGreen(E4020);里程碑完成时按翻转协议迁 check_suite 期望表。
 // 门面形态注(Task 6):传输走免费函数 net_*(net: StdNet 按值),能力审计
 // 锚保留 &Net 引用形参 fn —— 即本件的 probe 形。
 use net.Net

@@ -3690,3 +3690,27 @@ netduinoplus2 = 128KB SRAM,池 32KiB 后 .bss≈116KB 仍留 12KB 余量——
 **门**:bare **15 过 / 0 败 / 0 跳**(08_bare/Pool 族双靶真跑+违例语义+
 审计平衡全数绿)。**④全簇闭**(工具链+runtime 预算);runtime 调平批
 销账(池预算即调平本体,驱动去隐式分配=长期卫生项不挡门)。
+
+## 2026-10-28 R 线 r7b 翻转:跨函数纯度传播落地——#[pure] 间接触能力产 E4020
+
+**实现**(compiler-rust/src/check.rs):`Checker::new()` 增设纯度定点(与
+scan_gc_alloc 同模式)——①direct 集:体内方法调用接收者按形参类型/类型名
+解析为 Cap trait(剥 Ref,与 check_method_call cap_hit 同口径);②edges:
+命名调用边(Ident 直呼 / TypeArgs 泛名 / 模块限定尾段=链前缀构成已注册
+模块路径);③不动点 ≤32 轮传播闭包,存 `pure_dirty`。消费点 =
+check_ident_call_global Symbol::Fn 臂:`pure_ctx && pure_dirty[id]` →
+**E4020**(r7b「pure 包装层不洗白能力调用」,§8.1/§11.1)。
+
+**锚翻转**:roadmap_suite r7b_pure_net.neg.ct **RunRed → NegGreen("E4020")**;
+进度打印保持 绿 5 / 锚 14 / 共 19(NegGreen 计锚侧)。
+
+**实证**:①r7b check 产 E4020 rc=1;②两跳洗白(pure→clean→cap-touch)
+产 E4020;③pure 调净 fn 零诊断(无假阳性);④cargo test 全量:lib 51/
+breakc 8/infer 5/oror 4/test_suite 14/roadmap 2 全绿;check_suite 18 红、
+fmt 2 红、lex/parse/run/native 各 1 红——与 stash 基线指纹**逐套件一致
+零扩大**(main 先行旧账,既有登记)。
+
+**局限登记**(后续批):let 链非形参接收者、fn 值形参/闭包值绑定调用、
+泛型 TypeArgs 直调 dirty fn 不建边——直触面由运行期 cap_hit 全型兜底,
+仅跨函数传播走语法摘要。E6020(comptime 纯度)不随本批扩展,维持
+直接触能力口径,传播化另立裁决。
