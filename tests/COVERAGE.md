@@ -3952,8 +3952,6 @@ check 面无关)。t56/t57/t58 三前缀 native_suite/suite.py skip 维持至
 断点销);②Clock 发射面已落(real → 0LL 句柄/now → ctron_mono_ns/
 elapsed_since 差值;t57 native rc=0);③repeat 发射 = 自举 G1-T8 既有
 (trans_stmt let/切片位),Rust trans.rs panic 臂 = 占位(不进门);
-④List.get 标量载荷发射 = **发射 Option 模型根本墙**:ct_res_wrap 对
-标量码发裸槽(无 None 表示;指针系 s/R/u: 才有)——List[I32].get(9).or(-1)
-C 面不可表达,T25 v2 前置 = 「标量 Option ct_res 化」(R2 线延续);
-List.set 臂可用(语句位 GNU 语句表达式)但与 get 绑定同批回退,
-登记重开条件。
+④List.get/set/pop 发射臂试装后回退——`.or` 链接收者派发顺序 + 标量
+Option ct_res 化两断点(见上),未验证面不落,批 opener = ct_expr 方法
+链派发次序考古 + ct_res_wrap_box 统一盒面(助手已落 trans_conc.ct)。

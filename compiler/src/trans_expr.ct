@@ -1244,7 +1244,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 ct_emit_with_stmt(cal, obj, objt, wclo, env, file, wismut, wrc, List[Str](), "1")
                 return wrc
             }
-            if m == "into_gc" {
+                        if m == "into_gc" {
                 // T30 真深拷(§6.3):静态 #elem 型别图分派;无绑定位恒等(v1 兼容回退)
                 if cal[1][0] == "Ident" {
                     var igm = ct_env_ty(env, "#elem:" + cal[1][1])
