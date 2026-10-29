@@ -197,6 +197,7 @@ println("static ctron_list* ctron_list_new(void) \{ ctron_list* l = (ctron_list*
             // 见 c-rust-divergences 词法器统一志向)——三目链 + CTB_M 宏。
             println("#define CTB_M(bits) (bits == 64 ? ~(unsigned long long)0 : ((1ULL << bits) - 1))")
             // R-P2b:Clock NS 宿主口自发射版(与 host_shim/cc2_bit.c 同文)
+            println("#include <time.h>")
             println("static long long ctron_clock_now_ns(void) \{ static long long base = -1; struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); long long ns = (long long)ts.tv_sec * 1000000000LL + (long long)ts.tv_nsec; if (base < 0) \{ base = ns; } return ns - base; }")
             println("static long long ctron_bit_i64(int op, long long a, long long b, int bits, int sgn) \{ return (bits == 32) ? (long long)(int32_t)(uint32_t)(op == 0 ? (a & b) : op == 1 ? (a | b) : op == 2 ? (a ^ b) : op == 3 ? (a ^ CTB_M(bits)) : op == 4 ? ((a << b) & CTB_M(bits)) : sgn ? (((bits == 32 ? (long long)(int32_t)a : a) >> b) & CTB_M(bits)) : (a >> b)) : (long long)(op == 0 ? (a & b) : op == 1 ? (a | b) : op == 2 ? (a ^ b) : op == 3 ? (a ^ CTB_M(bits)) : op == 4 ? ((a << b) & CTB_M(bits)) : sgn ? (((bits == 32 ? (long long)(int32_t)a : a) >> b) & CTB_M(bits)) : (a >> b)); }")
             println("static void ctron_panic(const char* m);")
