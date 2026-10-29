@@ -3967,3 +3967,10 @@ List get/set/pop 发射臂试装(ct_res_wrap_box 盒面)实测:单点 get/set �
 与方法面(call_mem M/S + member len)、remove 臂、trans_ty CK/Clock typeof、
 ct_res_wrap_box、repeat 五文件(ast/token/lexer/parser/fmt/trans)、
 native_suite t56/t57/t58 skip 拆分。
+
+## 2026-10-29 续:native_suite skip 精化——list/map/set skip、send 实测绿
+
+native_suite(native 差分)skip 精化:list/map/set 三件 skip(get/pop 发射面
+在册 T25 v2:or 臂单求值 + 标量 Option ct_res 化两断点);**send 实测绿
+去 skip**(spawn 捕获 List + 下标,双径 rc=0);09_repeat 上 Rust trans
+Repeat 占位 panic = 既有 native 红族指纹(基线同 FAILED)。
