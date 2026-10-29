@@ -1451,7 +1451,7 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
             if seq2(m, "elapsed_since") {
                 if vals.len < 1 { panic("elapsed_since 实参") }
                 var nsnow = c6_i64s(ctron_clock_now_ns())
-                var t0t = v_unbox(vals[0])
+                var t0t = vals[0][1]
                 return e4("k", env, v6(c6sub(nsnow, t0t)), out)
             }
             panic("Clock 方法:" + m)
