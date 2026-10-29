@@ -41,8 +41,8 @@ fn prelude_ok(nm: Str) -> Bool {
     if seq2(nm, "TaskPool") { return true } // G3-W4
     if or2(seq2(nm, "Global"), or2(seq2(nm, "Task"), or2(seq2(nm, "Scope"), seq2(nm, "Simd")))) { return true }
     // T41 余债(§5.3 own(alloc) 族):Region/Pool/Static 与 Arena 同为前奏分配器
-    // 类型名——check 面 E2020 白名单(register_prelude 对齐)
-    if or2(seq2(nm, "Arena"), or2(seq2(nm, "Region"), or2(seq2(nm, "Pool"), seq2(nm, "Static")))) { return true }
+    // 类型名——check 面 E2020 白名单(register_prelude 对齐);W5:Clock(R-P2b 时钟面)
+    if or2(seq2(nm, "Arena"), or2(seq2(nm, "Region"), or2(seq2(nm, "Pool"), or2(seq2(nm, "Static"), seq2(nm, "Clock"))))) { return true }
     if or2(seq2(nm, "str_from_c"), or2(seq2(nm, "clo_handle"), or2(seq2(nm, "clo_cb2"), seq2(nm, "clo_cb3")))) { return true }
     if or2(seq2(nm, "dlopen"), or2(seq2(nm, "dlclose"), seq2(nm, "dlsym"))) { return true }
     if or2(seq2(nm, "dlopen_global"), seq2(nm, "dlerror_str")) { return true }

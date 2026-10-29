@@ -1,8 +1,8 @@
 // r2b_time.ct —— std.time 单调时钟(R-P2b,§3.8.2 v0.6)
 // 语义承诺:Clock.real() 构造宿主单调时钟;now 单调不减;elapsed_since(start) = now-start
 // 锚点:R-P2b 落地转绿(07_capabilities 钉的是注入形状;本文件钉 std 真实实现)
-use std.time.Clock
-
+// W5(2026-10-29):Clock 为前奏类型(Region/Pool/Static 同款免 use);Rust interp
+// TypeHandle 关联面 + 发射面 ctron_mono_ns 直调已落,本件翻绿迁主套件
 test "monotonic now" {
     let clock = Clock.real()
     let t0 = clock.now()

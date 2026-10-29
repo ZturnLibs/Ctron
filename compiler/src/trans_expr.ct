@@ -1125,6 +1125,17 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 var sco = ct_typeof(cal[1], env, file)
                 if sco == "g" { return "ct_scope_cancel((ct_scope*)(" + obj + "))" }
             }
+            // R-P2b:std.time.Clock 单调时钟面(t57;ctron_mono_ns 样板已备;
+            // real → 0LL 句柄,now → 纪元 ns,elapsed_since → now - t0)
+            if cal[1][0] == "Ident" && seq2(cal[1][1], "Clock") {
+                if seq2(m, "real") { return "0LL" }
+                if seq2(m, "now") { return "ctron_mono_ns()" }
+                if seq2(m, "elapsed_since") {
+                    if ag.len < 2 { panic("emit:elapsed_since 实参") }
+                    var cet = ct_expr(ag[1], env, file)
+                    return "(ctron_mono_ns() - (ct_i)(" + cet + "))"
+                }
+            }
             if m == "send" {
                 if ag.len < 2 {
                     panic("emit:send 实参")

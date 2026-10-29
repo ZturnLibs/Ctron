@@ -94,9 +94,10 @@ gaps, disagree, bothfail = [], [], []
 for kind, pat in CATS:
     for path in sorted(glob.glob(os.path.join(TESTS, pat))):
         base = os.path.basename(path)
-        # R-P2a 容器语料(2026-10-29):interp 面已落地(Rust 线 run_suite 驱动);
-        # 自举 C 编译器 get/Map/Set 发射面在册 T25 v2,双编译器均未达 → 跳过
-        if base.startswith("t56_container") or base.startswith("t57_time"):
+        # R-P2a/P2b 容器与钟语料 + R 线 NegGreen 锚(2026-10-29):interp 面已落地
+        # (Rust 线 run_suite/check_suite 驱动);自举 C 编译器发射/检查面在册 T25 v2
+        # 与泳道专属诊断,双编译器均未达 → 跳过
+        if base.startswith("t56_container") or base.startswith("t57_time") or base.startswith("t58_"):
             continue
         if kind == "behavior" and re.search(r"\.(neg|lint|panic)\.ct$", base):
             continue

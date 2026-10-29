@@ -3929,3 +3929,18 @@ elapsed 有界断言)。
 native_suite/suite.py skip(trans 发射面 Clock = T25 v2 同域后件)。
 **R 线燃尽余量**:锚点表 绿 5 / 锚 8 / 共 13(NegGreen 6 待迁 check_suite
 不计;真红 2 = r4b span 批[R-P4b 正身] + r6g 空泛注记)。
+
+## 2026-10-29 W5 续:Clock Ctron 侧前奏注册 + 发射面状态钉死(T25 v2 域)
+
+**Ctron 侧**(compiler/src):Clock 入前奏类型两表(sem_type:45 E2020 白名单
+/sem_walk:27);trans_expr 增 Clock.real/now/elapsed_since 直调臂
+(ctron_mono_ns 样板已备,driver_emit:222-226)。t57 语料去 use(Clock =
+前奏类型,Region/Pool/Static 同款免 use);ctc.sh check 08_bare/t57 双绿
+(decls 5/2)。
+
+**发射面缺口钉死(T25 v2 域,登记不掩)**:t57 emit 实测两断点——①
+`clock.now()` 泛型方法派发(接收者类型码缺 Clock 道,typ→t_now 自由
+函数误发);②语料 `1_000_000_000` 数字下划线后缀(bootstrap trans 未
+剥 `_`,Rust 线有 replace)。两断点 = T25 v2 批立项依据(与本批 interp/
+check 面无关)。t56/t57/t58 三前缀 native_suite/suite.py skip 维持至
+发射面落地。
