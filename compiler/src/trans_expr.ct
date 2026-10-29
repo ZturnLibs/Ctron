@@ -6,21 +6,29 @@
 fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
     var t = e[0]
     if t == "Int" {
+        // W5:数字下划线分隔剥离(1_000_000_000 → 1000000000;C 不认 _;
+        // Rust 线 text.replace('_', "") 同款,chron 语料实证)
+        var itxt = ""
+        var si: I32 = 0
+        while si < e[1].len {
+            if byte_at(e[1], si) != 95 { itxt = itxt + byte_slice(e[1], si, si + 1) }
+            si += 1
+        }
         // 宽字面量(I32 装不下,§3.1.1)转十进制加 LL 后缀——sem E2040 已保证
         // 窄类型语境不达此;仅无后缀(C 进制常量超宽 ill-formed)
         if e[2].len == 0 {
-            if lit_wide_i32(e[1]) {
-                return lit_to_dec(e[1]) + "LL"
+            if lit_wide_i32(itxt) {
+                return lit_to_dec(itxt) + "LL"
             }
         }
         // R2c:宽域后缀字面量 → C 无符号后缀(u64/u32;裸十进制 >I64_MAX=C 符号溢出)
         if e[2] == "u64" || e[2] == "usize" {
-            return e[1] + "ULL"
+            return itxt + "ULL"
         }
         if e[2] == "u32" {
-            return e[1] + "u"
+            return itxt + "u"
         }
-        return e[1]
+        return itxt
     }
     if t == "Float" { return e[1] }
     if t == "NParg" {
@@ -1127,7 +1135,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             }
             // R-P2b:std.time.Clock 单调时钟面(t57;ctron_mono_ns 样板已备;
             // real → 0LL 句柄,now → 纪元 ns,elapsed_since → now - t0)
-            if cal[1][0] == "Ident" && seq2(cal[1][1], "Clock") {
+            if or2(objt == "CK", or2(cal[1][0] == "Ident" && seq2(cal[1][1], "Clock"), or2(cal[1][0] == "Member" && cal[1][1][0] == "Ident" && seq2(cal[1][1][1], "Clock"), false))) {
                 if seq2(m, "real") { return "0LL" }
                 if seq2(m, "now") { return "ctron_mono_ns()" }
                 if seq2(m, "elapsed_since") {
