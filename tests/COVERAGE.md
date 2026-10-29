@@ -3845,3 +3845,31 @@ Val 位槽直通,非本批。
 (BOOTSTRAP:206 盲区族),bootstrap 径 rc=0 通过;归属 compiler-c 归档
 泳道,登记不修(与"归档 oracle 不再演进"口径一致);suite 该行处置 =
 分类注记,非语义分歧。
+
+## 2026-10-29 R-P2a 容器运行时落地(Rust 线)——五锚翻转迁主套件
+
+**interp**(compiler-rust/src/interp.rs):Value 增 `Map(Rc<RefCell<Vec<(Value,Value)>>>)`/
+`Set(Rc<RefCell<Vec<Value>>>)`(插入序;键/成员等 = values_equal);构造臂
+Map/Set 空容器;List(Value::Array)方法臂增 `get`(→Option,越界 None 不
+panic)/`set`(越界 panic "index out of bounds" 与数组越界逐字)、`pop` 修
+Option(空 None;旧裸值与 check Optional 声明失配,本批修正,全仓唯一
+消费者 = 本批语料);Map 臂 insert(同键覆盖 len 不变)/get/remove(→Option
+旧值)/contains_key/keys/values(插入序,顺序不承诺);Set 臂 insert(→Bool
+「是否新增」)/contains/remove(→Bool);member len 三容器;**run_task 补
+EarlyReturn 臂**(任务体顶层 return → join 取值;resume 臂同口径)——
+r2a_container_send 的唯一硬缺口。Map/Set 增入 Send 透传表(check.rs
+is_send_seen,§7.4 传递性)。check.rs:List 臂 get/set、Map/Set 全方法臂、
+member len、E3040 分配两表零改动(r2a_container_alloc.neg NegGreen 不受扰)。
+
+**翻转**:r2a_list/list_oob/map/set/container_send 五锚迁主套件
+`t56_container_{list,list_oob.panic,map,set,send}.ct`(T26 先例:删 roadmap
+语料 + 顶层重建;run_suite 自动收编,.panic marker 校验);roadmap_suite
+删 5 行 → **绿 5 / 锚 9 / 共 14**;native_suite 对 t56_container 前缀 skip
+(发射面 get/set/Map/Set 在册 T25 v2 域,native 差分后件)。
+
+**实测**:五语料单跑 rc=0;run_suite 21 项内红与基线(stash+移除 t56)
+**逐条一致零扩大**(read_file_bytes/mono_ns/arena 解析缺口 + fb8/09_repeat
+旧账族);roadmap_suite 2/2 绿;r2a_container_alloc.neg NegGreen 保持。
+**登记债**:①发射面 get/set/Map/Set(trans)未实现(T25 v2 域,native
+差分本批 skip);②Map 键等 = values_equal 非哈希(插入序 assoc,语料量级
+线性扫描;哈希种子冻结 = 后件);③Map.insert 返回值语料未钉,本批取 Void。

@@ -1167,7 +1167,7 @@ impl<'a> Checker<'a> {
                 let d = &self.sema.defs[def];
                 match d.name.as_str() {
                     "Mutex" | "Atomic" | "Global" => true,
-                    "Option" | "Result" | "Box" | "List" | "Sender" | "Receiver" | "Task" =>
+                    "Option" | "Result" | "Box" | "List" | "Map" | "Set" | "Sender" | "Receiver" | "Task" =>
                         args.iter().all(|a| self.is_send_seen(a, seen)),
                     _ => match d.kind {
                         DefKind::Class => d.fields.iter().all(|(_, t, is_var)| !is_var && self.is_send_seen(t, seen)),
@@ -2986,7 +2986,7 @@ impl<'a> Checker<'a> {
                 }
                 _ => { self.err("E2020", format!("AnyError 无属性 `{}`", tn), Span::new(1, 1, 0, 0)); Ty::Err }
             },
-            "List" | "ArenaList" => match tn.as_str() {
+            "List" | "ArenaList" | "Map" | "Set" => match tn.as_str() {
                 "len" => Ty::UInt(IntW::WSize),
                 _ => { self.err("E2020", format!("{} 无属性 `{}`", d.name, tn), Span::new(1, 1, 0, 0)); Ty::Err }
             },
@@ -3192,8 +3192,52 @@ impl<'a> Checker<'a> {
                     "List" => match m {
                         "push" => { self.expr(&args[0], Some(&targs.first().cloned().unwrap_or(Ty::Err))); Ty::Void }
                         "pop" => Ty::Optional(Box::new(targs.first().cloned().unwrap_or(Ty::Err))),
+                        // R-P2a:get → Option(越界 None 不 panic);set 原位替换(越界 panic 语义运行期)
+                        "get" => {
+                            if let Some(a) = args.first() { self.expr(a, None); }
+                            Ty::Optional(Box::new(targs.first().cloned().unwrap_or(Ty::Err)))
+                        }
+                        "set" => {
+                            if let Some(a) = args.first() { self.expr(a, None); }
+                            if let Some(a) = args.get(1) { self.expr(a, Some(&targs.first().cloned().unwrap_or(Ty::Err))); }
+                            Ty::Void
+                        }
                         _ => { self.err("E2020", format!("List 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
                     },
+                    // R-P2a:Map 方法面(insert 语句位弃值;get/remove → Option[V];keys/values → List)
+                    "Map" => {
+                        let kty = targs.first().cloned().unwrap_or(Ty::Err);
+                        let vty = targs.get(1).cloned().unwrap_or(Ty::Err);
+                        match m {
+                            "insert" => {
+                                if let Some(a) = args.first() { self.expr(a, Some(&kty)); }
+                                if let Some(a) = args.get(1) { self.expr(a, Some(&vty)); }
+                                Ty::Void
+                            }
+                            "get" | "remove" => {
+                                if let Some(a) = args.first() { self.expr(a, Some(&kty)); }
+                                Ty::Optional(Box::new(vty))
+                            }
+                            "contains_key" => {
+                                if let Some(a) = args.first() { self.expr(a, Some(&kty)); }
+                                Ty::Bool
+                            }
+                            "keys" => self.named("List", vec![kty]),
+                            "values" => self.named("List", vec![vty]),
+                            _ => { self.err("E2020", format!("Map 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                        }
+                    }
+                    // R-P2a:Set 方法面(insert 返回「是否新增」;contains/remove → Bool)
+                    "Set" => {
+                        let ety = targs.first().cloned().unwrap_or(Ty::Err);
+                        match m {
+                            "insert" | "contains" | "remove" => {
+                                if let Some(a) = args.first() { self.expr(a, Some(&ety)); }
+                                Ty::Bool
+                            }
+                            _ => { self.err("E2020", format!("Set 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                        }
+                    }
                     "StringBuilder" => match m {
                         // §3.8.2;T03:push_str 拼段 / to_string 产出 String(len 走属性)
                         "push_str" => { if !args.is_empty() { self.expr(&args[0], None); } Ty::Void }

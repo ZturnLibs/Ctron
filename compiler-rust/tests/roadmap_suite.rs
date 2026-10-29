@@ -27,12 +27,11 @@ enum Status {
 
 fn anchors() -> Vec<(&'static str, &'static str, Status)> {
     vec![
-        // ---- R-P2a 容器(检查器已注册类型;运行时未实现) ----
-        ("r2a_list.ct", "R-P2a", Status::RunRed),
-        ("r2a_list_oob.panic.ct", "R-P2a", Status::RunRed),
-        ("r2a_map.ct", "R-P2a", Status::RunRed),
-        ("r2a_set.ct", "R-P2a", Status::RunRed),
-        ("r2a_container_send.ct", "R-P2a", Status::RunRed),
+        // ---- R-P2a 容器(R-P2a interp 运行时已落地,2026-10-29) ----
+        // r2a_list/list_oob/map/set/container_send 五锚已翻转迁主套件
+        // t56_container_*(interp Value Map/Set + List get/set/pop-Option +
+        // run_task EarlyReturn 臂;发射面 get/set/Map/Set 在册 T25 v2 域,
+        // native_suite 对 t56_container 前缀 skip)
         ("r2a_container_alloc.neg.ct", "R-P2a", Status::NegGreen("E3040")),
         // ---- R-P2b std 能力(std.* 桩已解析;运行时未实现) ----
         // r2b_fs_fake/r2b_env 已翻转(T26,2026-09-29):Fs 能力 trait 入 std/fs.ct、

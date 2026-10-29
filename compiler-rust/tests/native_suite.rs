@@ -53,6 +53,9 @@ fn native_matches_interpreter() {
         let rel = f.strip_prefix(&root).unwrap_or(f).to_string_lossy().to_string();
         if rel.starts_with("modules/") { continue; }
         if rel.starts_with("roadmap/") { continue; }   // roadmap 锚点语料由 roadmap_suite 驱动
+        // R-P2a 容器语料(2026-10-29):interp 面已落地;发射面 get/set/Map/Set
+        // 在册 T25 v2 域,native 差分后件(登记 COVERAGE 同批)
+        if name.starts_with("t56_container") { skipped += 1; continue; }
         if name.ends_with(".neg.ct") || name.ends_with(".lint.ct") { continue; }
         if name.starts_with("10_web") { continue; }
 

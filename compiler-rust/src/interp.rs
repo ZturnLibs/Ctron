@@ -30,6 +30,10 @@ pub enum Value {
     StrBuilder(Rc<RefCell<String>>),
     Tuple(Vec<Value>),
     Array(Rc<RefCell<Vec<Value>>>),
+    /// R-P2a:Map[K,V](插入序 assoc;键等 = values_equal)
+    Map(Rc<RefCell<Vec<(Value, Value)>>>),
+    /// R-P2a:Set[T](插入序;values_equal 去重)
+    Set(Rc<RefCell<Vec<Value>>>),
     Range { from: i64, to: i64, inclusive: bool },
     Closure { params: Vec<ast::ClosureParam>, body: Rc<Expr>, env: Rc<Env> },
     FnRef { id: usize },
@@ -774,6 +778,9 @@ impl<'a> Interp<'a> {
                     for a in args { vals.push(self.expr(a, env)?); }
                     return match ty_name.as_str() {
                         "List" => Ok(Value::Array(Rc::new(RefCell::new(Vec::new())))), // List[T]() 空表(D1)
+                        // R-P2a:Map/Set 空容器(插入序;键等 = values_equal)
+                        "Map" => Ok(Value::Map(Rc::new(RefCell::new(Vec::new())))),
+                        "Set" => Ok(Value::Set(Rc::new(RefCell::new(Vec::new())))),
                         "Atomic" => Ok(Value::Atomic(Rc::new(Cell::new(
                             vals.first().and_then(|v| if let Value::Int(i) = v { Some(*i) } else { None }).unwrap_or(0)
                         )))),
@@ -1224,7 +1231,40 @@ impl<'a> Interp<'a> {
                     arr.borrow_mut().push(v);
                     Ok(Value::Void)
                 }
-                "pop" => Ok(arr.borrow_mut().pop().unwrap_or(Value::Void)),
+                // R-P2a:pop 返回 Option(空 = None;旧裸值/Void 口径与 check Optional 声明失配,本批修正)
+                "pop" => {
+                    let d = self.sema.def_by_name.get("Option").copied().unwrap_or(0);
+                    match arr.borrow_mut().pop() {
+                        Some(v) => Ok(Value::Enum { def: d, variant: 0, payload: vec![v] }),
+                        None => Ok(Value::Enum { def: d, variant: 1, payload: vec![] }),
+                    }
+                }
+                "get" => {
+                    if args.len() != 1 { return Err(Flow::Panic("List.get 实参".into())); }
+                    let iv = self.expr(&args[0], env)?;
+                    let d = self.sema.def_by_name.get("Option").copied().unwrap_or(0);
+                    let Some(idx) = int_i64(&iv).map(|n| n as usize) else {
+                        return Ok(Value::Enum { def: d, variant: 1, payload: vec![] });
+                    };
+                    let b = arr.borrow();
+                    if idx < b.len() {
+                        Ok(Value::Enum { def: d, variant: 0, payload: vec![b[idx].clone()] })
+                    } else {
+                        Ok(Value::Enum { def: d, variant: 1, payload: vec![] })
+                    }
+                }
+                "set" => {
+                    if args.len() != 2 { return Err(Flow::Panic("List.set 实参".into())); }
+                    let iv = self.expr(&args[0], env)?;
+                    let v = self.expr(&args[1], env)?;
+                    let Some(idx) = int_i64(&iv).map(|n| n as usize) else {
+                        return Err(Flow::Panic("index out of bounds".into()));
+                    };
+                    let mut b = arr.borrow_mut();
+                    if idx >= b.len() { return Err(Flow::Panic("index out of bounds".into())); }
+                    b[idx] = v;
+                    Ok(Value::Void)
+                }
                 "len" => Ok(Value::Int(arr.borrow().len() as i64)),
                 "into_gc" => {
                     // 深拷贝到新的 GC 数组(interp 中即新建独立 Rc)
@@ -1232,6 +1272,78 @@ impl<'a> Interp<'a> {
                     Ok(Value::Array(Rc::new(RefCell::new(items))))
                 }
                 _ => Err(Flow::Panic(format!("Array 无方法 `{}`", m))),
+            },
+            // R-P2a:Map 方法面(insert 语句位弃值;get/remove → Option;keys/values 插入序)
+            Value::Map(mp) => return match m {
+                "insert" => {
+                    if args.len() != 2 { return Err(Flow::Panic("Map.insert 实参".into())); }
+                    let k = self.expr(&args[0], env)?;
+                    let v = self.expr(&args[1], env)?;
+                    let mut mb = mp.borrow_mut();
+                    if let Some(slot) = mb.iter_mut().find(|(ek, _)| values_equal(ek, &k)) { slot.1 = v; } else { mb.push((k, v)); }
+                    Ok(Value::Void)
+                }
+                "get" => {
+                    if args.len() != 1 { return Err(Flow::Panic("Map.get 实参".into())); }
+                    let k = self.expr(&args[0], env)?;
+                    let d = self.sema.def_by_name.get("Option").copied().unwrap_or(0);
+                    let hit = mp.borrow().iter().find(|(ek, _)| values_equal(ek, &k)).map(|(_, v)| v.clone());
+                    match hit {
+                        Some(v) => Ok(Value::Enum { def: d, variant: 0, payload: vec![v] }),
+                        None => Ok(Value::Enum { def: d, variant: 1, payload: vec![] }),
+                    }
+                }
+                "remove" => {
+                    if args.len() != 1 { return Err(Flow::Panic("Map.remove 实参".into())); }
+                    let k = self.expr(&args[0], env)?;
+                    let d = self.sema.def_by_name.get("Option").copied().unwrap_or(0);
+                    let mut mb = mp.borrow_mut();
+                    if let Some(i) = mb.iter().position(|(ek, _)| values_equal(ek, &k)) {
+                        let (_, v) = mb.remove(i);
+                        Ok(Value::Enum { def: d, variant: 0, payload: vec![v] })
+                    } else {
+                        Ok(Value::Enum { def: d, variant: 1, payload: vec![] })
+                    }
+                }
+                "contains_key" => {
+                    if args.len() != 1 { return Err(Flow::Panic("Map.contains_key 实参".into())); }
+                    let k = self.expr(&args[0], env)?;
+                    Ok(Value::Bool(mp.borrow().iter().any(|(ek, _)| values_equal(ek, &k))))
+                }
+                "keys" => Ok(Value::Array(Rc::new(RefCell::new(mp.borrow().iter().map(|(k, _)| k.clone()).collect())))),
+                "values" => Ok(Value::Array(Rc::new(RefCell::new(mp.borrow().iter().map(|(_, v)| v.clone()).collect())))),
+                _ => Err(Flow::Panic(format!("Map 无方法 `{}`", m))),
+            },
+            // R-P2a:Set 方法面(insert 返回「是否新增」;values_equal 去重)
+            Value::Set(st) => return match m {
+                "insert" => {
+                    if args.len() != 1 { return Err(Flow::Panic("Set.insert 实参".into())); }
+                    let v = self.expr(&args[0], env)?;
+                    let mut sb = st.borrow_mut();
+                    if sb.iter().any(|e| values_equal(e, &v)) {
+                        Ok(Value::Bool(false))
+                    } else {
+                        sb.push(v);
+                        Ok(Value::Bool(true))
+                    }
+                }
+                "contains" => {
+                    if args.len() != 1 { return Err(Flow::Panic("Set.contains 实参".into())); }
+                    let v = self.expr(&args[0], env)?;
+                    Ok(Value::Bool(st.borrow().iter().any(|e| values_equal(e, &v))))
+                }
+                "remove" => {
+                    if args.len() != 1 { return Err(Flow::Panic("Set.remove 实参".into())); }
+                    let v = self.expr(&args[0], env)?;
+                    let mut sb = st.borrow_mut();
+                    if let Some(i) = sb.iter().position(|e| values_equal(e, &v)) {
+                        sb.remove(i);
+                        Ok(Value::Bool(true))
+                    } else {
+                        Ok(Value::Bool(false))
+                    }
+                }
+                _ => Err(Flow::Panic(format!("Set 无方法 `{}`", m))),
             },
             Value::Str(s) => {
                 let s = s.clone();
@@ -1638,6 +1750,8 @@ impl<'a> Interp<'a> {
                 self.cancelled_scopes.borrow_mut().insert(u32::MAX - tid);
             }
             Err(Flow::Blocked) => { tb.status = TaskStatus::Blocked; }
+            // R-P2a:任务体顶层 return → EarlyReturn(值 = join 结果);resume 臂同口径
+            Err(Flow::EarlyReturn(v)) => { tb.status = TaskStatus::Completed; tb.result = Some(v); }
             Err(_) => { tb.status = TaskStatus::Completed; tb.result = Some(Value::Void); }
         }
     }
@@ -1715,6 +1829,14 @@ impl<'a> Interp<'a> {
             },
             Value::Array(arr) => match name {
                 "len" => Ok(Value::Int(arr.borrow().len() as i64)),
+                _ => Err(Flow::Panic(format!("无属性 `{}`", name))),
+            },
+            Value::Map(mp) => match name {
+                "len" => Ok(Value::Int(mp.borrow().len() as i64)),
+                _ => Err(Flow::Panic(format!("无属性 `{}`", name))),
+            },
+            Value::Set(st) => match name {
+                "len" => Ok(Value::Int(st.borrow().len() as i64)),
                 _ => Err(Flow::Panic(format!("无属性 `{}`", name))),
             },
             Value::Tuple(items) => {
@@ -2058,6 +2180,15 @@ fn values_equal(a: &Value, b: &Value) -> bool {
             v1 == v2 && p1.len() == p2.len() && p1.iter().zip(p2).all(|(x, y)| values_equal(x, y))
         }
         (Value::Tuple(x), Value::Tuple(y)) => x.len() == y.len() && x.iter().zip(y).all(|(u, v)| values_equal(u, v)),
+        // R-P2a:Map/Set 结构等价(同长 + 逐键/逐成员 values_equal;顺序不承诺)
+        (Value::Map(x), Value::Map(y)) => {
+            x.borrow().len() == y.borrow().len()
+                && x.borrow().iter().all(|(k, v)| y.borrow().iter().any(|(k2, v2)| values_equal(k, k2) && values_equal(v, v2)))
+        }
+        (Value::Set(x), Value::Set(y)) => {
+            x.borrow().len() == y.borrow().len()
+                && x.borrow().iter().all(|sx| y.borrow().iter().any(|sy| values_equal(sx, sy)))
+        }
         _ => false,
     }
 }
@@ -2123,6 +2254,8 @@ pub fn to_display(v: &Value) -> String {
             else { format!("{}({})", vn, payload.iter().map(|p| to_display(p)).collect::<Vec<_>>().join(", ")) }
         }
         Value::Tuple(items) => format!("({})", items.iter().map(|p| to_display(p)).collect::<Vec<_>>().join(", ")),
+        Value::Map(m) => format!("Map({})", m.borrow().iter().map(|(k, v)| format!("{}: {}", to_display(k), to_display(v))).collect::<Vec<_>>().join(", ")),
+        Value::Set(st) => format!("Set({})", st.borrow().iter().map(|e| to_display(e)).collect::<Vec<_>>().join(", ")),
         _ => "<value>".into(),
     }
 }
