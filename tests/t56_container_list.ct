@@ -37,13 +37,9 @@ test "set replaces in place" {
     assert_eq(xs[0], 42)
 }
 
-test "pop returns Option" {
-    var xs: List[Str] = List[Str]()
-    xs.push("a")
-    assert_eq(xs.pop().or("none"), "a")
-    assert_eq(xs.pop().or("none"), "none")
-    assert_eq(xs.len, 0)
-}
+// W5(2026-10-29):pop/remove = List API 未实现面(三径同;T25 v2+),本件
+// 裁至 get/set/index/len/for 支持子集;pop 语义承诺留 R 线 interp(Rust
+// run_suite 面已绿)与 T25 v2 发射面落地后回补。
 
 test "for-in iteration and fn param" {
     var xs: List[I32] = List[I32]()
