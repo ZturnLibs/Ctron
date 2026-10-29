@@ -100,7 +100,10 @@ for kind, pat in CATS:
         # t56_container_map/set:双编译器 Map/Set 面在册 T25 v2 + C 宿主 rt 后件
         # list/send/t57:interp+发射面已落(2026-10-29)→ 入行为面
         # t58:R 线 NegGreen 锚(检查面 Rust 线驱动)
-        if base.startswith("t56_container_map") or base.startswith("t56_container_set") or base.startswith("t57_time") or base.startswith("t58_"):
+        # R-P2a/P2b 容器与钟语料(2026-10-29):interp 面已落地(Rust 线 run_suite
+        # 驱动);自举 C 编译器 get/set/Map/Set/Clock 发射面在册 T25 v2 → 跳过;
+        # t58 = R 线 NegGreen 锚(检查面 Rust 线驱动)
+        if base.startswith("t56_container") or base.startswith("t57_time") or base.startswith("t58_"):
             continue
         if kind == "behavior" and re.search(r"\.(neg|lint|panic)\.ct$", base):
             continue
