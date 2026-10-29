@@ -324,6 +324,8 @@ impl<'src> Lexer<'src> {
         else if two(b'+', b'=') { self.bump(); self.bump(); Tok::PlusEq }
         else if two(b'-', b'=') { self.bump(); self.bump(); Tok::MinusEq }
         else if two(b'*', b'=') { self.bump(); self.bump(); Tok::StarEq }
+        // W5:repeat 字面量 `[v] ** N`(1009 裁决拼写;最长 munch 先于单 *)
+        else if two(b'*', b'*') { self.bump(); self.bump(); Tok::StarStar }
         else if two(b'/', b'=') { self.bump(); self.bump(); Tok::SlashEq }
         else if two(b'%', b'=') { self.bump(); self.bump(); Tok::PercentEq }
         else if two(b'=', b'=') { self.bump(); self.bump(); Tok::EqEq }

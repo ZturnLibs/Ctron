@@ -28,6 +28,7 @@ pub enum Tok {
     Break, Continue,
     // 运算符与标点(§1.5)
     Plus, Minus, Star, Slash, Percent, WrapPlus, WrapMinus,
+    StarStar, // W5:repeat 字面量 `[v] ** N`(1009 裁决)
     PlusEq, MinusEq, StarEq, SlashEq, PercentEq,
     EqEq, NotEq, Lt, Gt, LtEq, GtEq, Assign,
     AndAnd, OrOr, Or,     // OrOr = 逻辑或(v0.7);or = 取默认中缀(保留运算符字)

@@ -3955,3 +3955,15 @@ elapsed_since 差值;t57 native rc=0);③repeat 发射 = 自举 G1-T8 既有
 ④List.get/set/pop 发射臂试装后回退——`.or` 链接收者派发顺序 + 标量
 Option ct_res 化两断点(见上),未验证面不落,批 opener = ct_expr 方法
 链派发次序考古 + ct_res_wrap_box 统一盒面(助手已落 trans_conc.ct)。
+
+## 2026-10-29 W5 续批补遗:or 链双内联非确定实证(T25 v2 opener 升级)
+
+List get/set/pop 发射臂试装(ct_res_wrap_box 盒面)实测:单点 get/set 臂
+形态正确(head_or 盒面实证);**or 链接收者双内联非确定**——同一 get 表达式
+两次内联一次产盒面一次产泛型 t_get(env 状态跨内联漂移),复合发射面不可
+编译。臂回退;批 opener 升级 = ct_expr 方法链单次求值 + 内联确定性考古
+(优先于标量 Option ct_res 化;ct_res_wrap_box 助手在册)。
+同批未提交集一并入库:Clock NS 解释臂(eval_expr/call_mem)、Map/Set ctor
+与方法面(call_mem M/S + member len)、remove 臂、trans_ty CK/Clock typeof、
+ct_res_wrap_box、repeat 五文件(ast/token/lexer/parser/fmt/trans)、
+native_suite t56/t57/t58 skip 拆分。

@@ -55,7 +55,8 @@ fn native_matches_interpreter() {
         if rel.starts_with("roadmap/") { continue; }   // roadmap 锚点语料由 roadmap_suite 驱动
         // R-P2a 容器语料(2026-10-29):interp 面已落地;发射面 get/set/Map/Set
         // 在册 T25 v2 域,native 差分后件(登记 COVERAGE 同批)
-        if name.starts_with("t56_container") { skipped += 1; continue; }
+        // t56_container_map/set:发射面 Map/Set 在册 T25 v2(list/send 已落)
+        if name.starts_with("t56_container_map") or name.starts_with("t56_container_set") { skipped += 1; continue; }
         // R-P2b 时钟语料(2026-10-29):trans 发射面 Clock 未实现(T25 v2 同域后件)
         if name.starts_with("t57_time") { skipped += 1; continue; }
         if name.ends_with(".neg.ct") || name.ends_with(".lint.ct") { continue; }

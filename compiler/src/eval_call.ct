@@ -1767,6 +1767,161 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
                 return e4("k", ob.env, vV2(), ob.out)
             }
         }
+        // R-P2a:List get/set/pop interp 面(Option = T/Some/None box;
+        // get 越界 None 不 panic;set 越界 panic 与索引读逐字)
+        if seq2(cx_of(recv)[0], "L") {
+            var lst = cx_of(recv)
+            if seq2(m, "get") && vals.len == 1 {
+                var ivv = v_unbox(vals[0])
+                var idx = ivv.iv.as[I32]()
+                var tv = List[Str]()
+                tv.push("T")
+                if idx >= 0 && idx < lst.len - 1 {
+                    tv.push("Some")
+                    tv.push(lst[idx + 1])
+                } else {
+                    tv.push("None")
+                }
+                return e4("k", ob.env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(tv) }, ob.out)
+            }
+            if seq2(m, "set") && vals.len == 2 {
+                var ivv = v_unbox(vals[0])
+                var idx = ivv.iv.as[I32]()
+                if idx < 0 || idx >= lst.len - 1 {
+                    panic("index out of bounds")
+                }
+                lst[idx + 1] = v_box(v_unbox(vals[1]))
+                return e4("k", ob.env, vV2(), ob.out)
+            }
+            if seq2(m, "pop") && vals.len == 0 {
+                var tv = List[Str]()
+                tv.push("T")
+                if lst.len > 1 {
+                    tv.push("Some")
+                    tv.push(lst[lst.len - 1])
+                    lst.remove(lst.len - 1)
+                } else {
+                    tv.push("None")
+                }
+                return e4("k", ob.env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(tv) }, ob.out)
+            }
+            // R-P2a:remove(下标删除;越界 panic 与索引读逐字)
+            if seq2(m, "remove") && vals.len == 1 {
+                var ivv = v_unbox(vals[0])
+                var idx = ivv.iv.as[I32]()
+                if idx < 0 || idx >= lst.len - 1 {
+                    panic("index out of bounds")
+                }
+                lst.remove(idx + 1)
+                return e4("k", ob.env, vV2(), ob.out)
+            }
+        }
+        // R-P2a:Map 方法面(insert 同键覆盖/get/remove→Option/contains_key/keys/values)
+        if seq2(cx_of(recv)[0], "M") {
+            var mp = cx_of(recv)
+            if seq2(m, "insert") && vals.len == 2 {
+                var ki: I32 = -1
+                var ii: I32 = 1
+                while ii + 1 < mp.len {
+                    if veq(v_unbox(mp[ii]), v_unbox(vals[0])) { ki = ii }
+                    ii += 2
+                }
+                if ki > 0 {
+                    mp[ki + 1] = vals[1]
+                } else {
+                    mp.push(vals[0])
+                    mp.push(vals[1])
+                }
+                return e4("k", ob.env, vV2(), ob.out)
+            }
+            if or2(seq2(m, "get"), seq2(m, "remove")) && vals.len == 1 {
+                var ki: I32 = -1
+                var ji: I32 = 1
+                while ji + 1 < mp.len {
+                    if veq(v_unbox(mp[ji]), v_unbox(vals[0])) { ki = ji }
+                    ji += 2
+                }
+                var tv = List[Str]()
+                tv.push("T")
+                if ki > 0 {
+                    tv.push("Some")
+                    tv.push(mp[ki + 1])
+                    if seq2(m, "remove") {
+                        mp.remove(ki)
+                        mp.remove(ki)
+                    }
+                } else {
+                    tv.push("None")
+                }
+                return e4("k", ob.env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(tv) }, ob.out)
+            }
+            if seq2(m, "contains_key") && vals.len == 1 {
+                var hit = false
+                var ii: I32 = 1
+                while ii + 1 < mp.len {
+                    if veq(v_unbox(mp[ii]), v_unbox(vals[0])) { hit = true }
+                    ii += 2
+                }
+                return e4("k", ob.env, vB(hit), ob.out)
+            }
+            if seq2(m, "keys") && vals.len == 0 {
+                var kl = List[Str]()
+                kl.push("L")
+                var ii: I32 = 1
+                while ii + 1 < mp.len {
+                    kl.push(mp[ii])
+                    ii += 2
+                }
+                return e4("k", ob.env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(kl) }, ob.out)
+            }
+            if seq2(m, "values") && vals.len == 0 {
+                var vl = List[Str]()
+                vl.push("L")
+                var ii: I32 = 2
+                while ii < mp.len {
+                    vl.push(mp[ii])
+                    ii += 2
+                }
+                return e4("k", ob.env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(vl) }, ob.out)
+            }
+        }
+        // R-P2a:Set 方法面(insert→Bool 新增性/contains/remove→Bool)
+        if seq2(cx_of(recv)[0], "S") {
+            var st = cx_of(recv)
+            if seq2(m, "insert") && vals.len == 1 {
+                var hit = false
+                var ii: I32 = 1
+                while ii < st.len {
+                    if veq(v_unbox(st[ii]), v_unbox(vals[0])) { hit = true }
+                    ii += 1
+                }
+                if hit {
+                    return e4("k", ob.env, vB(false), ob.out)
+                }
+                st.push(vals[0])
+                return e4("k", ob.env, vB(true), ob.out)
+            }
+            if seq2(m, "contains") && vals.len == 1 {
+                var hit = false
+                var ii: I32 = 1
+                while ii < st.len {
+                    if veq(v_unbox(st[ii]), v_unbox(vals[0])) { hit = true }
+                    ii += 1
+                }
+                return e4("k", ob.env, vB(hit), ob.out)
+            }
+            if seq2(m, "remove") && vals.len == 1 {
+                var ii: I32 = 1
+                while ii < st.len {
+                    if veq(v_unbox(st[ii]), v_unbox(vals[0])) {
+                        st.remove(ii)
+                        return e4("k", ob.env, vB(true), ob.out)
+                    }
+                    ii += 1
+                }
+                return e4("k", ob.env, vB(false), ob.out)
+            }
+        }
         if seq2(m, "into_gc") {
             if seq2(cx_of(recv)[0], "L") && vals.len == 0 {
                 return e4("k", ob.env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(vdeep(cx_of(recv))) }, ob.out)
@@ -1995,6 +2150,17 @@ fn eval_call(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> Flow {
         }
         if islist {
             return e4("k", env2, vL(), out2)
+        }
+        // R-P2a:Map/Set 空容器(插入序;键/成员等 = 值等)
+        if base[0] == "Ident" && seq2(base[1], "Map") {
+            var mv = List[Str]()
+            mv.push("M")
+            return e4("k", env2, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(mv) }, out2)
+        }
+        if base[0] == "Ident" && seq2(base[1], "Set") {
+            var sv = List[Str]()
+            sv.push("S")
+            return e4("k", env2, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(sv) }, out2)
         }
         if base[0] == "Ident" && seq2(base[1], "Atomic") {
             var mv = List[Str]()

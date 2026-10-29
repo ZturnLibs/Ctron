@@ -837,6 +837,18 @@ impl Parser {
     fn parse_multiplicative(&mut self, allow_struct: bool) -> Expr {
         let mut lhs = self.parse_unary(allow_struct);
         loop {
+            // W5:repeat 字面量 `[elem] ** N`(1009 裁决:专节点非结合;count 编译期整数字面量)
+            if matches!(self.peek(), Tok::StarStar) && matches!(lhs, Expr::Array(_)) {
+                self.bump();
+                let count = self.parse_unary(allow_struct);
+                // 非结合:count 位再遇 `**` 直接判非法(镜像自举 parse_expr.ct:120-126)
+                if matches!(self.peek(), Tok::StarStar) {
+                    self.err_here("E1001", "repeat 计数位不可再接 `**`(非结合)".into());
+                    return Expr::Void;
+                }
+                lhs = Expr::Repeat { elem: Box::new(lhs), count: Box::new(count) };
+                continue;
+            }
             let op = match self.peek() {
                 Tok::Star => BinOp::Mul, Tok::Slash => BinOp::Div, Tok::Percent => BinOp::Mod,
                 _ => break,
@@ -1333,6 +1345,7 @@ fn suffix_name(s: &NumSuffix) -> String {
 fn tok_display(t: &Tok) -> &'static str {
     match t {
         Tok::Int { .. } => "整数字面量", Tok::Float { .. } => "浮点字面量", Tok::Str { .. } => "字符串",
+        Tok::StarStar => "`**`",
         Tok::Ident(_) => "标识符", Tok::Fn => "fn", Tok::Let => "let", Tok::Var => "var",
         Tok::Const => "const", Tok::Static => "static", Tok::Comptime => "comptime",
         Tok::Break => "break", Tok::Continue => "continue", Tok::If => "if", Tok::Else => "else", Tok::Match => "match", Tok::While => "while",

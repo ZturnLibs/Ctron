@@ -1066,6 +1066,13 @@ fn ct_emit_clov(site: List[Str], clo: List[Str], env: List[Str], file: List[Str]
 // Result/Option 载荷入 ct_res.v:用户枚举装箱(amalloc),指针/标量直入;
 // F64 载荷位型双关(union 复合字面量)——旧 (ct_i) 直转截断小数
 //(param_f64.or(0.0)==2.5 探针;interp v_value D 位原生双精度的发射等价)
+// W5:标量 Option ct_res 化(R2 线延续)——恒 ct_res 盒(Some=variant 0 载荷入槽;
+// None 由调用方发 variant 1 形)。解 List[I32].get().or() 标量墙:
+// ct_res_wrap 标量码发裸槽(无 None 表示),本助手为发射 Option 的统一盒面。
+fn ct_res_wrap_box(code: Str, x: Str) -> Str {
+    return "(\{ ct_res _r; _r.variant = 0; _r.v = " + ct_res_wrap(code, x) + "; _r; })"
+}
+
 fn ct_res_wrap(code: Str, x: Str) -> Str {
     // E: 枚举与 u: struct 载荷同款堆盒(amalloc 竞技场托管,指针入槽;读侧解引用配对)
     if code.len > 2 && or2(byte_slice(code, 0, 2) == "E:", byte_slice(code, 0, 2) == "u:") {

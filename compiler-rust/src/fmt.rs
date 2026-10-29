@@ -394,6 +394,7 @@ fn tok_text(t: &Tok) -> &'static str {
         Tok::Prop => "prop", Tok::True => "true", Tok::False => "false", Tok::Void => "void",
         Tok::SelfKw => "self",
         Tok::Plus => "+", Tok::Minus => "-", Tok::Star => "*", Tok::Slash => "/", Tok::Percent => "%",
+        Tok::StarStar => "**",
         Tok::WrapPlus => "+%", Tok::WrapMinus => "-%",
         Tok::PlusEq => "+=", Tok::MinusEq => "-=", Tok::StarEq => "*=", Tok::SlashEq => "/=",
         Tok::PercentEq => "%=",

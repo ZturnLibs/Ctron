@@ -1543,6 +1543,8 @@ impl Trans {
 
     fn expr(&mut self, e: &ast::Expr) -> TRes {
         match e {
+            // W5:repeat 字面量发射面在册 T25 v2(native_suite 对 t56_container skip)
+            ast::Expr::Repeat { .. } => panic!("trans_expr: repeat 字面量发射面未实现(在册 T25 v2)"),
             ast::Expr::Int { text, suffix } => {
                 let cleaned = text.replace('_', "");
                 Ok((format!("((ct_i){})", cleaned), suffix_ty(suffix)))

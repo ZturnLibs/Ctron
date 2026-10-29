@@ -411,6 +411,8 @@ fn ct_ctype(code: Str) -> Str {
     if code == "s" { return "const char*" }
     if code == "Q" { return "ct_arena" }
     if code == "YB" { return "ctron_bytes*" }
+    // W5:Clock 句柄码(R-P2b;无状态 long long)
+    if code == "CK" { return "long long" }
     // T41 余债:Region("K")与 Arena 同构 ct_arena;Pool("J"<元素码>)→ ct_pool
     if code == "K" { return "ct_arena" }
     if code.len > 0 && byte_at(code, 0) == 74 { return "ct_pool" }
@@ -1249,6 +1251,15 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
     }
     if t == "Str" { return "s" }
     if t == "Bool" { return "b" }
+    // W5:Clock 关联调用型别(real → CK 句柄;now/elapsed_since → 6 域)
+    if t == "Call" {
+        if e[1][0] == "Member" {
+            if e[1][1][0] == "Ident" && seq2(e[1][1][1], "Clock") {
+                if seq2(e[1][3], "real") { return "CK" }
+                if or2(seq2(e[1][3], "now"), seq2(e[1][3], "elapsed_since")) { return "6" }
+            }
+        }
+    }
     if t == "Float" { return "f" }
     if t == "Ident" {
         if seq2(e[1], "None") { return "R" }
@@ -1342,9 +1353,24 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 return byte_slice(qrt, qi2, qrt.len)
             }
         }
+        // W5:List get/pop → Option[R](R2a R 码 ct_res 模型;or/strcmp 消费面对齐)
+        if or2(e[3] == "get", e[3] == "pop") {
+            var prt6 = ct_typeof(e[1], env, file)
+            if prt6.len > 0 && byte_at(prt6, 0) == 76 { return "R" }
+        }
         if e[3] == "splat" {
             var srt = ct_typeof(e[1], env, file)
             if srt.len > 1 && byte_at(srt, 0) == 113 { return srt }
+        }
+        // W5:Clock 关联面(real → CK 句柄码;now/elapsed_since → I64)
+        var clkrt = ct_typeof(e[1], env, file)
+        if clkrt == "CK" {
+            if e[3] == "real" { return "CK" }
+            if or2(e[3] == "now", e[3] == "elapsed_since") { return "6" }
+        }
+        if e[1][0] == "Ident" && seq2(e[1][1], "Clock") {
+            if e[3] == "real" { return "CK" }
+            if or2(e[3] == "now", e[3] == "elapsed_since") { return "6" }
         }
         if e[3] == "to_array" {
             var art = ct_typeof(e[1], env, file)

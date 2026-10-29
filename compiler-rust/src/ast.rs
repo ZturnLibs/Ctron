@@ -68,6 +68,8 @@ pub enum Expr {
     Binary { op: BinOp, lhs: Box<Expr>, rhs: Box<Expr> },
     Range { inclusive: bool, from: Box<Expr>, to: Box<Expr> },
     Call { callee: Box<Expr>, args: Vec<Expr> },
+    /// W5:repeat 字面量 `[elem] ** N`(1009 裁决:专节点非结合)
+    Repeat { elem: Box<Expr>, count: Box<Expr> },
     Index { obj: Box<Expr>, index: Box<Expr> },
     Member { obj: Box<Expr>, target: MemberTarget },     // Name(String) | TupleIndex(u32)
     TypeArgs { expr: Box<Expr>, args: Vec<Type> },
