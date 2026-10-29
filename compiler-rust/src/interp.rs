@@ -1367,6 +1367,16 @@ impl<'a> Interp<'a> {
                 ("Arena", "fixed") => Ok(Value::Arena),
                 ("Region", "fixed") => Ok(Value::Region(Rc::new(RefCell::new(0usize)))),
                 ("Pool", "fixed") => Ok(Value::Pool(Rc::new(RefCell::new(PoolState { slots: Vec::new(), free: Vec::new() })))),
+                // R-P2b:std.time.Clock 单调时钟(real 无状态句柄;now 单调,
+                // elapsed_since = now - t0;纪元 = 进程首读,共享单例)
+                ("Clock", "real") => Ok(Value::TypeHandle(Rc::from("Clock"))),
+                ("Clock", "now") => Ok(Value::Int(clock_now_ns())),
+                ("Clock", "elapsed_since") => {
+                    if args.len() != 1 { return Err(Flow::Panic("elapsed_since 实参".into())); }
+                    let tv = self.expr(&args[0], env)?;
+                    let t0 = match tv { Value::Int(i) | Value::IntW(_, i) => i, _ => 0 };
+                    Ok(Value::Int(clock_now_ns() - t0))
+                }
                 (t, mm) => Err(Flow::Panic(format!("{} 无关联函数 `{}`", t, mm))),
             },
             Value::EnvHandle => return match m {
@@ -1662,6 +1672,16 @@ impl<'a> Interp<'a> {
                 ("Arena", "fixed") => Ok(Value::Arena),
                 ("Region", "fixed") => Ok(Value::Region(Rc::new(RefCell::new(0usize)))),
                 ("Pool", "fixed") => Ok(Value::Pool(Rc::new(RefCell::new(PoolState { slots: Vec::new(), free: Vec::new() })))),
+                // R-P2b:std.time.Clock 单调时钟(real 无状态句柄;now 单调,
+                // elapsed_since = now - t0;纪元 = 进程首读,共享单例)
+                ("Clock", "real") => Ok(Value::TypeHandle(Rc::from("Clock"))),
+                ("Clock", "now") => Ok(Value::Int(clock_now_ns())),
+                ("Clock", "elapsed_since") => {
+                    if args.len() != 1 { return Err(Flow::Panic("elapsed_since 实参".into())); }
+                    let tv = self.expr(&args[0], env)?;
+                    let t0 = match tv { Value::Int(i) | Value::IntW(_, i) => i, _ => 0 };
+                    Ok(Value::Int(clock_now_ns() - t0))
+                }
                 (t, mm) => Err(Flow::Panic(format!("{} 无关联函数 `{}`", t, mm))),
             },
             Value::EnvHandle => return match m {
@@ -2447,6 +2467,12 @@ fn named_tail(t: &ast::Type) -> String {
         ast::Type::Named { path, .. } => path.last().cloned().unwrap_or_default(),
         _ => String::new(),
     }
+}
+
+/// R-P2b:std.time.Clock 进程级单调纪元 ns(CLOCK_MONOTONIC 对应)
+fn clock_now_ns() -> i64 {
+    static CLOCK_EPOCH: std::sync::LazyLock<std::time::Instant> = std::sync::LazyLock::new(std::time::Instant::now);
+    std::time::Instant::now().duration_since(*CLOCK_EPOCH).as_nanos() as i64
 }
 
 fn member_name(t: &ast::MemberTarget) -> String {

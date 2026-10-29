@@ -3910,3 +3910,22 @@ native 指纹与基线逐套件一致(既有旧账族);suite.py 指纹 3 项既�
 **登记债**:①01d 插值宽度面由 UnOp::Neg IntW 漏分支根修(同批);②残差
 2 项归 21 项清单点计重复(全列表实际 19 簇项);③Pool 句柄越界 panic 面
 未钉语料。
+
+## 2026-10-29 r2b_time 翻转:Rust interp std.time.Clock 单调时钟面落地
+
+**实现**(compiler-rust/src/interp.rs TypeHandle 关联面 + sem.rs 前奏):
+`Clock.real()` → 无状态句柄(TypeHandle("Clock"));`now()` → 进程级
+LazyLock 纪元 ns(单调);`elapsed_since(t0)` → now - t0。check 侧
+Named Clock 方法面(real → 句柄;now/elapsed_since → I64);Clock 入
+前奏册(sem.rs)。两臂共用单纪元助手 clock_now_ns(双 LazyLock 纪元
+曾致 elapsed 负值,单例修正)。
+
+**翻转**:r2b_time 迁主套件 `t57_time_clock.ct`(T26 先例);roadmap_suite
+删行 → **绿 5 / 锚 8 / 共 13**;五语料 rc=0 实测(monotonic 双读 +
+elapsed 有界断言)。
+
+**门**:run_suite 0 fail 保持;六红套件指纹与基线一致;suite.py 指纹
+3 项既有红(03m/07a/10_trace 归档泳道)稳定;t57_time 前缀在
+native_suite/suite.py skip(trans 发射面 Clock = T25 v2 同域后件)。
+**R 线燃尽余量**:锚点表 绿 5 / 锚 8 / 共 13(NegGreen 6 待迁 check_suite
+不计;真红 2 = r4b span 批[R-P4b 正身] + r6g 空泛注记)。

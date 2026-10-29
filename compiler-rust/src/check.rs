@@ -3280,6 +3280,15 @@ impl<'a> Checker<'a> {
                         }
                     }
                     // W5:T41 分配器族方法面(Region mark/reset;Pool alloc/set/get/free)
+                    // R-P2b:std.time.Clock 单调时钟(real → 句柄;now/elapsed_since → I64)
+                    "Clock" => match m {
+                        "real" => self.named("Clock", vec![]),
+                        "now" | "elapsed_since" => {
+                            for a in args { self.expr(a, None); }
+                            Ty::Int(crate::sem::IntW::W64)
+                        }
+                        _ => { self.err("E2020", format!("Clock 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                    },
                     "Arena" => match m {
                         "fixed" => { for a in args { self.expr(a, None); } self.named("Arena", vec![]) }
                         _ => { self.err("E2020", format!("Arena 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }

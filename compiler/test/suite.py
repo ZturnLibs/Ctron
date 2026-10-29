@@ -96,7 +96,7 @@ for kind, pat in CATS:
         base = os.path.basename(path)
         # R-P2a 容器语料(2026-10-29):interp 面已落地(Rust 线 run_suite 驱动);
         # 自举 C 编译器 get/Map/Set 发射面在册 T25 v2,双编译器均未达 → 跳过
-        if base.startswith("t56_container"):
+        if base.startswith("t56_container") or base.startswith("t57_time"):
             continue
         if kind == "behavior" and re.search(r"\.(neg|lint|panic)\.ct$", base):
             continue
