@@ -27,20 +27,19 @@ enum Status {
 
 fn anchors() -> Vec<(&'static str, &'static str, Status)> {
     vec![
-        // ---- R-P2a 容器(R-P2a interp 运行时已落地,2026-10-29) ----
+        // 2026-10-29 燃尽清账:r2a×5/r2b_time 翻转迁主套件(t56/t57);
+        // 六条 NegGreen(E3040/E3070/E3010/E1001×2/E4020)迁 check_suite
+        // 期望表 t58_*(翻转协议里程碑收口)——本表仅余真红锚(未实现面)。
+        // ---- R-P2a 容器(发射面 get/set/Map/Set 在册 T25 v2 域) ----
         // r2a_list/list_oob/map/set/container_send 五锚已翻转迁主套件
         // t56_container_*(interp Value Map/Set + List get/set/pop-Option +
-        // run_task EarlyReturn 臂;发射面 get/set/Map/Set 在册 T25 v2 域,
-        // native_suite 对 t56_container 前缀 skip)
-        ("r2a_container_alloc.neg.ct", "R-P2a", Status::NegGreen("E3040")),
-        // ---- R-P2b std 能力 ----
+        // run_task EarlyReturn 臂)
         // r2b_fs_fake/r2b_env 已翻转(T26,2026-09-29):Fs 能力 trait 入 std/fs.ct、
         // Env.system/get/args 前奏命名空间落地,锚迁主套件 07a_cap_fs_inject/07b_cap_env
         // r2b_time 已翻转(2026-10-29):Rust interp Clock.real/now/elapsed_since
         // 单调时钟面落地(LazyLock 进程纪元),锚迁主套件 t57_time_clock
         // ---- R-P3 闭包/迭代器/模式 ----
         ("r3a_capture.ct", "R-P3a", Status::Green),
-        ("r3a_capture_var.neg.ct", "R-P3a", Status::NegGreen("E3070")),
         // 2026-10-28:闭包可变捕获检查落地(check.rs Assign 臂 + Closure 入口帧基线
         // clo_bases;捕获 var 赋值 → 无 Mutex 包装即 E3070,与自举线 sem_closure 同判据)
         // r3b_adapters/r3b_iter_adapters 已翻转(T16,2026-10-02):适配器链入
@@ -52,20 +51,16 @@ fn anchors() -> Vec<(&'static str, &'static str, Status)> {
         ("r2d_fmt_chain.ct", "R-P2d", Status::Green),
         // ---- R-P4 ----
         ("r4b_panic_location.panic.ct", "R-P4b", Status::PanicMsgRed("r4b_panic_location.ct")),
-        ("r4c_arena_send.neg.ct", "R-P4c", Status::NegGreen("E3010")),
         // ---- R-P5 comptime ----
         ("r5a_const_size.ct", "R-P5a", Status::Green),
         ("r5a_semantics.ct", "R-P5a", Status::Green),
         // ---- 插值负向面(§1.4/§4.11;R 线已拦 E1001,自举线落后——见文件头锚点行) ----
-        ("r6h_interp_unclosed.neg.ct", "R-P6h", Status::NegGreen("E1001")),
-        ("r6i_interp_nested_str.neg.ct", "R-P6i", Status::NegGreen("E1001")),
         // ---- 09-15 审计批次补登(r6b–r6g/r1a;R 线行为逐件实测锚定) ----
         // r6g:check 双面绿;文件无 test 块,RunRed 对空结果集空泛成立(链接面由 modules/ffi_math 覆盖)
         ("r6g_trusted_extern.ct", "R-P6g", Status::RunRed),
         // r7b:pure 间接触网(E4020 语义 §8.1/§11.1)—— 跨函数纯度传播已落地
         // (check.rs new() 纯度定点:直触集 + 命名调用边不动点,消费于命名调用臂),
         // 2026-10-28 RunRed → NegGreen("E4020")
-        ("r7b_pure_net.neg.ct", "R-P7b", Status::NegGreen("E4020")),
     ]
 }
 

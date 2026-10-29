@@ -55,6 +55,13 @@ fn expectations() -> Vec<(&'static str, Vec<&'static str>)> {
         ("04d_unary_neg_type.neg.ct", vec!["E2010"]),
         ("01j_impl_for.neg.ct", vec!["E1001"]),
         ("01i_semicolon.neg.ct", vec!["E1001"]),
+        // R 线 NegGreen 锚迁入(2026-10-29;翻转协议里程碑收口——六码检查层均已落地)
+        ("t58_container_alloc.neg.ct", vec!["E3040"]),
+        ("t58_capture_var.neg.ct", vec!["E3070"]),
+        ("t58_arena_send.neg.ct", vec!["E3010"]),
+        ("t58_interp_unclosed.neg.ct", vec!["E1001"]),
+        ("t58_interp_nested_str.neg.ct", vec!["E1001"]),
+        ("t58_pure_net.neg.ct", vec!["E4020"]),
     ]
 }
 
