@@ -3919,6 +3919,10 @@ LazyLock 纪元 ns(单调);`elapsed_since(t0)` → now - t0。check 侧
 Named Clock 方法面(real → 句柄;now/elapsed_since → I64);Clock 入
 前奏册(sem.rs)。两臂共用单纪元助手 clock_now_ns(双 LazyLock 纪元
 曾致 elapsed 负值,单例修正)。
+**Ctron interp 面**(cc_run;W5 续批):eval_expr 裸 `Clock` → NS 句柄;
+call_mem NS 臂 real/now/elapsed_since;now/elapsed 经 extern
+`ctron_clock_now_ns`(cc2_bit CLOCK_MONOTONIC 进程纪元,bin 直调链接面;
+seed 径不达 = cc2_str 同型登记)。发射臂样板 static 同文补齐。
 
 **翻转**:r2b_time 迁主套件 `t57_time_clock.ct`(T26 先例);roadmap_suite
 删行 → **绿 5 / 锚 8 / 共 13**;五语料 rc=0 实测(monotonic 双读 +

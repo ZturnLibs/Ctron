@@ -50,6 +50,10 @@ extern "c" fn ctron_prog_args_at(i: I64) -> Str
 #[trusted]
 extern "c" fn ctron_bit_i64(op: I32, a: I64, b: I64, bits: I32, sgn: I32) -> I64
 
+// R-P2b:std.time.Clock NS 宿主口(t57;CLOCK_MONOTONIC 进程纪元,cc2_bit 同文)
+#[trusted]
+extern "c" fn ctron_clock_now_ns() -> I64
+
 // FB-8/F5:T[N] 形参值语义——A 记录(数组值)递归深拷(镜像发射位调用点栈拷贝;
 // 旧直传共享记录,被调改元即污染调用方,静默错值)
 fn arr_copy_val(v: Val) -> Val {
@@ -1432,6 +1436,25 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
                 return e4("k", env, bv, out)
             }
             panic("dom 方法:" + m)
+            return e4("a", env, vV2(), out)
+        }
+        // R-P2b:std.time.Clock NS(real 无状态句柄;now/elapsed_since 走 extern
+        // ctron_clock_now_ns 进程纪元——bin 直调链接面,seed 径不达,登记同 cc2_str)
+        if seq2(cx_of(recv)[0], "NS") && seq2(cx_of(recv)[1], "Clock") {
+            if seq2(m, "real") {
+                var nsc = List[Str]()
+                nsc.push("NS")
+                nsc.push("Clock")
+                return e4("k", env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(nsc) }, out)
+            }
+            if seq2(m, "now") { return e4("k", env, v6i(ctron_clock_now_ns()), out) }
+            if seq2(m, "elapsed_since") {
+                if vals.len < 1 { panic("elapsed_since 实参") }
+                var nsnow = c6_i64s(ctron_clock_now_ns())
+                var t0t = v_unbox(vals[0])
+                return e4("k", env, v6(c6sub(nsnow, t0t)), out)
+            }
+            panic("Clock 方法:" + m)
             return e4("a", env, vV2(), out)
         }
         if seq2(cx_of(recv)[0], "NS") && seq2(cx_of(recv)[1], "bit") {
