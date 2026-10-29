@@ -3,7 +3,7 @@
 // 锚点:R-P2a 落地转绿
 test "list moves into task" {
     let r = scope { |s|
-        var xs = List[I32]()
+        var xs: List[I32] = List[I32]()
         xs.push(41)
         let t = s.spawn(|| {
             return xs[0] + 1

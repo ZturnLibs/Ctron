@@ -14,7 +14,7 @@ fn head_or[T](xs: List[T], d: T) -> T {
 }
 
 test "construct push len index" {
-    var xs = List[I32]()
+    var xs: List[I32] = List[I32]()
     assert_eq(xs.len, 0)
     xs.push(10)
     xs.push(20)
@@ -24,21 +24,21 @@ test "construct push len index" {
 }
 
 test "get returns Option not panic" {
-    var xs = List[I32]()
+    var xs: List[I32] = List[I32]()
     xs.push(7)
     assert_eq(xs.get(0).or(0), 7)
     assert_eq(xs.get(9).or(-1), -1)
 }
 
 test "set replaces in place" {
-    var xs = List[I32]()
+    var xs: List[I32] = List[I32]()
     xs.push(1)
     xs.set(0, 42)
     assert_eq(xs[0], 42)
 }
 
 test "pop returns Option" {
-    var xs = List[Str]()
+    var xs: List[Str] = List[Str]()
     xs.push("a")
     assert_eq(xs.pop().or("none"), "a")
     assert_eq(xs.pop().or("none"), "none")
@@ -46,7 +46,7 @@ test "pop returns Option" {
 }
 
 test "for-in iteration and fn param" {
-    var xs = List[I32]()
+    var xs: List[I32] = List[I32]()
     xs.push(1)
     xs.push(2)
     xs.push(3)
@@ -54,7 +54,7 @@ test "for-in iteration and fn param" {
 }
 
 test "generic fn over container" {
-    var xs = List[I32]()
+    var xs: List[I32] = List[I32]()
     xs.push(5)
     assert_eq(head_or(xs, 0), 5)
     var empty = List[I32]()

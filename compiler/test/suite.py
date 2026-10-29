@@ -97,7 +97,8 @@ for kind, pat in CATS:
         # R-P2a/P2b 容器与钟语料 + R 线 NegGreen 锚(2026-10-29):interp 面已落地
         # (Rust 线 run_suite/check_suite 驱动);自举 C 编译器发射/检查面在册 T25 v2
         # 与泳道专属诊断,双编译器均未达 → 跳过
-        if base.startswith("t56_container") or base.startswith("t57_time") or base.startswith("t58_"):
+        # t56_container_map/set:双编译器 Map/Set 面在册 T25 v2 + C 宿主 rt 后件
+        if base.startswith("t56_container_map") or base.startswith("t56_container_set") or base.startswith("t57_time") or base.startswith("t58_"):
             continue
         if kind == "behavior" and re.search(r"\.(neg|lint|panic)\.ct$", base):
             continue
