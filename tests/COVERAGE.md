@@ -3873,3 +3873,40 @@ member len、E3040 分配两表零改动(r2a_container_alloc.neg NegGreen 不受
 **登记债**:①发射面 get/set/Map/Set(trans)未实现(T25 v2 域,native
 差分本批 skip);②Map 键等 = values_equal 非哈希(插入序 assoc,语料量级
 线性扫描;哈希种子冻结 = 后件);③Map.insert 返回值语料未钉,本批取 Void。
+
+## 2026-10-29 bin interp 内建与语义缺口清偿——run_suite 21 项内红全绿
+
+**run_suite 21→0**(21 = 既有旧账族,非本会话引入;逐簇落地):
+
+1. **fb8 T[N] 形参按值拷贝**(真 bug):call_user_fn 声明 `Ty::Array(_)` 位
+   递归深拷 `copy_array_deep`(镜像自举 arr_copy_val;切片 MutSlice/RoSlice
+   视图共享由 03f 钉死不受扰)——别名污染(99 vs 1)根修。
+2. **时钟内建**:mono_ns(进程级 LazyLock 纪元——每次新建 Instant 的
+   elapsed 非单调,01p 曾 50% 翻)/wall_ns(SystemTime·UNIX_EPOCH);返回
+   Int 原生 i64(Rust 侧无 I32 域限制)。
+3. **L4 字节面**:`Value::Bytes(Rc<Vec<u8>>)` + read_file_bytes/bytes_len/
+   bytes_at/bytes_slice((起点,长度) 形;panic "bytes index out of bounds"/
+   "bytes slice range" 与发射面逐字);check 白名单同步(Bytes 前奏已在册)。
+4. **裸 arena 句柄**:eval_ident/check 落 `Value::Arena`(own 块 env 绑定
+   优先;05i fncall 域)。
+5. **repeat 字面量 `[v] ** N`**(五件套):token StarStar、lexer 最长 munch、
+   AST `Expr::Repeat`、parser 乘法层专节点(非结合,计数位 `**` E1001)、
+   interp(elem 块一次物化 N 份拼接展平;负计数 panic "repeat 负计数")、
+   check 下钻、fmt tok_text、check.rs:1234 纯度遍历 + trans.rs expr 臂
+   (发射面在册 T25 v2,panic 响亮)。
+6. **03j StringBuilder reserve/clear**(G1-T5 对齐)。
+7. **10_trace 族**:AnyError `.code`(cause 链最内层「枚举名.变体名」注册
+   全形)+ `downcast[E]`(TypeArgs 臂,判别 = 最内层载荷枚举名;check
+   Option[E])。
+8. **T41 分配器族**(08_bare/41_alloc):`Value::Region(bump 戳)`/`Value::Pool
+   (槽表+空闲链 LIFO)`/`Value::TypeHandle(类型名关联面)`;zeros = 独立零
+   初始化实体(与回卷可观测解耦);eval_ident 类型名兜底改 TypeHandle;
+   check TypeArgs + 方法臂同步。Static 入前奏册(sem.rs)。
+
+**门**:run_suite 0 fail(21→0);roadmap_suite 2/2;check/fmt/lex/parse/
+native 指纹与基线逐套件一致(既有旧账族);suite.py 指纹 3 项既有红
+(t56_container 前缀 skip——双编译器发射面 T25 v2 在册);10_trace 宿主红
+定谳 = C 宿主 main-less 缺口(归档泳道,见 2026-10-28 批)。
+**登记债**:①01d 插值宽度面由 UnOp::Neg IntW 漏分支根修(同批);②残差
+2 项归 21 项清单点计重复(全列表实际 19 簇项);③Pool 句柄越界 panic 面
+未钉语料。

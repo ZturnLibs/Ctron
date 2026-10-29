@@ -1232,6 +1232,10 @@ impl<'a> Checker<'a> {
                       fn_ids: &HashMap<&str, Vec<usize>>) {
         use ast::Expr::*;
         match e {
+            Repeat { elem, count } => {
+                Self::scan_pure_expr(sema, elem, params, id, direct, edges, fn_ids);
+                Self::scan_pure_expr(sema, count, params, id, direct, edges, fn_ids);
+            }
             Call { callee, args } => {
                 match &**callee {
                     Ident(name) => Self::note_call_edge(name, id, edges, fn_ids),
@@ -2160,6 +2164,12 @@ impl<'a> Checker<'a> {
                 Ty::Range(Box::new(f))
             }
             Expr::Call { callee, args } => self.check_call(callee, args, hint),
+            // W5:repeat 字面量(镜像自举 sem_type.ct:1004-1008:elem/count 下钻)
+            Expr::Repeat { elem, count } => {
+                self.expr(elem, hint);
+                self.expr(count, None);
+                hint.cloned().unwrap_or(Ty::Err)
+            }
             Expr::Index { obj, index } => {
                 let ot = self.expr(obj, None);
                 self.expr(index, None);
@@ -2436,6 +2446,10 @@ impl<'a> Checker<'a> {
                 if let Some(def) = self.sema.def_by_name.get(name) {
                     return Ty::Named { def: *def, args: vec![] };
                 }
+                // W5:裸 arena 句柄(05i fncall 域;own 块 env 绑定优先于本兜底)
+                if name == "arena" {
+                    return self.named("Arena", vec![]);
+                }
                 self.err("E2020", format!("未解析的名称 `{}`", name), Span::new(1, 1, 0, 0));
                 Ty::Err
             }
@@ -2557,6 +2571,15 @@ impl<'a> Checker<'a> {
                             _ => { self.err("E2020", format!("Arena 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
                         };
                     }
+                    // W5:T41 分配器族 zeros/fixed 关联面(Region/Pool/Static)
+                    if matches!(oname.as_str(), "Region" | "Pool" | "Static") {
+                        let t = targs.first().cloned().unwrap_or(Ty::Err);
+                        return match m.as_str() {
+                            "zeros" => Ty::MutSlice(Box::new(t)),
+                            "fixed" => self.named(&oname, targs.clone()),
+                            _ => { self.err("E2020", format!("{} 无方法 `{}`", oname, m), Span::new(1, 1, 0, 0)); Ty::Err }
+                        };
+                    }
                 }
                 // 泛型类型构造器调用(Box[Point](p))
                 if let Expr::Ident(name) = &**expr {
@@ -2564,6 +2587,16 @@ impl<'a> Checker<'a> {
                         // Arena.fixed(n) 等关联构造
                         for a in args { self.expr(a, None); }
                         return self.named("Arena", vec![]);
+                    }
+                    // IP-01 W2b:downcast[E](e: AnyError) -> Option[E]
+                    if name == "downcast" {
+                        let ename = type_args.first().and_then(|t| match self.lower_local_ty(t) {
+                            Ty::Named { def, .. } => Some(self.sema.defs[def].name.clone()),
+                            _ => None,
+                        }).unwrap_or_default();
+                        if let Some(a) = args.first() { self.expr(a, None); }
+                        let inner = self.named(&ename, vec![]);
+                        return self.named("Option", vec![inner]);
                     }
                     if let Some(def) = self.lookup_type(name) {
                         let targs: Vec<Ty> = type_args.iter().map(|t| self.lower_local_ty(t)).collect();
@@ -2705,6 +2738,12 @@ impl<'a> Checker<'a> {
             "flush_out" => { for a in args { self.expr(a, None); } Ty::Void }
             "byte_at" => { for a in args { self.expr(a, None); } Ty::Int(crate::sem::IntW::W32) }
             "byte_slice" => { for a in args { self.expr(a, None); } Ty::Str }
+            // W5:时钟 ns(R-P2b 面;01p)
+            "mono_ns" | "wall_ns" => { for a in args { self.expr(a, None); } Ty::Int(crate::sem::IntW::W64) }
+            // L4 字节面(①l4×2 + 03m;panic 文本运行期,Bytes 前奏已注册)
+            "read_file_bytes" | "bytes_slice" => { for a in args { self.expr(a, None); } self.named("Bytes", vec![]) }
+            "bytes_len" => { for a in args { self.expr(a, None); } Ty::Int(crate::sem::IntW::W64) }
+            "bytes_at" => { for a in args { self.expr(a, None); } Ty::Int(crate::sem::IntW::W32) }
             _ => {
                 let Some(sym) = self.lookup_fn_global(name) else {
                     // 类型名裸构造器(§3.8.2;T03:StringBuilder() 等,无泛型实参形)
@@ -2979,6 +3018,8 @@ impl<'a> Checker<'a> {
             },
             "AnyError" => match tn.as_str() {
                 "message" | "trace" => self.named("Str", vec![]),
+                // IP-01 W1:code(注册名全形,沿 cause 链最内层)
+                "code" => self.named("Str", vec![]),
                  "cause" => {
                     let err_t = self.named("Error", vec![]);
                     let opt = self.named("Option", vec![]);
@@ -3238,9 +3279,36 @@ impl<'a> Checker<'a> {
                             _ => { self.err("E2020", format!("Set 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
                         }
                     }
+                    // W5:T41 分配器族方法面(Region mark/reset;Pool alloc/set/get/free)
+                    "Arena" => match m {
+                        "fixed" => { for a in args { self.expr(a, None); } self.named("Arena", vec![]) }
+                        _ => { self.err("E2020", format!("Arena 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                    },
+                    "Region" => match m {
+                        "fixed" => { for a in args { self.expr(a, None); } self.named("Region", vec![]) }
+                        "mark" => Ty::Int(crate::sem::IntW::W64),
+                        "reset" | "zeros" => { for a in args { self.expr(a, None); } Ty::Void }
+                        _ => { self.err("E2020", format!("Region 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                    },
+                    "Pool" => {
+                        let vty = targs.get(1).cloned().unwrap_or(Ty::Err);
+                        match m {
+                            "fixed" => { for a in args { self.expr(a, None); } self.named("Pool", targs.clone()) }
+                            "alloc" => Ty::Int(crate::sem::IntW::W64),
+                            "get" => { if let Some(a) = args.first() { self.expr(a, None); } vty }
+                            "set" | "free" => { for a in args { self.expr(a, None); } Ty::Void }
+                            _ => { self.err("E2020", format!("Pool 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                        }
+                    }
+                    "Static" => match m {
+                        "zeros" => { for a in args { self.expr(a, None); } Ty::MutSlice(Box::new(targs.first().cloned().unwrap_or(Ty::Err))) }
+                        _ => { self.err("E2020", format!("Static 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                    }
                     "StringBuilder" => match m {
-                        // §3.8.2;T03:push_str 拼段 / to_string 产出 String(len 走属性)
+                        // §3.8.2;T03:push_str 拼段 / to_string 产出 String(len 走属性);
+                        // G1-T5:reserve/clear(解释臂 G1 同批)
                         "push_str" => { if !args.is_empty() { self.expr(&args[0], None); } Ty::Void }
+                        "reserve" | "clear" => { for a in args { self.expr(a, None); } Ty::Void }
                         "to_string" => { self.named("String", vec![]) }
                         _ => { self.err("E2020", format!("StringBuilder 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
                     },

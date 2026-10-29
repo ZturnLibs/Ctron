@@ -30,10 +30,18 @@ pub enum Value {
     StrBuilder(Rc<RefCell<String>>),
     Tuple(Vec<Value>),
     Array(Rc<RefCell<Vec<Value>>>),
+    /// L4 字节面(read_file_bytes/bytes_*):不可变字节表
+    Bytes(Rc<Vec<u8>>),
     /// R-P2a:Map[K,V](插入序 assoc;键等 = values_equal)
     Map(Rc<RefCell<Vec<(Value, Value)>>>),
     /// R-P2a:Set[T](插入序;values_equal 去重)
     Set(Rc<RefCell<Vec<Value>>>),
+    /// W5:T41 分配器族——Region 区段戳(bump;mark/reset)
+    Region(Rc<RefCell<usize>>),
+    /// W5:Pool 槽表 + 空闲链(alloc LIFO 复用;set/get/free)
+    Pool(Rc<RefCell<PoolState>>),
+    /// W5:类型名句柄(Arena.fixed/Region.fixed/Pool.fixed/Static.zeros 关联面)
+    TypeHandle(Rc<str>),
     Range { from: i64, to: i64, inclusive: bool },
     Closure { params: Vec<ast::ClosureParam>, body: Rc<Expr>, env: Rc<Env> },
     FnRef { id: usize },
@@ -52,6 +60,12 @@ pub enum Value {
 
 
 pub struct Local { pub value: Value }
+
+/// W5:Pool 槽表 + 空闲链(free LIFO 复用;槽位句柄 = 下标)
+pub struct PoolState {
+    pub slots: Vec<Option<Value>>,
+    pub free: Vec<usize>,
+}
 
 pub struct Env {
     vars: RefCell<HashMap<String, Local>>,
@@ -537,7 +551,10 @@ impl<'a> Interp<'a> {
                 match op {
                     ast::UnOp::Neg => Ok(match v {
                         Value::Int(i) => Value::Int(-i),
+                        // W5:宽度标记整数取负(01d:-5i8 曾因漏分支原样透传)
+                        Value::IntW(w, i) => Value::IntW(w, i.wrapping_neg()),
                         Value::UInt(u) => Value::UInt(u.wrapping_neg()),
+                        Value::UIntW(w, u) => Value::UIntW(w, u.wrapping_neg()),
                         Value::F64(f) => Value::F64(-f),
                         Value::F32(f) => Value::F32(-f),
                         other => other,
@@ -555,6 +572,24 @@ impl<'a> Interp<'a> {
                 Ok(Value::Range { from: f, to: t, inclusive: *inclusive })
             }
             Expr::Call { callee, args } => self.eval_call(callee, args, env),
+            // W5:repeat 字面量 `[elem] ** N`——elem 块一次物化 N 份拼接展平
+            // (`[1,2] ** 3` → [1,2,1,2,1,2];负计数 panic;镜像自举 eval_expr.ct:411-415)
+            Expr::Repeat { elem, count } => {
+                let ev = self.expr(elem, env)?;
+                let cv = self.expr(count, env)?;
+                let n = match cv { Value::Int(i) | Value::IntW(_, i) => i, Value::UInt(u) | Value::UIntW(_, u) => u as i64, _ => 0 };
+                if n < 0 { return Err(Flow::Panic("repeat 负计数".into())); }
+                let mut items = match ev {
+                    Value::Array(arr) => arr.borrow().clone(),
+                    other => vec![other],
+                };
+                if n > 1 {
+                    let base = items.clone();
+                    items.reserve(base.len() * (n as usize - 1));
+                    for _ in 1..n { items.extend(base.iter().cloned()); }
+                }
+                Ok(Value::Array(Rc::new(RefCell::new(items))))
+            }
             Expr::Index { obj, index } => {
                 let o = self.expr(obj, env)?;
                 let i = self.expr(index, env)?;
@@ -781,6 +816,26 @@ impl<'a> Interp<'a> {
                         // R-P2a:Map/Set 空容器(插入序;键等 = values_equal)
                         "Map" => Ok(Value::Map(Rc::new(RefCell::new(Vec::new())))),
                         "Set" => Ok(Value::Set(Rc::new(RefCell::new(Vec::new())))),
+                        // IP-01 W2b:downcast[E](e: AnyError) -> Option[E](判别 = cause 链
+                        // 最内层载荷枚举名与显式 E 比对;命中返 Some(具体 Err 值),否则 None)
+                        "downcast" => {
+                            let ename = type_args_ast.first().and_then(|t| match t {
+                                ast::Type::Named { path, .. } => path.last().cloned(),
+                                _ => None,
+                            }).unwrap_or_default();
+                            let Some(a) = args.first() else { return Err(Flow::Panic("downcast 实参".into())); };
+                            let av = self.expr(a, env)?;
+                            let mut cur: &Value = &av;
+                            while let Value::AnyError { cause: Some(c), .. } = cur {
+                                cur = c;
+                            }
+                            if let Value::Enum { def, .. } = cur {
+                                if self.def_name(*def) == ename {
+                                    return Ok(Value::Enum { def: self.sema.def_by_name.get("Option").copied().unwrap_or(0), variant: 0, payload: vec![cur.clone()] });
+                                }
+                            }
+                            Ok(Value::Enum { def: self.sema.def_by_name.get("Option").copied().unwrap_or(0), variant: 1, payload: vec![] })
+                        }
                         "Atomic" => Ok(Value::Atomic(Rc::new(Cell::new(
                             vals.first().and_then(|v| if let Value::Int(i) = v { Some(*i) } else { None }).unwrap_or(0)
                         )))),
@@ -840,6 +895,38 @@ impl<'a> Interp<'a> {
                                 Ok(Value::Array(Rc::new(RefCell::new(vec![Value::Int(0); n]))))
                             }
                             _ => Err(Flow::Panic(format!("Arena 无方法 `{}`", method))),
+                        };
+                    }
+                    // W5:T41 分配器族——Region/Pool 关联面 + Static/Region zeros(独立零实体)
+                    if let Value::TypeHandle(tn) = &recv {
+                        let tn = &**tn;
+                        if matches!(tn, "Arena" | "Region" | "Pool" | "Static") {
+                            return match method.as_str() {
+                                "zeros" => {
+                                    let n = if let Some(Some(a)) = args.first().map(|a| self.expr(a, env).ok()) {
+                                        match a { Value::Int(n) => n as usize, _ => 0 }
+                                    } else { 0 };
+                                    Ok(Value::Array(Rc::new(RefCell::new(vec![Value::Int(0); n]))))
+                                }
+                                "fixed" => match tn {
+                                    "Arena" => Ok(Value::Arena),
+                                    "Region" => Ok(Value::Region(Rc::new(RefCell::new(0usize)))),
+                                    _ => Ok(Value::Pool(Rc::new(RefCell::new(PoolState { slots: Vec::new(), free: Vec::new() })))),
+                                },
+                                _ => Err(Flow::Panic(format!("{} 无方法 `{}`", tn, method))),
+                            };
+                        }
+                    }
+                    // Region 实例 zeros(独立零初始化实体;与回卷语义可观测解耦)
+                    if matches!(recv, Value::Region(_)) {
+                        return match method.as_str() {
+                            "zeros" => {
+                                let n = if let Some(Some(a)) = args.first().map(|a| self.expr(a, env).ok()) {
+                                    match a { Value::Int(n) => n as usize, _ => 0 }
+                                } else { 0 };
+                                Ok(Value::Array(Rc::new(RefCell::new(vec![Value::Int(0); n]))))
+                            }
+                            _ => Err(Flow::Panic(format!("Region 无方法 `{}`", method))),
                         };
                     }
                 }
@@ -991,6 +1078,57 @@ impl<'a> Interp<'a> {
             let len = s.len() as i64;
             if a < 0 || b > len || a > b { return Err(Flow::Panic(format!("byte_slice 越界 (DBG a={} b={} len={})", a, b, len))); }
             return Ok(Value::Str(Rc::new(s[(a as usize)..(b as usize)].to_string())));
+        }
+        // W5 时钟 ns 内建(R-P2b 面;01p):CLOCK_MONOTONIC/CLOCK_REALTIME 对应
+        if name == "mono_ns" {
+            if !args.is_empty() { return Err(Flow::Panic("mono_ns 实参".into())); }
+            // 全程单调:进程级纪元(CLOCK_MONOTONIC 对应;每次新建 Instant 的
+            // elapsed = 读延迟抖动,非单调——01p 相邻两读断言曾 50% 翻)
+            static MONO_EPOCH: std::sync::LazyLock<std::time::Instant> = std::sync::LazyLock::new(std::time::Instant::now);
+            let ns = std::time::Instant::now().duration_since(*MONO_EPOCH).as_nanos() as i64;
+            return Ok(Value::Int(ns));
+        }
+        if name == "wall_ns" {
+            if !args.is_empty() { return Err(Flow::Panic("wall_ns 实参".into())); }
+            let ns = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as i64).unwrap_or(0);
+            return Ok(Value::Int(ns));
+        }
+        // L4 字节面内建(①l4×2 + 03m;panic 文本与发射面 driver_emit:696-700 逐字)
+        if name == "read_file_bytes" {
+            if args.len() != 1 { return Err(Flow::Panic("read_file_bytes 实参".into())); }
+            let pv = self.expr(&args[0], env)?;
+            let path = match &pv { Value::Str(s) => s.clone(), _ => return Err(Flow::Panic("read_file_bytes 目标需 Str".into())) };
+            match std::fs::read(path.as_str()) {
+                Ok(data) => return Ok(Value::Bytes(Rc::new(data))),
+                Err(e) => return Err(Flow::Panic(format!("read_file_bytes: {}", e))),
+            }
+        }
+        if name == "bytes_len" {
+            if args.len() != 1 { return Err(Flow::Panic("bytes_len 实参".into())); }
+            let bv = self.expr(&args[0], env)?;
+            return match bv { Value::Bytes(b) => Ok(Value::Int(b.len() as i64)), _ => Err(Flow::Panic("bytes_len 目标需 Bytes".into())) };
+        }
+        if name == "bytes_at" {
+            if args.len() != 2 { return Err(Flow::Panic("bytes_at 实参".into())); }
+            let bv = self.expr(&args[0], env)?;
+            let iv = self.expr(&args[1], env)?;
+            let i = match iv { Value::Int(i) | Value::IntW(_, i) => i, Value::UInt(u) | Value::UIntW(_, u) => u as i64, _ => 0 };
+            return match bv { Value::Bytes(b) => {
+                if i < 0 || (i as usize) >= b.len() { return Err(Flow::Panic("bytes index out of bounds".into())); }
+                Ok(Value::Int(b[i as usize] as i64))
+            }, _ => Err(Flow::Panic("bytes_at 目标需 Bytes".into())) };
+        }
+        if name == "bytes_slice" {
+            if args.len() != 3 { return Err(Flow::Panic("bytes_slice 实参".into())); }
+            let bv = self.expr(&args[0], env)?;
+            let av = self.expr(&args[1], env)?;
+            let nv = self.expr(&args[2], env)?;
+            let n_of = |v: &Value| -> i64 { match v { Value::Int(i) | Value::IntW(_, i) => *i, Value::UInt(u) | Value::UIntW(_, u) => *u as i64, _ => 0 } };
+            let (a, n) = (n_of(&av), n_of(&nv));
+            return match bv { Value::Bytes(b) => {
+                if a < 0 || n < 0 || a + n > b.len() as i64 { return Err(Flow::Panic("bytes slice range".into())); }
+                Ok(Value::Bytes(Rc::new(b[a as usize..(a + n) as usize].to_vec())))
+            }, _ => Err(Flow::Panic("bytes_slice 目标需 Bytes".into())) };
         }
         if let Some(sym) = self.module_symbol(name) {
             if let Symbol::Variant { def, idx } = sym {
@@ -1171,6 +1309,66 @@ impl<'a> Interp<'a> {
                 "fixed" => { for a in args { self.expr(a, env)?; } Ok(Value::Arena) }
                 _ => Err(Flow::Panic(format!("Arena 无关联函数 `{}`", m))),
             },
+            // W5:T41 Region 区段(bump 戳;zeros 走 TypeArgs 臂)
+            Value::Region(bump) => return match m {
+                "mark" => Ok(Value::Int(*bump.borrow() as i64)),
+                "reset" => {
+                    if args.len() != 1 { return Err(Flow::Panic("Region.reset 实参".into())); }
+                    let v = self.expr(&args[0], env)?;
+                    if let Value::Int(m2) = v { *bump.borrow_mut() = m2.max(0) as usize; }
+                    Ok(Value::Void)
+                }
+                _ => Err(Flow::Panic(format!("Region 无方法 `{}`", m))),
+            },
+            // W5:T41 Pool 槽表(alloc LIFO 复用空闲链;set/get 按句柄)
+            Value::Pool(ps) => return match m {
+                "alloc" => {
+                    if !args.is_empty() { return Err(Flow::Panic("Pool.alloc 实参".into())); }
+                    let mut pb = ps.borrow_mut();
+                    if let Some(i) = pb.free.pop() {
+                        Ok(Value::Int(i as i64))
+                    } else {
+                        pb.slots.push(None);
+                        Ok(Value::Int((pb.slots.len() - 1) as i64))
+                    }
+                }
+                "set" => {
+                    if args.len() != 2 { return Err(Flow::Panic("Pool.set 实参".into())); }
+                    let hv = self.expr(&args[0], env)?;
+                    let v = self.expr(&args[1], env)?;
+                    let Some(i) = int_i64(&hv).map(|n| n as usize) else { return Err(Flow::Panic("Pool.set 句柄".into())); };
+                    let mut pb = ps.borrow_mut();
+                    if i >= pb.slots.len() { return Err(Flow::Panic("Pool.set 句柄越界".into())); }
+                    pb.slots[i] = Some(v);
+                    Ok(Value::Void)
+                }
+                "get" => {
+                    if args.len() != 1 { return Err(Flow::Panic("Pool.get 实参".into())); }
+                    let hv = self.expr(&args[0], env)?;
+                    let Some(i) = int_i64(&hv).map(|n| n as usize) else { return Err(Flow::Panic("Pool.get 句柄".into())); };
+                    let pb = ps.borrow();
+                    if i >= pb.slots.len() { return Err(Flow::Panic("Pool.get 句柄越界".into())); }
+                    Ok(pb.slots[i].clone().unwrap_or(Value::Int(0)))
+                }
+                "free" => {
+                    if args.len() != 1 { return Err(Flow::Panic("Pool.free 实参".into())); }
+                    let hv = self.expr(&args[0], env)?;
+                    let Some(i) = int_i64(&hv).map(|n| n as usize) else { return Err(Flow::Panic("Pool.free 句柄".into())); };
+                    let mut pb = ps.borrow_mut();
+                    if i >= pb.slots.len() { return Err(Flow::Panic("Pool.free 句柄越界".into())); }
+                    pb.slots[i] = None;
+                    pb.free.push(i);
+                    Ok(Value::Void)
+                }
+                _ => Err(Flow::Panic(format!("Pool 无方法 `{}`", m))),
+            },
+            // W5:类型名关联面(Arena.fixed/Region.fixed/Pool.fixed)
+            Value::TypeHandle(tn) => return match (tn.as_ref(), m) {
+                ("Arena", "fixed") => Ok(Value::Arena),
+                ("Region", "fixed") => Ok(Value::Region(Rc::new(RefCell::new(0usize)))),
+                ("Pool", "fixed") => Ok(Value::Pool(Rc::new(RefCell::new(PoolState { slots: Vec::new(), free: Vec::new() })))),
+                (t, mm) => Err(Flow::Panic(format!("{} 无关联函数 `{}`", t, mm))),
+            },
             Value::EnvHandle => return match m {
                 // T26 Env 进程环境能力对象(§8.1;07b):system 构造句柄(自产自用);
                 // get 缺失=None;args=进程参数表(至少含程序名)
@@ -1223,6 +1421,19 @@ impl<'a> Interp<'a> {
                 }
                 "to_string" => Ok(Value::Str(Rc::new(buf.borrow().clone()))),
                 "len" => Ok(Value::Int(buf.borrow().len() as i64)),
+                // G1-T5:reserve(预留容量,语义 = 后续 n 字节增长不重分配)/clear(清空复用)
+                "reserve" => {
+                    if args.len() != 1 { return Err(Flow::Panic("reserve 实参".into())); }
+                    let nv = self.expr(&args[0], env)?;
+                    let n = match nv { Value::Int(i) | Value::IntW(_, i) => i.max(0) as usize, Value::UInt(u) | Value::UIntW(_, u) => u as usize, _ => 0 };
+                    buf.borrow_mut().reserve(n);
+                    Ok(Value::Void)
+                }
+                "clear" => {
+                    if !args.is_empty() { return Err(Flow::Panic("clear 实参".into())); }
+                    buf.borrow_mut().clear();
+                    Ok(Value::Void)
+                }
                 _ => Err(Flow::Panic(format!("StringBuilder 无方法 `{}`", m))),
             },
             Value::Array(arr) => return match m {
@@ -1392,6 +1603,66 @@ impl<'a> Interp<'a> {
             Value::Arena => return match m {
                 "fixed" => { for a in args { self.expr(a, env)?; } Ok(Value::Arena) }
                 _ => Err(Flow::Panic(format!("Arena 无关联函数 `{}`", m))),
+            },
+            // W5:T41 Region 区段(bump 戳;zeros 走 TypeArgs 臂)
+            Value::Region(bump) => return match m {
+                "mark" => Ok(Value::Int(*bump.borrow() as i64)),
+                "reset" => {
+                    if args.len() != 1 { return Err(Flow::Panic("Region.reset 实参".into())); }
+                    let v = self.expr(&args[0], env)?;
+                    if let Value::Int(m2) = v { *bump.borrow_mut() = m2.max(0) as usize; }
+                    Ok(Value::Void)
+                }
+                _ => Err(Flow::Panic(format!("Region 无方法 `{}`", m))),
+            },
+            // W5:T41 Pool 槽表(alloc LIFO 复用空闲链;set/get 按句柄)
+            Value::Pool(ps) => return match m {
+                "alloc" => {
+                    if !args.is_empty() { return Err(Flow::Panic("Pool.alloc 实参".into())); }
+                    let mut pb = ps.borrow_mut();
+                    if let Some(i) = pb.free.pop() {
+                        Ok(Value::Int(i as i64))
+                    } else {
+                        pb.slots.push(None);
+                        Ok(Value::Int((pb.slots.len() - 1) as i64))
+                    }
+                }
+                "set" => {
+                    if args.len() != 2 { return Err(Flow::Panic("Pool.set 实参".into())); }
+                    let hv = self.expr(&args[0], env)?;
+                    let v = self.expr(&args[1], env)?;
+                    let Some(i) = int_i64(&hv).map(|n| n as usize) else { return Err(Flow::Panic("Pool.set 句柄".into())); };
+                    let mut pb = ps.borrow_mut();
+                    if i >= pb.slots.len() { return Err(Flow::Panic("Pool.set 句柄越界".into())); }
+                    pb.slots[i] = Some(v);
+                    Ok(Value::Void)
+                }
+                "get" => {
+                    if args.len() != 1 { return Err(Flow::Panic("Pool.get 实参".into())); }
+                    let hv = self.expr(&args[0], env)?;
+                    let Some(i) = int_i64(&hv).map(|n| n as usize) else { return Err(Flow::Panic("Pool.get 句柄".into())); };
+                    let pb = ps.borrow();
+                    if i >= pb.slots.len() { return Err(Flow::Panic("Pool.get 句柄越界".into())); }
+                    Ok(pb.slots[i].clone().unwrap_or(Value::Int(0)))
+                }
+                "free" => {
+                    if args.len() != 1 { return Err(Flow::Panic("Pool.free 实参".into())); }
+                    let hv = self.expr(&args[0], env)?;
+                    let Some(i) = int_i64(&hv).map(|n| n as usize) else { return Err(Flow::Panic("Pool.free 句柄".into())); };
+                    let mut pb = ps.borrow_mut();
+                    if i >= pb.slots.len() { return Err(Flow::Panic("Pool.free 句柄越界".into())); }
+                    pb.slots[i] = None;
+                    pb.free.push(i);
+                    Ok(Value::Void)
+                }
+                _ => Err(Flow::Panic(format!("Pool 无方法 `{}`", m))),
+            },
+            // W5:类型名关联面(Arena.fixed/Region.fixed/Pool.fixed)
+            Value::TypeHandle(tn) => return match (tn.as_ref(), m) {
+                ("Arena", "fixed") => Ok(Value::Arena),
+                ("Region", "fixed") => Ok(Value::Region(Rc::new(RefCell::new(0usize)))),
+                ("Pool", "fixed") => Ok(Value::Pool(Rc::new(RefCell::new(PoolState { slots: Vec::new(), free: Vec::new() })))),
+                (t, mm) => Err(Flow::Panic(format!("{} 无关联函数 `{}`", t, mm))),
             },
             Value::EnvHandle => return match m {
                 // T26 Env 进程环境能力对象(§8.1;07b):system 构造句柄(自产自用);
@@ -1691,12 +1962,13 @@ impl<'a> Interp<'a> {
     }
 
     fn call_user_fn(&mut self, id: usize, vals: &[Value], _env: &Rc<Env>) -> EvalResult {
-        let (module, ret, body, param_names) = {
+        let (module, ret, body, param_names, param_tys) = {
             let Some(f) = self.sema.fns.get(id) else {
                 return Err(Flow::Panic("fn 未定义".into()));
             };
             (f.module.clone(), f.ret.clone(), f.body.clone(),
-             f.params.iter().map(|(n, _)| n.clone()).collect::<Vec<_>>())
+             f.params.iter().map(|(n, _)| n.clone()).collect::<Vec<_>>(),
+             f.params.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>())
         };
         let Some(body) = body else {
             return Err(Flow::Panic("外部声明不可调用".into()));
@@ -1712,7 +1984,13 @@ impl<'a> Interp<'a> {
         let fenv = Env::child(&self.globals);
         for (i, n) in param_names.iter().enumerate() {
             let v = vals.get(i).cloned().unwrap_or(Value::Void);
-            let v = self.copy_if_value(&v);
+            // fb8:T[N] 形参按值语义(声明 Ty::Array 位递归深拷,镜像自举 arr_copy_val;
+            // 切片 MutSlice/RoSlice 视图共享语义由 03f 钉死,不受扰)
+            let v = if matches!(param_tys.get(i), Some(sem::Ty::Array(_))) {
+                copy_array_deep(&v)
+            } else {
+                self.copy_if_value(&v)
+            };
             fenv.define(n.clone(), Local { value: v });
         }
         let r = self.check_block(&body, &fenv);
@@ -1895,6 +2173,20 @@ impl<'a> Interp<'a> {
                     }
                 }
                 "trace" => Ok(Value::Str(trace.clone())),
+                // IP-01 W1:code = 沿 cause 链取最内层具体枚举的「枚举名.变体名」注册全形
+                "code" => {
+                    let mut cur: &Value = o;
+                    while let Value::AnyError { cause: Some(c), .. } = cur {
+                        cur = c;
+                    }
+                    let code = match cur {
+                        Value::Enum { def, variant, .. } => {
+                            format!("{}.{}", self.def_name(*def), self.variant_name(*def, *variant))
+                        }
+                        other => to_display(other),
+                    };
+                    Ok(Value::Str(Rc::new(code)))
+                }
                 _ => Err(Flow::Panic(format!("AnyError 无属性 `{}`", name))),
             },
             Value::StrBuilder(buf) => match name {
@@ -1986,7 +2278,6 @@ impl<'a> Interp<'a> {
             other => other.clone(),
         }
     }
-
     fn def_has_drop(&self, v: &Value) -> Option<DefId> {
         match v {
             Value::Struct { def, .. } | Value::Class { def, .. } => {
@@ -2193,6 +2484,22 @@ fn values_equal(a: &Value, b: &Value) -> bool {
     }
 }
 
+/// fb8:T[N] 形参按值语义——数组实参递归深拷(嵌套数组/struct 内数组槽递归;
+/// 镜像自举 arr_copy_val;仅声明 Ty::Array 形参位触发,切片视图共享不受扰)
+fn copy_array_deep(v: &Value) -> Value {
+    match v {
+        Value::Array(arr) => {
+            let items = arr.borrow().iter().map(|e| copy_array_deep(e)).collect::<Vec<_>>();
+            Value::Array(Rc::new(RefCell::new(items)))
+        }
+        Value::Struct { def, fields } => {
+            let fs = fields.borrow().iter().map(|(n, x)| (n.clone(), copy_array_deep(x))).collect::<Vec<_>>();
+            Value::Struct { def: *def, fields: Rc::new(RefCell::new(fs)) }
+        }
+        other => other.clone(),
+    }
+}
+
 fn runtime_index(o: &Value, i: &Value) -> Result<Value, Flow> {
     let idx_of = |i: &Value| -> Option<usize> { int_i64(i).map(|n| n as usize) };
     match (o, i) {
@@ -2356,9 +2663,14 @@ impl<'a> Interp<'a> {
         if name == "Env" {
             return Ok(Value::EnvHandle);
         }
-        // 类型名作为关联调用接收者(Arena.fixed / Simd.splat 等)
-        if let Some(&_def) = self.sema.def_by_name.get(name) {
+        // W5:裸 arena 句柄(05i fncall 域;own 块 env 绑定优先于本兜底)
+        if name == "arena" {
             return Ok(Value::Arena);
+        }
+        // W5:类型名句柄(Arena.fixed/Region.fixed/Pool.fixed/Static.zeros 关联面;
+        // 裸 "arena" 小写句柄仍为 Value::Arena,own 块 env 绑定优先于本兜底)
+        if let Some(&_def) = self.sema.def_by_name.get(name) {
+            return Ok(Value::TypeHandle(Rc::from(name)));
         }
         Err(Flow::Panic(format!("未解析的名称 `{}`", name)))
     }
