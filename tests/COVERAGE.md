@@ -4119,3 +4119,15 @@ seq2 槽比较试错已精确回退(v_unbox 原形正确——vals 参 = v_box �
 (`vals.push(v_box(ar.v))`,eval_call 调用点实码),槽同编码,v_unbox 贯穿;
 strlen 崩点 = 非盒编码串误入 v_unbox 的 items 解引用,Str 实参在
 ctor→槽→比较链某环节的编码形变待审计)。三伤维持升格余债,入面前置。
+
+## 2026-10-31 补终:三伤根因到顶——compiled-eval env 值往返不保 tag-8 容器
+
+ASAN+插桩终局(撤桩):`Set[Str]` 值经 eval env 往返后 **tag 8→5 碾碎**
+(`.len` 派发入 Str 臂 `strlen(recv.s)`,s=NULL 即崩;ASAN 栈 =
+t_eval_expr:35716 ← t_eval_call:39349)。Map 值同路径存活 = 编码巧合。
+根因层 = eval_env/eval_val 的值序列化往返不保 tag-8 cx 容器
+(v_unbox 需 List[Str] 盒编码;vals 参 = v_box 编码贯穿已证)。
+**处置**:源内插桩两轮证实行为随堆布局漂移(加桩即 rc=0——UB 布局敏感,
+旧账"139 假信号" episodes 同族),须 in-source 编码审计批
+(eval_env 序列化格式 × v_box/v_unbox × ct_frn 池扫描三面),黑盒终界。
+三伤维持升格余债;t56/t57 cc 面前置不变。
