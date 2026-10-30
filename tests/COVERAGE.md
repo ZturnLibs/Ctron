@@ -4109,3 +4109,13 @@ SEGV(Map ctor+len 单测 rc=0 对照,Set 同形即炸;源级读法与产物行�
 须编译形态 in-source 调试,独立批);②While+Drop 体自举提升拒面
 (emit:while 体 Drop 局部未支持——提升挂外层/逐迭代 drop 时序的跨引擎
 语义对齐,独立批);③Map/Set f 载荷与 u: struct 值槽(维持)。
+
+## 2026-10-31 补:编译形态容器三伤窄化——Str 型参键面
+
+探针窄化(快径 bin 单驱 2min/轮):`Set[I32]` ctor+insert+len 全绿;
+`Set[Str]` ctor 绿、`.len` SEGV、insert 派发不达;`Map[Str,I32]` insert
+SEGV;`List[Str]` 全绿。差分位 = **Str 型实参**而非容器族或单/双型参形。
+seq2 槽比较试错已精确回退(v_unbox 原形正确——vals 参 = v_box 编码
+(`vals.push(v_box(ar.v))`,eval_call 调用点实码),槽同编码,v_unbox 贯穿;
+strlen 崩点 = 非盒编码串误入 v_unbox 的 items 解引用,Str 实参在
+ctor→槽→比较链某环节的编码形变待审计)。三伤维持升格余债,入面前置。
