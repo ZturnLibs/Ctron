@@ -1066,6 +1066,13 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     var dflts = ct_expr(ag[1], env, file)
                     return "((const char*)(" + obj + ") ? (const char*)(" + obj + ") : (const char*)(" + dflts + "))"
                 }
+                // W5:R 码(ct_res)接收者单求值分支——接收者绑 _co 一次,副作用
+                // 面(List.pop 弹栈)不再双求值;载荷经 ct_i 槽按默认型别折回
+                if objt == "R" {
+                    var rdf = ct_expr(ag[1], env, file)
+                    var rdc = ct_ctype(ct_typeof(ag[1], env, file))
+                    return "(\{ ct_res _co = (" + obj + "); " + rdc + "((_co.variant == 0) ? ((ct_i)(long)_co.v) : ((ct_i)(long)(" + rdf + "))); })"
+                }
                 var dflt = ct_expr(ag[1], env, file)
                 var dt = ct_typeof(ag[1], env, file)
                 var dct = ct_ctype(dt)
@@ -1246,6 +1253,41 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             }
                                                 // R-P2a:List get/set/pop 发射(守卫 = L 前缀全族;标量槽 long 位型
             // 往返,Str 槽 char* 直存直取;get/pop → R 码 ct_res Option)
+            if m == "get" {
+                var g_objt6 = ct_typeof(cal[1], env, file)
+                if g_objt6.len > 0 && byte_at(g_objt6, 0) == 76 {
+                    if ag.len < 2 { panic("emit:get arity") }
+                    var gec = "i"
+                    if ct_is_lcode(g_objt6) { gec = byte_slice(g_objt6, 1, g_objt6.len) }
+                    var gi = ct_expr(ag[1], env, file)
+                    var gobj = "(ctron_list*)(" + obj + ")"
+                    var grd = "(const char*)((ctron_list*)(" + gobj + "))->items[" + gi + "]"
+                    if g_objt6 == "LI" { grd = "((int32_t)(long)((ctron_list*)(" + gobj + "))->items[" + gi + "])" }
+                    if g_objt6 == "L6" { grd = "((int64_t)(long)((ctron_list*)(" + gobj + "))->items[" + gi + "])" }
+                    var gnone = "(\{ ct_res _r; _r.variant = 1; _r.v = 0; _r; })"
+                    return "(" + gi + " < (" + gobj + ")->n ? " + ct_res_wrap_box(gec, grd) + " : " + gnone + ")"
+                }
+            }
+            if m == "set" {
+                var s_objt6 = ct_typeof(cal[1], env, file)
+                if s_objt6.len > 0 && byte_at(s_objt6, 0) == 76 {
+                    if ag.len < 3 { panic("emit:set arity") }
+                    var si9 = ct_expr(ag[1], env, file)
+                    var sv9 = ct_expr(ag[2], env, file)
+                    var wr9 = "(const char*)(long)(" + sv9 + ")"
+                    if or2(s_objt6 == "L", s_objt6 == "Ls") { wr9 = sv9 }
+                    return "(\{ int32_t t_si9 = (int32_t)(" + si9 + "); if (t_si9 < 0 || t_si9 >= (" + obj + ")->n) \{ ctron_panic(\"index out of bounds\"); } (" + obj + ")->items[t_si9] = " + wr9 + "; })"
+                }
+            }
+            if m == "pop" {
+                var p_objt6 = ct_typeof(cal[1], env, file)
+                if p_objt6.len > 0 && byte_at(p_objt6, 0) == 76 {
+                    return "(\{ ctron_list* _pp = (ctron_list*)(" + obj + "); ct_res _r; if (_pp->n == 0) \{ _r.variant = 1; _r.v = 0; } else \{ _pp->n -= 1; _r.variant = 0; _r.v = (ct_i)(long)_pp->items[_pp->n]; } _r; })"
+                }
+            }
+                        // R-P2a:List get/set/pop 发射(守卫 = L 前缀全族;标量槽 long 位型
+            // 往返,Str 槽 char* 直存直取;get/pop → R 码 ct_res Option;
+            // 消费面 = or 臂 R 码单求值分支)
             if m == "get" {
                 var g_objt6 = ct_typeof(cal[1], env, file)
                 if g_objt6.len > 0 && byte_at(g_objt6, 0) == 76 {
