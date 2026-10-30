@@ -3981,3 +3981,12 @@ native_suite(native 差分)skip 精化:**send 实测绿去 skip**(spawn 捕获
 List + 下标,双径 rc=0);list/map/set skip(get/pop 发射面两断点在册);
 **09_repeat 登记 skip**——Rust trans Repeat 占位 panic 不再中断后续文件
 差分(基线同 FAILED 指纹;T25 v2 余件在册)。
+
+## 2026-10-30 续:T25 v2 核心落地——or 臂 R 码单求值 + List get/set/pop 臂;t56_container_list native 端到端绿
+
+or 臂 R 码分支(接收者绑 _co 单次,消双求值;载荷经 ct_i 槽按默认型别
+折回)+ List get/set/pop 臂重装(get = ct_res_wrap_box 盒面;set/pop
+语句表达式)。**t56_container_list native rc=0 两臂逐字一致**端到端绿
+(get or 链全绿;上轮 139 = or 臂 R 分支落地前产物,陈旧缓存假信号)。
+native_suite skip 精化:list 去 skip(native 绿);map/set 维持(Map/Set
+发射面在册 T25 v2);fb9_tuple cc 编译失败 = 既有族(早于本会话)。
