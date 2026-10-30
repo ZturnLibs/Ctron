@@ -94,15 +94,10 @@ gaps, disagree, bothfail = [], [], []
 for kind, pat in CATS:
     for path in sorted(glob.glob(os.path.join(TESTS, pat))):
         base = os.path.basename(path)
-        # R-P2a/P2b 容器与钟语料 + R 线 NegGreen 锚(2026-10-29):interp 面已落地
-        # (Rust 线 run_suite/check_suite 驱动);自举 C 编译器发射/检查面在册 T25 v2
-        # 与泳道专属诊断,双编译器均未达 → 跳过
-        # t56_container_map/set:双编译器 Map/Set 面在册 T25 v2 + C 宿主 rt 后件
-        # list/send/t57:interp+发射面已落(2026-10-29)→ 入行为面
-        # t58:R 线 NegGreen 锚(检查面 Rust 线驱动)
-        # R-P2a/P2b 容器与钟语料(2026-10-29):interp 面已落地(Rust 线 run_suite
-        # 驱动);自举 C 编译器 get/set/Map/Set/Clock 发射面在册 T25 v2 → 跳过;
-        # t58 = R 线 NegGreen 锚(检查面 Rust 线驱动)
+        # T25 v2 后件(2026-10-31):t56/t57 的 cc 面 = 自举 bin 编译形态 eval
+        # ——Set ctor 派发/Map insert 派发/ctor 后 len SEGV 三个余债在册
+        # (Rust native_suite 已全量入面 56/0;t57 cc 面单测 rc=0 随批可入)。
+        # t58 = R 线 NegGreen 锚(检查面 Rust check_suite 驱动),维持跳过
         if base.startswith("t56_container") or base.startswith("t57_time") or base.startswith("t58_"):
             continue
         if kind == "behavior" and re.search(r"\.(neg|lint|panic)\.ct$", base):

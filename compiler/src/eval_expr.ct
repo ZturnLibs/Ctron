@@ -279,9 +279,12 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> Flow {
                     if or2(seq2(cx_of(recv)[0], "A"), seq2(cx_of(recv)[0], "L")) {
                         return e4("k", ob.env, vI(cx_of(recv).len - 1), ob.out)
                     }
-                    // R-P2a:Map/Set len(cx[0] = 域标签,键值对/成员减半减一)
-                    if or2(seq2(cx_of(recv)[0], "M"), seq2(cx_of(recv)[0], "S")) {
+                    // R-P2a:Map len(cx[0] = 域标签,键值对减半);Set len = 成员数
+                    if seq2(cx_of(recv)[0], "M") {
                         return e4("k", ob.env, vI((cx_of(recv).len - 1) / 2), ob.out)
+                    }
+                    if seq2(cx_of(recv)[0], "S") {
+                        return e4("k", ob.env, vI(cx_of(recv).len - 1), ob.out)
                     }
                 }
                 if recv.tag == 8 {

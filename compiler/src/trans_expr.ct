@@ -1371,6 +1371,14 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             }
             if m == "remove" {
                 var r_objt = ct_typeof(cal[1], env, file)
+                // List 下标删除(自举 G1-T8 镜像;越界 panic 与索引读逐字;
+                // W5 eval 臂的发射对镜——编译器源自身 mp.remove/st.remove 消费形,
+                // 缺臂即自举 bin 不可再建(t_remove 未声明实证))
+                if r_objt.len > 0 && byte_at(r_objt, 0) == 76 {
+                    if ag.len < 2 { panic("emit:remove arity") }
+                    var ri9 = ct_expr(ag[1], env, file)
+                    return "(\{ ctron_list* _rp = (ctron_list*)(" + obj + "); int32_t t_ri9 = (int32_t)(" + ri9 + "); if (t_ri9 < 0 || t_ri9 >= (_rp)->n) \{ ctron_panic(\"index out of bounds\"); } int32_t _rj9 = t_ri9; while (_rj9 + 1 < (_rp)->n) \{ (_rp)->items[_rj9] = (_rp)->items[_rj9 + 1]; _rj9 += 1; } (_rp)->n -= 1; })"
+                }
                 if r_objt.len > 2 && byte_at(r_objt, 0) == 77 {
                     if ag.len < 2 { panic("emit:remove arity") }
                     var rkc = byte_slice(r_objt, 1, 2)

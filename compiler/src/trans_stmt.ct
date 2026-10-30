@@ -1372,10 +1372,9 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         return env
     }
     if t == "While" {
-        // P1-A3(E2071 解除):drop 栈标记——体入口深度;break/continue 前
-        // unwind_to(标记) 跑越界 Drop 局部析构(运行时 ctron_drop_unwind_to)
-        var dmk = "t_dm" + nline(st[1])
-        eln("int32_t " + dmk + " = ct_drn;", env)
+        // P1-A3(E2071 解除):drop 栈哨兵——循环入口压哨;break/continue 前
+        // unwind_mark 弹到哨(越界 Drop 局部析构;零命名,嵌套天然内层优先)
+        eln("ctron_drop_mark();", env)
         // 顶层 let 提升到循环前声明(零初始化),块内改赋值 —— 兼容语料中
         // "循环外读循环内绑定"的写法(parsetree/sem_chk p_block 尾 guard),
         // 使发射产物可编译;rt 语义下该读路径本不应执行(执行即宿主 abort)。
@@ -1458,7 +1457,7 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         dls_reject_unhoisted(body, envw, file, hl, "emit:while 体")
         eln("if (ct_frn.spn < 32) \{ ct_frn.sv[ct_frn.spn] = ct_frn.pn; ct_frn.spn += 1; }", env)
         eln("while (" + ct_expr(st[1], envw, file) + ") \{", env)
-        var benv = ct_stmts(body, env_bind(envw, "#dropmark", dmk), file, hl, hreg)
+        var benv = ct_stmts(body, envw, file, hl, hreg)
         var tl = body[body.len - 1]
         if tl[0] != "None" {
             var es = List[Str]()
@@ -1467,6 +1466,7 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             ct_stmt(es, benv, file, hreg)
         }
         eln("}", env)
+        eln("ctron_drop_pop();", env)
         eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -= 1; }", env)
         if cand.len > 0 {
             eln("}", env)
@@ -1975,9 +1975,8 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         var pat = st[1]
         var it = st[2]
         var body = st[3]
-        // P1-A3(E2071 解除):drop 栈标记(同 While;体位 env_bind 供 break/continue 消费)
-        var dmk = "t_dm" + nline(st[2])
-        eln("int32_t " + dmk + " = ct_drn;", env)
+        // P1-A3(E2071 解除):drop 栈哨兵(同 While)
+        eln("ctron_drop_mark();", env)
         if pat[0] != "PatId" {
             panic("ct_stmt:for pat:" + pat[0])
             return env
@@ -1992,8 +1991,9 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             if incl == "true" { op2 = " <= " }
             eln("if (ct_frn.spn < 32) \{ ct_frn.sv[ct_frn.spn] = ct_frn.pn; ct_frn.spn += 1; }", env)
             eln("for (int64_t t_" + v0 + " = " + lo + "; t_" + v0 + op2 + hi + "; t_" + v0 + "++) \{", env)
-            ct_block(body, env_bind(env_bind(env, v0, "i"), "#dropmark", dmk), file, hreg)
+            ct_block(body, env_bind(env, v0, "i"), file, hreg)
             eln("}", env)
+            eln("ctron_drop_pop();", env)
             eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -= 1; }", env)
             return env
         }
@@ -2009,8 +2009,9 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             eln("if (ct_frn.spn < 32) \{ ct_frn.sv[ct_frn.spn] = ct_frn.pn; ct_frn.spn += 1; }", env)
             eln("for (int64_t ctron_i = 0; ctron_i < t_li->n; ctron_i++) \{", env)
             eln("    int32_t t_" + v0 + " = (int32_t)(long)t_li->items[ctron_i];", env)
-            ct_block(body, env_bind(env_bind(env, v0, "i"), "#dropmark", dmk), file, hreg)
+            ct_block(body, env_bind(env, v0, "i"), file, hreg)
             eln("} }", env)
+            eln("ctron_drop_pop();", env)
             eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -= 1; }", env)
             return env
         }
@@ -2024,8 +2025,9 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             eln("if (ct_frn.spn < 32) \{ ct_frn.sv[ct_frn.spn] = ct_frn.pn; ct_frn.spn += 1; }", env)
             eln("for (int64_t ctron_i = 0; ctron_i < t_li->n; ctron_i++) \{", env)
             eln("    int64_t t_" + v0 + " = (int64_t)(long)t_li->items[ctron_i];", env)
-            ct_block(body, env_bind(env_bind(env, v0, "6"), "#dropmark", dmk), file, hreg)
+            ct_block(body, env_bind(env, v0, "6"), file, hreg)
             eln("} }", env)
+            eln("ctron_drop_pop();", env)
             eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -= 1; }", env)
             return env
         }
@@ -2038,8 +2040,9 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             eln("if (ct_frn.spn < 32) \{ ct_frn.sv[ct_frn.spn] = ct_frn.pn; ct_frn.spn += 1; }", env)
             eln("for (int64_t ctron_i = 0; ctron_i < t_" + it[1] + ".n; ctron_i++) \{", env)
             eln("    " + ct_ctype(byte_slice(ity, 1, ity.len)) + " t_" + v0 + " = t_" + it[1] + ".d[ctron_i];", env)
-            ct_block(body, env_bind(env_bind(env, v0, byte_slice(ity, 1, ity.len)), "#dropmark", dmk), file, hreg)
+            ct_block(body, env_bind(env, v0, "i"), file, hreg)
             eln("}", env)
+            eln("ctron_drop_pop();", env)
             eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -= 1; }", env)
             return env
         }
@@ -2051,8 +2054,9 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             eln("if (ct_frn.spn < 32) \{ ct_frn.sv[ct_frn.spn] = ct_frn.pn; ct_frn.spn += 1; }", env)
             eln("for (int64_t ctron_i = 0; ctron_i < " + n + "; ctron_i++) \{", env)
             eln("    " + ct_ctype(ec) + " t_" + v0 + " = " + arr + "[ctron_i];", env)
-            ct_block(body, env_bind(env_bind(env, v0, ec), "#dropmark", dmk), file, hreg)
+            ct_block(body, env_bind(env, v0, ec), file, hreg)
             eln("}", env)
+            eln("ctron_drop_pop();", env)
             eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -= 1; }", env)
             return env
         }
@@ -2071,8 +2075,9 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             eln("if (ct_frn.spn < 32) \{ ct_frn.sv[ct_frn.spn] = ct_frn.pn; ct_frn.spn += 1; }", env)
             eln("for (int64_t ctron_i = 0; ctron_i < t_ll->n; ctron_i++) \{", env)
             eln("    " + ct_ctype(ecodeL) + " t_" + v0 + " = " + getL + ";", env)
-            ct_block(body, env_bind(env_bind(env, v0, ecodeL), "#dropmark", dmk), file, hreg)
+            ct_block(body, env_bind(env, v0, ecodeL), file, hreg)
             eln("}", env)
+            eln("ctron_drop_pop();", env)
             eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -= 1; }", env)
             return env
         }
@@ -2083,12 +2088,9 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         // P1-A3(E2071 解除):越界 Drop 局部清理——unwind 到循环体入口的
         // drop 栈标记(自举 RAII = ctron_drop_push 动态栈;与 Rust 镜像
         // 静态逆序析构同语义),再走池保存栈恢复与直映跳转
-        var mkd = ct_env_ty(env, "#dropmark")
-        if mkd.len > 0 {
-            eln("ctron_drop_unwind_to(" + mkd + ");", env)
-        }
+        if t == "Break" { eln("ctron_drop_unwind_mark(0);", env) } else { eln("ctron_drop_unwind_mark(1);", env) }
         // v0.7 修订二:直映 C break;/continue;(E2070/E2072 检查面把关合法性;
-        // E2071 已解除——越界 Drop 清理由上方 unwind_to 承接)
+        // E2071 已解除——越界 Drop 清理由上方 unwind_mark(哨兵)承接)
         // T31 S4①:跳出/续跳弹池保存栈(环合恢复配对;break 跳过环合时防陈旧保存值误缩活槽)
         eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -= 1; }", env)
         if t == "Break" {

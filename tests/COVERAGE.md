@@ -4075,3 +4075,37 @@ Flow::Break/Continue 捕获 match 之外,尾位跳转语句逃逸至测试层报
 
 **门**:breakc_suite 8/8;bootstrap suite.py rc=0;native_suite/check_suite
 (6 基线红同)零扩大;04e_break_drop 三侧 rc=0。
+
+## 2026-10-31 后件批:自举 bin 复建(List.remove 发射臂)+ eval 容器面五修 + E2071 哨兵化
+
+**自举 bin 复建前置**:native.sh 自 2026-10-29 起断建——W5 续批 eval 臂使
+编译器源自身消费 `List.remove`(pop/Map remove/Set remove 四形),发射面
+缺臂 → 产物 `t_remove` 未声明 cc 拒(5 处)。trans_expr 补 L 前缀 remove
+臂(下标删除 memmove 逐字,越界 panic 与索引读同门),bin 链复通。
+
+**eval_call/eval_expr 容器面五修**(W5 续批面首次真验证——bin 陈旧致
+编译形态从未跑过容器语料):①Map 四扫描(insert/get·remove/contains_key/
+keys)界 `mp.len`(减半值)→ `mp.len * 2 + 1`(原始槽位;减半界致后半
+键对永不可见);②values 界同修;③Set 三扫描界 `st.len` → `st.len + 1`;
+④Set len 正名:`(cx.len-1)/2` → `cx.len-1`(成员数;减半对集合错形);
+⑤List remove 越界 `idx >= lst.len - 1` → `idx >= lst.len`(尾元素本合法)。
+Map remove 二连 `mp.remove(ki)` 修为 `ki / ki-1`(内部 remove(k) = 删
+cx 槽 k+1;原二连误删邻对键)。
+
+**E2071 哨兵化**(替代行号标记——同行多循环 `t_dm0` 重定义实证;env
+计数器方案再废——seed 的 Str.as[I64] 静默回 0):运行时三原语
+`ctron_drop_sentinel/no-op dtor` + `ctron_drop_mark`(循环入口压哨)+
+`ctron_drop_unwind_mark(keep)`(break 消哨/continue 留哨,弹至哨即止,
+越界 Drop 局部析构);While/For 臂入口压哨、正常出口 `ctron_drop_pop()`
+收哨(嵌套天然内层优先;零命名)。
+
+**门**:native.sh 全 bin 首次全绿复建;bin/ctron-cc 全新(10-31)下
+suite.py rc=0 零扩大;t56_container_list/send/oob.panic + t57 cc 面实测
+rc=0;Rust 全门基线同。
+
+**余债登记(升格)**:①自举 bin 编译形态 eval 的容器三伤——Set ctor
+派发不达(method:insert 直落兜底)/Map insert 派发同形/ctor 后 `.len`
+SEGV(Map ctor+len 单测 rc=0 对照,Set 同形即炸;源级读法与产物行为劈叉,
+须编译形态 in-source 调试,独立批);②While+Drop 体自举提升拒面
+(emit:while 体 Drop 局部未支持——提升挂外层/逐迭代 drop 时序的跨引擎
+语义对齐,独立批);③Map/Set f 载荷与 u: struct 值槽(维持)。
