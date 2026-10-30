@@ -55,3 +55,14 @@ compiler-c/build
 
 # ZCode 工具本地忽略配置(自动同步自 .gitignore,工具私有不入库)
 .zcodeignore
+
+# ===== W5 会话临时产物(2026-10-30 建目录) =====
+.tmp/
+.w0/
+ctron_dbg
+ctron_dbg.dSYM
+docs/ledger/
+l4_tmp.bin
+compiler/l4_tmp.bin
+compiler/test/l4_tmp.bin
+compiler/bin.bak-*
