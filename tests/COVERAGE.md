@@ -3974,3 +3974,10 @@ native_suite(native 差分)skip 精化:list/map/set 三件 skip(get/pop 发射�
 在册 T25 v2:or 臂单求值 + 标量 Option ct_res 化两断点);**send 实测绿
 去 skip**(spawn 捕获 List + 下标,双径 rc=0);09_repeat 上 Rust trans
 Repeat 占位 panic = 既有 native 红族指纹(基线同 FAILED)。
+
+## 2026-10-30 续:native_suite skip 精化(send 去 skip/09_repeat 登记 skip)
+
+native_suite(native 差分)skip 精化:**send 实测绿去 skip**(spawn 捕获
+List + 下标,双径 rc=0);list/map/set skip(get/pop 发射面两断点在册);
+**09_repeat 登记 skip**——Rust trans Repeat 占位 panic 不再中断后续文件
+差分(基线同 FAILED 指纹;T25 v2 余件在册)。
