@@ -275,9 +275,10 @@ fn chk_break(file: List[Str], n: List[Str], depth: I32, loopbase: I32, outer: I3
             } else {
                 diag0(diags, "E2070.brk", nline(n))
             }
-        } else if drops.len > loopbase {
-            diag0(diags, "E2071.brk", nline(n))
         }
+        // P1-A3:E2071(越过 Drop 局部)已解除——自举发射面 break/continue 前
+        // ctron_drop_unwind_to(循环体入口 drop 栈标记)承接越界清理,
+        // 检查面不再静态拒绝(drops 跟踪管线留置,后件清扫批处理)
         return
     }
     if t == "Continue" {
@@ -287,8 +288,6 @@ fn chk_break(file: List[Str], n: List[Str], depth: I32, loopbase: I32, outer: I3
             } else {
                 diag0(diags, "E2070.cont", nline(n))
             }
-        } else if drops.len > loopbase {
-            diag0(diags, "E2071.cont", nline(n))
         }
         return
     }

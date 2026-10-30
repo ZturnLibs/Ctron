@@ -248,6 +248,8 @@ fx_comp_stmt(wsum/fac)三方逐字;smoke 108 ok;suite 63/63;固定点逐字节�
 
 > **supersede 注(2026-09-16)**:清单格式已裁决迁往 CTCL(`Ctron.ctcl`),本切片解析目标改为 CTCL 文法(块式/四类值/注册表校验),TOML 子集方案作废;见 `docs/superpowers/specs/2026-09-16-config-language-v1.md` §9/§11。
 
+> **完成度回填(2026-10-30,以 T49/T50 批为准)**:本切片交付物「解析切片(+诊断码)」已由后继批次覆盖销账——CTCL 清单解析 + 诊断码 = config-language-v1(ctcl_check 面);lockfile/workspace-add/publish = T49;闭源分发 L1(pkg verify 四断言/smoke 172 基线)= T50;manifest schema 定本 = `tools/ctcl_manifest_schema.ctcl`。本切片原文无未竟余件;清单语义后续演进挂 T50 泳道账本(S1b 缓存接线等,见 closed-pkg s0-iface 账本)。
+
 **Spike 问题:** 元数据哪些键进语言语义(包名/版本/依赖)?解析器用 Ctron 写
 (自举一致性)还是宿主?依赖解析与 §2.6 循环检测的关系。
 **产出:** 设计记录 → 解析切片(+诊断码)。
@@ -306,17 +308,17 @@ P2 各 spike 穿插在门禁等待期
 `tests/COVERAGE.md` 承载。2026-10-28 对账:
 
 - **P1 各泳道**:✅ 已完成(挂账子项见 COVERAGE 各批);P1-A3(E2071 解除)
-  仍未动。
+  ✅ 2026-10-30 落地(发射面 cleanup 承接,COVERAGE 收口批;04e_break_drop 翻行为面)。
 - **P2-A**:comptime 容器值域/Break-Continue 维持暂缓。
 - **P2-B(包清单解析)**:CTCL 清单面已由 config-language-v1(2026-09-16)与
   T49 lockfile/workspace-add-publish、T50 闭源分发批次**部分覆盖**(manifest
   schema = tools/ctcl_manifest_schema.ctcl + ctcl_check.py);本切片原文的
-  「解析切片(+诊断码)」完成度未回填,以 T49/T50 批为准。
-- **P2-C(构建配置系统)**:未动(CTCL v1 只落了清单语言,配置求值/发射开关
-  未立项)。
-- **P2-D(精确诊断 span)**:R 线 r4b 锚(panic 源位置)2026-10-28 侦察确认为
-  parser→AST→interp 全线 span 线程化(Rust AST 全节点无 span),独立批次;
-  本切片未动。
+  「解析切片(+诊断码)」完成度已回填销账(2026-10-30,见 P2-B 节回填注)。
+- **P2-C(构建配置系统)**:设计 spike 已立项(2026-10-30,
+  specs/2026-10-30-p2c-build-config-design.md;三批切分待排期)。
+- **P2-D(精确诊断 span)**:设计 spike 已立项(2026-10-30,
+  specs/2026-10-30-p2d-precise-span-design.md;与 R 线 r4b 锚同批翻转路径;
+  五批切分待排期,批①②双镜同批纪律在案)。
 - **P3 远期 4 项**:维持远期;§9 后端矩阵的 WasmGC 分支已由 T38 裁决证伪
   (重评估触发 = WasmGC 1.0 多宿主落地)。
 - **R 线燃尽**:以 `compiler-rust/tests/roadmap_suite.rs` 为准(绿 5 / 锚 14 /

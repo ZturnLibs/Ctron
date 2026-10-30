@@ -4004,3 +4004,74 @@ native_suite skip 精化:list/send 去 skip(native 绿);map/set 维持
 
 **登记债**:①Map/Set 发射面(ct_map 运行时 + 方法臂);②or 臂 _co 嵌套
 链二次 or 名冲突(语料避);③C 宿主 main-less/Clock 分发(归档泳道)。
+
+## 2026-10-30 收口批:T25 v2 全量落地——Map/Set 双镜发射面 + 09_repeat + 三基线红销账;native_suite 55/0 全绿
+
+**Map/Set 发射面(自举正本)**:码生产侧补齐——ctor typeof `Map[K,V]()`→
+`M<k><v>`/`Set[T]()`→`S<e>`(槽码 s/I/6,`ct_ms_arg_code`)+ 注解臂
+(ct_ty_code)+ ct_ctype M/S → ctron_list*;方法发射臂(insert 覆盖保序/
+get·remove→R 码 ct_res/contains_key→b/keys·values→L+槽码;Set insert
+新增性 b/contains/remove→b),marker 槽 ctron_list 布局([0]=marker,Map
+自 1 起 k,v 交错对)零新运行时;成员值 `.len` M→n/2 整除、S→n-1(旧预留
+臂 `M<非S>→n-1` 系错形,一并修正)。**t56_container_map/set 自举发射
+native rc=0**(4+2 test 全过;Rust interp 双侧 rc=0)。
+
+**Rust 宿主镜像(compiler-rust/trans.rs)**:`List[T]()` ctor 臂(t56 全族
+拒发主根)+ List get/set/pop 臂 + `Map(bool,bool)`/`Set(bool)`/`ArrOf(bool)`
+三 VTy(ct_map*/ct_set*/ct_arr* 句柄)+ ct_map/ct_set PREAMBLE 运行时
+(插入序线性扫描,strcmp 内容等/标量数值等,对齐 interp veq)+ ctor/方法
+臂全套 + or 臂 Str 默认值(`.or("none")` i 槽 char* 双关)+ for-in 元素
+定型(keys/values → ArrOf,Str 元素绑 char* 走 strcmp 路径)+ spawn shim
+`in_shim` return 改写(裸 `return expr` → `ct_tls_task->result` + 归零,
+t56_container_send cc 拒根因)。
+
+**09_repeat Rust 臂**:Repeat 字面量 `[v] ** N` ct_arr 发射(首块物化 +
+取模复制铺满;单零块 memset 特判 F25 同门;计数须编译期整数)。native rc=0。
+
+**三基线红销账**:①fb9_tuple cc 败 = 元组 typedef 重定义——intern_tuple
+改按 C 槽形(ca|cb)去重,不同 VTy 键同 C 形共用一体;②02_option_result
+t53 F64 位型——expect/`?` 臂载荷槽随 Pay(F→f 槽;旧恒 i 槽截断;pat_arm
+本已正确);③t56_container_send = shim return 形(见上)。
+
+**or 嵌套债销账**:嵌套 or 链探针(`.get().or(.get().or())` 深两层,map/
+list/str 默认值三形)双侧发射 native rc=0——`({ })` 语句表达式块作用域
+遮蔽本就合法,在册"二次 or 名冲突"不成立;防御位 `_co` 行唯一化
+(`_co<行号>`)随批落地。
+
+**门**:native_suite **55 文件原生一致 / 31 域外跳过 / 0 分歧**(批前
+48/37/3);roadmap_suite、run_suite、fmt/parse/lex(32+2F/1F/1F 基线同)、
+check_suite(6 红基线同)零扩大;自举 suite.py rc=0 既有族指纹稳定。
+
+**余债登记**:①seed 宿主 rt_eval.c 容器面(List get/set/pop、Map/Set)后件
+——suite.py t56 行为面入口前置(ctc.sh 默认臂裁决依赖 seed interp);
+②Map/Set f 载荷槽与 u: struct 值槽(与标量 Option ct_res 化同族);③tuple
+typedef 同名不同形(名称仅含 ca,ca 同 cb 异时既存潜在撞名,语料未现);
+④C 宿主 main-less/Clock 分发(归档泳道,维持)。
+
+## 2026-10-30 收口批:P1-A3——E2071 解除 + break cleanup 三镜落地
+
+**检查面双侧摘码**:Rust check.rs Break/Continue 臂删 E2071 静态拒
+(E2070/E2072 维持);自举 sem_calls.chk_break 删 E2071 分支(drops 跟踪
+管线留置,清扫批处理)。
+
+**发射面 cleanup 承接**(RAII 合同自静态拒转运行时保证):
+- Rust 镜像:`loop_scope_bases` 循环体基线(While/For 臂推栈);Break/
+  Continue 前对越界作用域层逆序发射 `ctn_Drop_<T>_drop`(与
+  emit_scope_drops 同判据)。
+- 自举线:运行时新原语 `ctron_drop_unwind_to(n)`(driver_emit 样板);
+  While/For 臂循环入口发 `int32_t t_dm<行> = ct_drn` 标记 + 体 env
+  `#dropmark` 绑定;Break/Continue 臂先 `ctron_drop_unwind_to(标记)` 再
+  直映跳转(嵌套循环体位绑定天然遮蔽,内层标记优先)。
+- 语料翻面:`tests/04e_break_drop.neg.ct` 撤 → `04e_break_drop.ct`
+  行为面(`//@ target: rust`;for-in 形——While+Drop 体走自举提升既有
+  拒面,独立余债);breakc_suite E2071 用例翻反断言;check_suite 期望行撤。
+  三引擎实测:Rust interp/native/自举发射 native 各一次 "drop ran" rc=0。
+
+**连带修(既有 interp 缺陷,本批语料形暴露)**:循环体尾 `if{break}` 形
+——While/For(Iterator 协议 + items 双臂)的 body.tail 求值位于
+Flow::Break/Continue 捕获 match 之外,尾位跳转语句逃逸至测试层报
+「异常控制流」;三臂 tail 求值改入捕获(04e 既有正例因 if 后有后继语句
+未触及)。探针 v4 形(体尾 if-break)修复前 FAIL/修复后 ok。
+
+**门**:breakc_suite 8/8;bootstrap suite.py rc=0;native_suite/check_suite
+(6 基线红同)零扩大;04e_break_drop 三侧 rc=0。

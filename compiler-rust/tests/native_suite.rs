@@ -53,15 +53,11 @@ fn native_matches_interpreter() {
         let rel = f.strip_prefix(&root).unwrap_or(f).to_string_lossy().to_string();
         if rel.starts_with("modules/") { continue; }
         if rel.starts_with("roadmap/") { continue; }   // roadmap 锚点语料由 roadmap_suite 驱动
-        // R-P2a 容器语料(2026-10-29):interp 面已落地;发射面 get/set/Map/Set
-        // 在册 T25 v2 域,native 差分后件(登记 COVERAGE 同批)
-        // t56_container_map/set:Map/Set 发射面在册 T25 v2(list get/set/pop
-        // 与 Clock 发射面已落→list/send/t57 不 skip)
-        if name.starts_with("t56_container_map") || name.starts_with("t56_container_set") { skipped += 1; continue; }
+        // R-P2a 容器语料(2026-10-30):interp 面已落地;T25 v2 发射面
+        // (List ctor/get/set/pop + Map/Set ct_map/ct_set 运行时与方法臂)
+        // 已落,native 差分入面(账本 COVERAGE 同批)
         if name.ends_with(".neg.ct") || name.ends_with(".lint.ct") { continue; }
         if name.starts_with("10_web") { continue; }
-        // 09_repeat:Rust trans Repeat 发射在册 T25 v2(占位 panic 不中断后续文件)
-        if name.starts_with("09_repeat") { skipped += 1; continue; }
 
         let src = std::fs::read_to_string(f).unwrap();
         let panic_marker = if name.ends_with(".panic.ct") {

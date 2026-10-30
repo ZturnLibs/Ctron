@@ -354,6 +354,20 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
         }
         return "L"
     }
+    // T25 v2:Map[K,V] 注解 → M<k><v>,Set[T] 注解 → S<e>(marker 槽 ctron_list
+    // 布局;槽码字母表 = s/I/6,与 List 族同源。发射面方法臂/len 臂按前缀字节分派)
+    if nt[1] == "Map" {
+        var mkc = "I"
+        var mvc = "I"
+        if nt[2].len > 1 { mkc = ct_ms_arg_code(nt[2][1], file) }
+        if nt[2].len > 2 { mvc = ct_ms_arg_code(nt[2][2], file) }
+        return "M" + mkc + mvc
+    }
+    if nt[1] == "Set" {
+        var scd = "I"
+        if nt[2].len > 1 { scd = ct_ms_arg_code(nt[2][1], file) }
+        return "S" + scd
+    }
     if or2(nt[1] == "Sender", or2(nt[1] == "Receiver", nt[1] == "Channel")) { return "h" }
     if nt[1] == "TaskPool" { return "x" } // G3-W4:池句柄(ct_tpool*)
     if nt[1] == "Atomic" { return "A" }
@@ -367,6 +381,17 @@ fn ct_ty_code(nt: List[Str], file: List[Str]) -> Str {
         return "mi"
     }
     return "i"
+}
+
+// T25 v2:Map/Set 型实参 → 槽码(Str→s,I32→I,I64→6;其余标量按数值槽 I
+// 处理并登记——f 载荷位型双关随标量 Option 批跟进)
+fn ct_ms_arg_code(nt: List[Str], file: List[Str]) -> Str {
+    if nt[0] == "Named" {
+        if nt[1] == "Str" { return "s" }
+        if nt[1] == "I64" { return "6" }
+        return "I"
+    }
+    return "I"
 }
 
 // 类型码 → C 类型: i=I32 / s=Str / b=Bool / f=F64 / L=List / A=Atomic / N=节点引用 / 6=I64
@@ -426,6 +451,9 @@ fn ct_ctype(code: Str) -> Str {
         return ct_ctype(byte_slice(code, 1, code.len)) + "*"
     }
     if or2(code == "L", ct_is_tlcode(code)) { return "ctron_list*" }
+    // T25 v2:M<k><v>/S<e> 槽 = 同一 ctron_list(marker 布局)
+    if or2(code == "M", code == "S") { return "ctron_list*" }
+    if code.len > 1 && or2(byte_at(code, 0) == 77, byte_at(code, 0) == 83) { return "ctron_list*" }
     if code == "A" { return "ctron_cell*" }
     if code == "6" { return "int64_t" }
     if code == "7" { return "uint64_t" }
@@ -1505,6 +1533,20 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if base[0] == "Ident" && seq2(base[1], "downcast") {
                 return "R"
             }
+            // T25 v2:Map[K,V]()/Set[T]() → M<k><v>/S<e>(marker 槽 ctron_list;
+            // 发射臂已有 ctor 面,本臂补 typeof 码生产——decl 绑定与方法派发的依据)
+            if base[0] == "Ident" && or2(base[1] == "Map", base[1] == "Set") {
+                if base[1] == "Map" {
+                    var mkc2 = "I"
+                    var mvc2 = "I"
+                    if cal[2].len > 1 { mkc2 = ct_ms_arg_code(ct_targ_env(cal[2][1], env), file) }
+                    if cal[2].len > 2 { mvc2 = ct_ms_arg_code(ct_targ_env(cal[2][2], env), file) }
+                    return "M" + mkc2 + mvc2
+                }
+                var scd2 = "I"
+                if cal[2].len > 1 { scd2 = ct_ms_arg_code(ct_targ_env(cal[2][1], env), file) }
+                return "S" + scd2
+            }
             if base[0] == "Ident" {
                 // 泛型实例化返回码:TPar 名 → 实参型别
                 var gdecl2 = ct_fn_decl(file, base[1])
@@ -1627,6 +1669,32 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         }
         if cal[0] == "Member" {
             var m = cal[3]
+            // T25 v2:Map/Set 方法调用返回码(marker 槽方法族;发射臂同批):
+            // get/remove(M) → R;contains_key/contains → b;insert(S) → 新增性 b
+            //(Map.insert = unit 不发码);keys/values → List[K]/List[V]
+            //(s→L/I→LI/6→L6,for-in 消费面既有+同批 L6 臂)
+            if or2(m == "get", m == "remove") {
+                var mrt7 = ct_typeof(cal[1], env, file)
+                if mrt7.len > 1 && byte_at(mrt7, 0) == 77 { return "R" }
+            }
+            if or2(m == "contains_key", m == "contains") {
+                var mrt8 = ct_typeof(cal[1], env, file)
+                if mrt8.len > 1 && or2(byte_at(mrt8, 0) == 77, byte_at(mrt8, 0) == 83) { return "b" }
+            }
+            if m == "insert" {
+                var mrt9 = ct_typeof(cal[1], env, file)
+                if mrt9.len > 1 && byte_at(mrt9, 0) == 83 { return "b" }
+            }
+            if or2(m == "keys", m == "values") {
+                var mrta = ct_typeof(cal[1], env, file)
+                if mrta.len > 2 && byte_at(mrta, 0) == 77 {
+                    var mkec = byte_slice(mrta, 1, 2)
+                    if m == "values" { mkec = byte_slice(mrta, 2, 3) }
+                    if mkec == "s" { return "L" }
+                    if mkec == "6" { return "L6" }
+                    return "LI"
+                }
+            }
             // T41 余债:分配器族成员型别——接收者码门控(K=Region,J=Pool),
             // 非本族接收者照旧下落(不遮用户同名方法/.get 等)
             if m == "fixed" {

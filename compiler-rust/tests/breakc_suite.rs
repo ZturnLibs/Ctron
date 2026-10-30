@@ -45,11 +45,13 @@ fn break_through_closure_reports_e2072() {
 }
 
 #[test]
-fn break_crossing_drop_local_reports_e2071() {
+fn break_crossing_drop_local_allowed_after_p1a3() {
+    // P1-A3:E2071 解除——发射面承接越界 Drop 清理(Rust 镜像 break 前逆序
+    // 析构;自举线 drop 栈 unwind_to),检查面不再报 E2071/E2070/E2072
     let src = std::fs::read_to_string(fixture_dir().join("04e_break_drop.neg.ct")).unwrap();
     let diags = ctron::check_src(&src, Profile::Full);
-    assert!(diags.iter().any(|d| d.code == "E2071" && d.message.contains("Drop")),
-        "应报 E2071,实际: {diags:?}");
+    assert!(diags.iter().all(|d| d.code != "E2071"), "E2071 已解除,不得再报: {diags:?}");
+    assert!(diags.iter().all(|d| d.code != "E2070"), "合法 break 不得误报: {diags:?}");
 }
 
 #[test]

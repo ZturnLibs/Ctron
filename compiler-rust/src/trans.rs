@@ -61,6 +61,13 @@ enum VTy {
     ScopeH,
     /// 通道端点(ct_chan*)
     Chan,
+    /// Map[K,V](ct_map*):kstr = Str 键内容等,vstr = Str 值槽
+    Map(bool, bool),
+    /// Set[T](ct_set*):kstr = Str 成员内容等
+    Set(bool),
+    /// 元素定型数组句柄(ct_arr*;Map keys/values 消费面——is_str = Str 元素槽,
+    /// for-in 绑 char* 走比较/打印 Str 路径;标量元素 = false → ct_i 槽)
+    ArrOf(bool),
     /// None = 无标记(i64 检查算术);Some((宽, 无符号)) = 宽度标记
     Int(Option<(IntW, bool)>),
 }
@@ -156,6 +163,8 @@ pub struct Trans {
     mcell_typedefs: std::cell::RefCell<Vec<String>>, // Mutex 单元格 typedef(c_ty &self 惰性发射)
     closure_defs: Vec<String>, // 闭包 → 顶层静态函数定义(发射到类型之后)
     ret_anyerr: bool, // 当前函数返回类型含 AnyError → `?` 自动擦除
+    in_shim: bool, // spawn shim 体生成中 → return 语句改写为任务结果槽(t56_container_send)
+    loop_scope_bases: Vec<usize>, // 循环体作用域基线(P1-A3:break/continue 越界 Drop 清理)
     sink: Vec<String>, // 缓冲栈:顶层缓冲即最终产物
     scopes: Vec<Vec<(String, String, VTy)>>, // 作用域栈:(名, C 名, 类型)
     uniq: u32,
@@ -178,7 +187,7 @@ impl Trans {
             cells: Vec::new(),
             traits: Vec::new(),
             tuple_keys: std::collections::HashMap::new(),
-            late_defs: Vec::new(), closure_defs: Vec::new(), ret_anyerr: false,
+            late_defs: Vec::new(), closure_defs: Vec::new(), ret_anyerr: false, in_shim: false, loop_scope_bases: Vec::new(),
             mcell_typedefs: std::cell::RefCell::new(Vec::new()),
             sink: vec![String::new()], scopes: Vec::new(), uniq: 0,
             fns: Vec::new(), types: Vec::new(),
@@ -484,13 +493,22 @@ impl Trans {
     fn intern_tuple(&mut self, a: VTy, b: VTy) -> u32 {
         let key = format!("{:?}|{:?}", a, b);
         if let Some(&id) = self.tuple_keys.get(&key) { return id; }
-        let id = self.tuples.len() as u32;
-        self.tuples.push((a, b));
-        self.tuple_keys.insert(key, id);
         let ca = self.c_ty(a);
         let cb = if a == b { ca.to_string() } else { self.c_ty(b).to_string() };
         let na: String = ca.chars().map(|c| if c.is_alphanumeric() { c } else { '_' }).collect();
-        self.late_defs.push(format!("typedef struct {{ {} _0; {} _1; }} ct_val2_{};\n", ca, cb, na));
+        // fb9 修:T09 元组 typedef 按 C 形(ca|cb)去重——不同 VTy 键(宽度
+        // 标记等)同 C 槽形时 typedef 重定义 cc 拒绝;同 C 形共用一体
+        let cname = format!("ct_val2_{}", na);
+        let shape = format!("{}|{}", ca, cb);
+        if let Some(&id) = self.tuple_keys.get(&shape) {
+            self.tuple_keys.insert(key, id);
+            return id;
+        }
+        let id = self.tuples.len() as u32;
+        self.tuples.push((a, b));
+        self.tuple_keys.insert(key, id);
+        self.tuple_keys.insert(shape, id);
+        self.late_defs.push(format!("typedef struct {{ {} _0; {} _1; }} {};\n", ca, cb, cname));
         id
     }
 
@@ -792,6 +810,17 @@ impl Trans {
                     }
                     if name == "Arena" { return VTy::Arena; }
                     if name == "List" { return VTy::Array; }
+                    // T25 v2:Map[K,V]/Set[T] 注解 → ct_map/ct_set 句柄(键种类 ctor 位同判)
+                    if name == "Map" || name == "Set" {
+                        if let ast::Type::Named { args, .. } = t {
+                            let kty = args.first().map(|a| self.ty_of(a)).unwrap_or(VTy::Int(None));
+                            let kstr = kty == VTy::Str;
+                            if name == "Set" { return VTy::Set(kstr); }
+                            let vty = args.get(1).map(|a| self.ty_of(a)).unwrap_or(VTy::Int(None));
+                            return VTy::Map(kstr, vty == VTy::Str);
+                        }
+                        return if name == "Set" { VTy::Set(false) } else { VTy::Map(false, false) };
+                    }
                     if let Some(&id) = self.enum_by_name.get(name.as_str()) {
                         // 载荷类别取第一个类型实参(Option[F64] → F;无实参 → I)
                         let pay = if let ast::Type::Named { args, .. } = t {
@@ -832,6 +861,9 @@ impl Trans {
             VTy::Str => "char*",
             VTy::Range => "ct_range",
             VTy::Array => "ct_arr*",
+            VTy::ArrOf(_) => "ct_arr*",
+            VTy::Map(..) => "ct_map*",
+            VTy::Set(_) => "ct_set*",
             VTy::Sum(..) | VTy::SumErr(..) => "ct_sum",
             VTy::FnPtr => "ct_fnptr0",
             VTy::Arena => "ct_arr*",
@@ -1097,6 +1129,8 @@ impl Trans {
         for l in &unpack { head.push_str("    "); head.push_str(l); head.push('\n'); }
         self.closure_defs.push(head);
         self.sink.push(String::new());
+        let prev_shim = self.in_shim;
+        self.in_shim = true;
         let mut result_line = None;
         match body.as_ref() {
             ast::Expr::BlockExpr(b) => {
@@ -1127,6 +1161,7 @@ impl Trans {
             last.push_str("    "); last.push_str(line); last.push('\n');
         }
         self.scope_pop();
+        self.in_shim = prev_shim;
         if let Some(rc_) = result_line {
             self.closure_defs.push(format!("    ct_tls_task->result = (ct_i)({});\n", rc_));
         }
@@ -1440,6 +1475,22 @@ impl Trans {
                 Ok(())
             }
             ast::Stmt::Return(e) => {
+                // t56_container_send:spawn shim 体中 return = 任务结果槽 + 归零
+                //(shim 签名 void*(void*),裸 return ct_i 即 cc 拒)
+                if self.in_shim {
+                    match e {
+                        Some(e) => {
+                            let (c, ty) = self.expr(e)?;
+                            if matches!(ty, VTy::Int(_) | VTy::Bool) {
+                                self.w(1, &format!("ct_tls_task->result = (ct_i)({}); return 0;", c));
+                            } else {
+                                self.w(1, &format!("(void)({}); return 0;", c));
+                            }
+                        }
+                        None => { self.w(1, "return 0;"); }
+                    }
+                    return Ok(());
+                }
                 match e {
                     Some(e) => {
                         let (c, ty) = self.expr(e)?;
@@ -1458,16 +1509,37 @@ impl Trans {
                 self.w(1, &format!("(void)({});", c));
                 Ok(())
             }
-            // v0.7 修订二:直映 C break/continue(E2071 Drop 门落地前由检查面把关)
-            ast::Stmt::Break => { self.w(1, "break;"); Ok(()) }
-            ast::Stmt::Continue => { self.w(1, "continue;"); Ok(()) }
+            // P1-A3(E2071 解除):break/continue 越过的作用域内 Drop 局部,
+            // 逆序发射析构调用后再跳转(与 emit_scope_drops 同判据;RAII 合同
+            // 由发射保证,检查面不再静态拒绝)
+            ast::Stmt::Break | ast::Stmt::Continue => {
+                let kw = if matches!(s, ast::Stmt::Break) { "break" } else { "continue" };
+                if let Some(&base) = self.loop_scope_bases.last() {
+                    let mut drops: Vec<String> = Vec::new();
+                    for layer in self.scopes[base..].iter().rev() {
+                        for (_n, cname, ty) in layer.iter().rev() {
+                            if let VTy::Struct(tid) = ty {
+                                let tname = self.types[*tid as usize].name.clone();
+                                if self.impls.iter().any(|(tn, ft)| tn == "Drop" && ft == &tname) {
+                                    drops.push(format!("ctn_Drop_{}_drop({});", tname, cname));
+                                }
+                            }
+                        }
+                    }
+                    for d in drops { self.w(1, &d); }
+                }
+                self.w(1, &format!("{};", kw));
+                Ok(())
+            }
             ast::Stmt::While { cond, body } => {
                 let (c, ty) = self.expr(cond)?;
                 if !matches!(ty, VTy::Bool | VTy::Unknown) {
                     return Err("trans:while 条件需为 Bool".into());
                 }
                 self.w(1, &format!("while ({}) {{", c));
+                self.loop_scope_bases.push(self.scopes.len());
                 self.emit_block_stmts(body)?;
+                self.loop_scope_bases.pop();
                 self.w(1, "}");
                 Ok(())
             }
@@ -1479,7 +1551,8 @@ impl Trans {
                 };
                 let name = name_str.as_str();
                 // 三种迭代:range 字面量 / Range 类型的值 / 数组(Range/数组值只求值一次)
-                enum IterKind { RangeLit, RangeVal, Arr }
+                enum IterKind { RangeLit, RangeVal, Arr(VTy) }
+                let base = self.scopes.len();
                 let (kind, lo_c, hi_c, incl, tmp, init) = match iter {
                     ast::Expr::Range { inclusive, from, to } => {
                         let (fc, ft) = self.expr(from.as_ref())?;
@@ -1496,7 +1569,13 @@ impl Trans {
                             }
                             VTy::Array => {
                                 let t = self.uniq_name("arr");
-                                (IterKind::Arr, String::new(), String::new(), false, t, c)
+                                (IterKind::Arr(VTy::Int(None)), String::new(), String::new(), false, t, c)
+                            }
+                            // T25 v2:元素定型句柄(Map keys/values)——Str 元素槽
+                            // 绑 char* 走比较/打印 Str 路径,标量 = ct_i
+                            VTy::ArrOf(ety) => {
+                                let t = self.uniq_name("arr");
+                                (IterKind::Arr(if ety { VTy::Str } else { VTy::Int(None) }), String::new(), String::new(), false, t, c)
                             }
                             _ => return Err("trans v1 拒绝域:for 仅支持 range/数组".into()),
                         }
@@ -1518,19 +1597,27 @@ impl Trans {
                             "for (ct_i {} = (ct_i)({}.lo); {} {} (ct_i)({}.hi); {}++) {{",
                             it, tmp, it, cmp, tmp, it));
                     }
-                    IterKind::Arr => {
+                    IterKind::Arr(_) => {
                         self.w(1, &format!("{{ ct_arr* {} = {};", tmp, init));
                         self.w(1, &format!(
                             "for (size_t {} = 0; {} < {}->n; {}++) {{", it, it, tmp, it));
                     }
                 }
                 self.scope_push();
-                let c = self.bind(name, VTy::Int(Some((IntW::W64, true))));
-                match kind {
-                    IterKind::Arr => self.w(1, &format!("ct_i {} = {}->d[{}];", c, tmp, it)),
+                let elem_vty = match &kind { IterKind::Arr(e) => *e, _ => VTy::Int(Some((IntW::W64, true))) };
+                let c = self.bind(name, elem_vty);
+                match (&kind, elem_vty) {
+                    (IterKind::Arr(_), VTy::Str) => {
+                        self.w(1, &format!("char* {} = (char*)(long){}->d[{}];", c, tmp, it))
+                    }
+                    (IterKind::Arr(_), _) => {
+                        self.w(1, &format!("ct_i {} = {}->d[{}];", c, tmp, it))
+                    }
                     _ => self.w(1, &format!("ct_i {} = {};", c, it)),
                 }
+                self.loop_scope_bases.push(base);
                 self.emit_block_stmts(body)?;
+                self.loop_scope_bases.pop();
                 self.scope_pop();
                 self.w(1, "}");
                 self.w(1, "}");
@@ -1544,7 +1631,49 @@ impl Trans {
     fn expr(&mut self, e: &ast::Expr) -> TRes {
         match e {
             // W5:repeat 字面量发射面在册 T25 v2(native_suite 对 t56_container skip)
-            ast::Expr::Repeat { .. } => panic!("trans_expr: repeat 字面量发射面未实现(在册 T25 v2)"),
+            ast::Expr::Repeat { elem, count } => {
+                // T25 v2:repeat 字面量 `[v] ** N` 发射(G1-T8 镜像;语义承诺 =
+                // elem 块一次物化 N 份)。ct_arr 模型:首块字面量入 d[0..M),
+                // 取模复制铺满 N*M;单零块特判 memset(F25 病理形同门)。
+                // 计数 = 编译期整数(check 把关;发射按字面量取值,非字面量
+                // 拒发不进门)
+                let ast::Expr::Array(al) = elem.as_ref() else {
+                    return Err("trans v1 拒绝域:repeat 元素须数组字面量".into());
+                };
+                let ast::Expr::Int { .. } = count.as_ref() else {
+                    return Err("trans v1 拒绝域:repeat 计数须编译期整数".into());
+                };
+                let n_lit = match count.as_ref() {
+                    ast::Expr::Int { text, .. } => text.replace('_', "").parse::<i64>().unwrap_or(0),
+                    _ => 0,
+                };
+                let m = al.len();
+                if n_lit < 0 || m <= 0 {
+                    return Err("trans:repeat 计数/元素块空".into());
+                }
+                let total = (n_lit as usize) * m;
+                let tmp = self.uniq_name("ra");
+                let mut parts = Vec::new();
+                for e in al.iter() {
+                    let (ec, _) = self.expr(e)?;
+                    parts.push(ec);
+                }
+                let inits: Vec<String> = parts.iter().map(|p| format!("(ct_i)({})", p)).collect();
+                let all_zero = parts.len() == 1 && parts[0] == "0";
+                let mut code = format!("({{ ct_arr* {} = ct_arr_new({}, NULL);", tmp, total);
+                for (i, ic) in inits.iter().enumerate() {
+                    code.push_str(&format!(" {}->d[{}] = {};", tmp, i, ic));
+                }
+                if all_zero {
+                    code.push_str(&format!(" memset({}->d, 0, sizeof(ct_i) * {});", tmp, total));
+                } else if n_lit > 1 {
+                    code.push_str(&format!(
+                        " for (size_t _ri = {}; _ri < {}; _ri++) {{ {}->d[_ri] = {}->d[_ri % {}]; }}",
+                        m, total, tmp, tmp, m));
+                }
+                code.push_str(&format!(" {}; }})", tmp));
+                Ok((code, VTy::Array))
+            }
             ast::Expr::Int { text, suffix } => {
                 let cleaned = text.replace('_', "");
                 Ok((format!("((ct_i){})", cleaned), suffix_ty(suffix)))
@@ -1749,11 +1878,24 @@ impl Trans {
                         _ => Err(format!("trans v1 拒绝域:Str 属性 `{}`", m)),
                     };
                 }
-                if ty == VTy::Array || ty == VTy::FArr {
+                if ty == VTy::Array || ty == VTy::FArr || matches!(ty, VTy::ArrOf(_)) {
                     let acc = if ty == VTy::FArr { "->n" } else { "->n" };
                     return match m.as_str() {
                         "len" => Ok((format!("((ct_i)({}){})", c, acc), VTy::Int(Some((IntW::W64, false))))),
                         _ => Err(format!("trans v1 拒绝域:Array 属性 `{}`", m)),
+                    };
+                }
+                // T25 v2:Map/Set .len(ct_map n = 对数;ct_set n = 成员数)
+                if let VTy::Map(..) = ty {
+                    return match m.as_str() {
+                        "len" => Ok((format!("((ct_i)((ct_map*)({}))->n)", c), VTy::Int(Some((IntW::W64, false))))),
+                        _ => Err(format!("trans v1 拒绝域:Map 属性 `{}`", m)),
+                    };
+                }
+                if let VTy::Set(_) = ty {
+                    return match m.as_str() {
+                        "len" => Ok((format!("((ct_i)((ct_set*)({}))->n)", c), VTy::Int(Some((IntW::W64, false))))),
+                        _ => Err(format!("trans v1 拒绝域:Set 属性 `{}`", m)),
                     };
                 }
                 // trait prop 分发:(类型, 属性) → 取值函数
@@ -1908,20 +2050,22 @@ impl Trans {
                 let (c, ty) = self.expr(e)?;
                 let VTy::Sum(_, pay) = ty else { return Err("trans:? 需 Option/Result".into()); };
                 let unwrap_ty = if pay == Pay::F { VTy::F64 } else { VTy::Int(None) };
+                // t53 F64 位型忠实:载荷槽随 Pay(F 走 f 槽;旧恒 i 槽位型双关)
+                let slot = if pay == Pay::F { "f" } else { "i" };
                 if self.ret_anyerr {
                     // `?` 擦除:Err → AnyError{message, cause, trace:"ctron:1"},EarlyReturn
                     return Ok((
                         format!(
-                            "({{ ct_sum ct_t = ({}); if (ct_t.variant == 1) {{ ct_anyerr* ce = ct_mkerr(\"error\", (ct_sum){{ 0, {{ ct_t.p[0], {{.i = 0}}, {{.i = 0}}, {{.i = 0}} }} }}, \"ctron:1\"); return (ct_sum){{ 1, {{ {{.i = (ct_i)ce}}, {{.i = 0}}, {{.i = 0}}, {{.i = 0}} }} }}; }} ct_t.p[0].i; }})",
-                            c
+                            "({{ ct_sum ct_t = ({}); if (ct_t.variant == 1) {{ ct_anyerr* ce = ct_mkerr(\"error\", (ct_sum){{ 0, {{ ct_t.p[0], {{.i = 0}}, {{.i = 0}}, {{.i = 0}} }} }}, \"ctron:1\"); return (ct_sum){{ 1, {{ {{.i = (ct_i)ce}}, {{.i = 0}}, {{.i = 0}}, {{.i = 0}} }} }}; }} ct_t.p[0].{}; }})",
+                            c, slot
                         ),
                         unwrap_ty,
                     ));
                 }
                 Ok((
                     format!(
-                        "({{ ct_sum ct_t = ({}); if (ct_t.variant == 1) {{ return (ct_sum){{ 1, {{ {{.i = 0}}, {{.i = 0}}, {{.i = 0}}, {{.i = 0}} }} }}; }} ct_t.p[0].i; }})",
-                        c
+                        "({{ ct_sum ct_t = ({}); if (ct_t.variant == 1) {{ return (ct_sum){{ 1, {{ {{.i = 0}}, {{.i = 0}}, {{.i = 0}}, {{.i = 0}} }} }}; }} ct_t.p[0].{}; }})",
+                        c, slot
                     ),
                     unwrap_ty,
                 ))
@@ -2130,6 +2274,22 @@ impl Trans {
                         format!("({{ {}* p = malloc(sizeof(*p)); pthread_mutex_init(&p->mu, NULL); p->v = ({}); (void*)p; }})", mty, ic),
                         VTy::Cell(cid),
                     ));
+                }
+                // T25 v2:Map[K,V]() / Set[T]() — 插入序容器(键种类 ctor 位钉;
+                // 发射面 = ct_map/ct_set 运行时,方法臂见 call)
+                if tn == "Map" || tn == "Set" {
+                    let kty = targ_args.first().map(|t| self.ty_of(t)).unwrap_or(VTy::Int(None));
+                    let kstr = kty == VTy::Str;
+                    if tn == "Set" {
+                        return Ok((format!("ct_set_new({})", kstr as i32), VTy::Set(kstr)));
+                    }
+                    let vty = targ_args.get(1).map(|t| self.ty_of(t)).unwrap_or(VTy::Int(None));
+                    return Ok((format!("ct_map_new({})", kstr as i32), VTy::Map(kstr, vty == VTy::Str)));
+                }
+                // T25 v2:List[T]() — 空数组句柄(interp Rc 语义对齐;此前无臂,
+                // t56_container_* 全族拒发的主根)
+                if tn == "List" {
+                    return Ok(("ct_arr_new(0, NULL)".to_string(), VTy::Array));
                 }
             }
         }
@@ -2436,6 +2596,88 @@ impl Trans {
                 };
                 if let Some(r) = r { return Ok(r); }
             }
+            // T25 v2:List get/set/pop 发射(自举 trans_expr 同族镜像;
+            // get/pop → Option ct_sum 盒,or 链消费面既有)
+            if let VTy::Array = rt {
+                let r = match m.as_str() {
+                    "get" => {
+                        let Some(a) = args.first() else { return Err("trans:get 需下标".into()) };
+                        let (ic, _) = self.expr(a)?;
+                        let oid = self.enum_by_name.get("Option").copied().unwrap_or(0);
+                        Some((format!(
+                            "({{ ct_arr* _ga = ({}); ct_sum _gr; if ((ct_i)({}) < (ct_i)_ga->n && ({}) >= 0) {{ _gr.variant = 0; _gr.p[0].i = _ga->d[{}]; }} else {{ _gr.variant = 1; _gr.p[0].i = 0; }} _gr; }})",
+                            rc, ic, ic, ic), VTy::Sum(oid, Pay::I)))
+                    }
+                    "set" => {
+                        let Some(a) = args.first() else { return Err("trans:set 需下标".into()) };
+                        let Some(b) = args.get(1) else { return Err("trans:set 需值".into()) };
+                        let (ic, _) = self.expr(a)?;
+                        let (vc, _) = self.expr(b)?;
+                        Some((format!(
+                            "({{ ct_arr* _sa = ({}); ct_i _si = (ct_i)({}); if (_si < 0 || (size_t)_si >= _sa->n) ct_panic(\"index out of bounds\"); _sa->d[_si] = (ct_i)({}); }})",
+                            rc, ic, vc), VTy::Void))
+                    }
+                    "pop" => {
+                        let oid = self.enum_by_name.get("Option").copied().unwrap_or(0);
+                        Some((format!(
+                            "({{ ct_arr* _pa = ({}); ct_sum _pr; if (_pa->n == 0) {{ _pr.variant = 1; _pr.p[0].i = 0; }} else {{ _pa->n -= 1; _pr.variant = 0; _pr.p[0].i = _pa->d[_pa->n]; }} _pr; }})",
+                            rc), VTy::Sum(oid, Pay::I)))
+                    }
+                    _ => None,
+                };
+                if let Some(r) = r { return Ok(r); }
+            }
+            // T25 v2:Map 方法(插入序;insert 覆盖,get/remove → Option;
+            // contains_key/keys/values;键/值槽 = ct_i,Str 走 (long) 指针槽)
+            if let VTy::Map(kstr, vstr) = rt {
+                let kid = |c: &str| if kstr { format!("(ct_i)(long)({})", c) } else { format!("(ct_i)({})", c) };
+                let oid = self.enum_by_name.get("Option").copied().unwrap_or(0);
+                return match m.as_str() {
+                    "insert" => {
+                        let Some(a) = args.first() else { return Err("trans:insert 需键".into()) };
+                        let Some(b) = args.get(1) else { return Err("trans:insert 需值".into()) };
+                        let (kc, _) = self.expr(a)?;
+                        let (vc, _) = self.expr(b)?;
+                        Ok((format!("(ct_map_insert({}, {}, (ct_i)(long)({})), 0)", rc, kid(&kc), vc), VTy::Void))
+                    }
+                    "get" | "remove" => {
+                        let Some(a) = args.first() else { return Err("trans:remove 需键".into()) };
+                        let (kc, _) = self.expr(a)?;
+                        let f = if m == "get" { "ct_map_get" } else { "ct_map_remove" };
+                        Ok((format!("{}({}, {})", f, rc, kid(&kc)), VTy::Sum(oid, Pay::I)))
+                    }
+                    "contains_key" => {
+                        let Some(a) = args.first() else { return Err("trans:contains_key 需键".into()) };
+                        let (kc, _) = self.expr(a)?;
+                        Ok((format!("(ct_map_contains({}, {}))", rc, kid(&kc)), VTy::Bool))
+                    }
+                    "keys" => Ok((format!("ct_map_keys({})", rc), VTy::ArrOf(kstr))),
+                    "values" => Ok((format!("ct_map_values({})", rc), VTy::ArrOf(vstr))),
+                    _ => Err(format!("trans v1 拒绝域:Map 方法 `.{}`", m)),
+                };
+            }
+            // T25 v2:Set 方法(insert → 新增性 Bool;contains/remove → Bool)
+            if let VTy::Set(kstr) = rt {
+                let kid = |c: &str| if kstr { format!("(ct_i)(long)({})", c) } else { format!("(ct_i)({})", c) };
+                return match m.as_str() {
+                    "insert" => {
+                        let Some(a) = args.first() else { return Err("trans:insert 需成员".into()) };
+                        let (xc, _) = self.expr(a)?;
+                        Ok((format!("(ct_set_insert({}, {}))", rc, kid(&xc)), VTy::Bool))
+                    }
+                    "contains" => {
+                        let Some(a) = args.first() else { return Err("trans:contains 需成员".into()) };
+                        let (xc, _) = self.expr(a)?;
+                        Ok((format!("(ct_set_has({}, {}))", rc, kid(&xc)), VTy::Bool))
+                    }
+                    "remove" => {
+                        let Some(a) = args.first() else { return Err("trans:remove 需成员".into()) };
+                        let (xc, _) = self.expr(a)?;
+                        Ok((format!("(ct_set_remove({}, {}))", rc, kid(&xc)), VTy::Bool))
+                    }
+                    _ => Err(format!("trans v1 拒绝域:Set 方法 `.{}`", m)),
+                };
+            }
             // Arena 泛型方法:arena.list[T]() / arena.zeros[T](n)
             if let VTy::Arena = rt {
                 let r = match m.as_str() {
@@ -2567,6 +2809,13 @@ impl Trans {
                     "or" => {
                         let Some(a) = args.first() else { return Err("trans:or 需默认值".into()) };
                         let (dc, dty) = self.expr(a)?;
+                        // T25 v2:Str 默认值臂(Map.remove().or("none") 族)——
+                        // 载荷槽 i 双关,char* 往返
+                        if dty == VTy::Str {
+                            return Ok((format!(
+                                "({{ ct_sum t = ({}); (char*)((t.variant == 0) ? (char*)(long)t.p[0].i : (char*)(long)({})); }})",
+                                rc, dc), VTy::Str));
+                        }
                         if !dty.is_num() { return Err("trans:or 默认值需数值".into()); }
                         let slot = if dty.is_float() { "f" } else { "i" };
                         let cast = if dty == VTy::F32 { "(float)" } else { "" };
@@ -2589,9 +2838,18 @@ impl Trans {
                                 "({{ ct_sum t = ({}); if (t.variant == 1) ct_panic(\"{}\"); t.p[0].i; }})", rc, msg),
                              VTy::ErrPtr)
                         } else {
-                            (format!(
-                                "({{ ct_sum t = ({}); if (t.variant == 1) ct_panic(\"{}\"); t.p[0].i; }})", rc, msg),
-                             VTy::Int(None))
+                            // t53 F64 载荷位型忠实(02_option_result):F 载荷走 f 槽,
+                            // 旧恒 i 槽位型双关 → 2.5 位型截断断言红
+                            match rt {
+                                VTy::Sum(_, Pay::F) => (
+                                    format!(
+                                        "({{ ct_sum t = ({}); if (t.variant == 1) ct_panic(\"{}\"); t.p[0].f; }})", rc, msg),
+                                    VTy::F64),
+                                _ => (
+                                    format!(
+                                        "({{ ct_sum t = ({}); if (t.variant == 1) ct_panic(\"{}\"); t.p[0].i; }})", rc, msg),
+                                    VTy::Int(None)),
+                            }
                         }
                     }
                     "is_some" | "is_ok" => {
@@ -3244,5 +3502,97 @@ static ct_i ct_wsub(ct_i a, ct_i b, int bits, int us) {
     ct_i t = (a - b) & m;
     if (!us && t >= (((ct_i)1) << (bits - 1))) t -= (((ct_i)1) << bits);
     return t;
+}
+
+/* ---- Map/Set 运行时(T25 v2):插入序线性扫描(对齐 interp cx 布局与
+   veq 内容等语义),进程期不回收;Str 键 strcmp 内容等,标量键数值等 ---- */
+typedef struct { ct_i k; ct_i v; } ct_ment;
+typedef struct { ct_ment* e; size_t n; size_t cap; int kstr; } ct_map;
+static ct_map* ct_map_new(int kstr) {
+    ct_map* m = (ct_map*)malloc(sizeof(ct_map));
+    if (!m) abort();
+    m->e = NULL; m->n = 0; m->cap = 0; m->kstr = kstr;
+    return m;
+}
+static int ct_map_eq(ct_map* m, ct_i a, ct_i b) {
+    if (m->kstr) return strcmp((const char*)(long)a, (const char*)(long)b) == 0;
+    return a == b;
+}
+static void ct_map_insert(ct_map* m, ct_i k, ct_i v) {
+    for (size_t i = 0; i < m->n; i++) {
+        if (ct_map_eq(m, m->e[i].k, k)) { m->e[i].v = v; return; }
+    }
+    if (m->n == m->cap) {
+        size_t nc = m->cap ? m->cap * 2 : 8;
+        m->e = (ct_ment*)realloc(m->e, nc * sizeof(ct_ment));
+        if (!m->e) abort();
+        m->cap = nc;
+    }
+    m->e[m->n].k = k; m->e[m->n].v = v; m->n += 1;
+}
+static ct_sum ct_map_get(ct_map* m, ct_i k) {
+    for (size_t i = 0; i < m->n; i++) {
+        if (ct_map_eq(m, m->e[i].k, k)) return (ct_sum){ 0, {{.i = m->e[i].v}, {.i = 0}, {.i = 0}, {.i = 0}} };
+    }
+    return (ct_sum){ 1, {{.i = 0}, {.i = 0}, {.i = 0}, {.i = 0}} };
+}
+static ct_sum ct_map_remove(ct_map* m, ct_i k) {
+    for (size_t i = 0; i < m->n; i++) {
+        if (ct_map_eq(m, m->e[i].k, k)) {
+            ct_sum r = (ct_sum){ 0, {{.i = m->e[i].v}, {.i = 0}, {.i = 0}, {.i = 0}} };
+            for (size_t j = i; j + 1 < m->n; j++) m->e[j] = m->e[j + 1];
+            m->n -= 1;
+            return r;
+        }
+    }
+    return (ct_sum){ 1, {{.i = 0}, {.i = 0}, {.i = 0}, {.i = 0}} };
+}
+static int ct_map_contains(ct_map* m, ct_i k) {
+    for (size_t i = 0; i < m->n; i++) if (ct_map_eq(m, m->e[i].k, k)) return 1;
+    return 0;
+}
+static ct_arr* ct_map_keys(ct_map* m) {
+    ct_arr* r = ct_arr_new(0, NULL);
+    for (size_t i = 0; i < m->n; i++) ct_arr_push(r, m->e[i].k);
+    return r;
+}
+static ct_arr* ct_map_values(ct_map* m) {
+    ct_arr* r = ct_arr_new(0, NULL);
+    for (size_t i = 0; i < m->n; i++) ct_arr_push(r, m->e[i].v);
+    return r;
+}
+typedef struct { ct_i* e; size_t n; size_t cap; int kstr; } ct_set;
+static ct_set* ct_set_new(int kstr) {
+    ct_set* s = (ct_set*)malloc(sizeof(ct_set));
+    if (!s) abort();
+    s->e = NULL; s->n = 0; s->cap = 0; s->kstr = kstr;
+    return s;
+}
+static int ct_set_has(ct_set* s, ct_i x) {
+    for (size_t i = 0; i < s->n; i++) {
+        if (s->kstr ? strcmp((const char*)(long)s->e[i], (const char*)(long)x) == 0 : s->e[i] == x) return 1;
+    }
+    return 0;
+}
+static int ct_set_insert(ct_set* s, ct_i x) {
+    if (ct_set_has(s, x)) return 0;
+    if (s->n == s->cap) {
+        size_t nc = s->cap ? s->cap * 2 : 8;
+        s->e = (ct_i*)realloc(s->e, nc * sizeof(ct_i));
+        if (!s->e) abort();
+        s->cap = nc;
+    }
+    s->e[s->n] = x; s->n += 1;
+    return 1;
+}
+static int ct_set_remove(ct_set* s, ct_i x) {
+    for (size_t i = 0; i < s->n; i++) {
+        if (s->kstr ? strcmp((const char*)(long)s->e[i], (const char*)(long)x) == 0 : s->e[i] == x) {
+            for (size_t j = i; j + 1 < s->n; j++) s->e[j] = s->e[j + 1];
+            s->n -= 1;
+            return 1;
+        }
+    }
+    return 0;
 }
 "#;

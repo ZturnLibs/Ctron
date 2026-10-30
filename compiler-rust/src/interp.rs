@@ -311,7 +311,15 @@ impl<'a> Interp<'a> {
                                         Err(e) => return Err(e),
                                         Ok(()) => {}
                                     }
-                                    if let Some(t) = &body.tail { self.expr(t, env)?; }
+                                    // 体尾 break/continue 同捕(P1-A3 同批)
+                                    if let Some(t) = &body.tail {
+                                        match self.expr(t, env) {
+                                            Ok(_) => {}
+                                            Err(Flow::Break) => break,
+                                            Err(Flow::Continue) => continue,
+                                            Err(e) => return Err(e),
+                                        }
+                                    }
                                     true
                                 }
                                 _ => false,
@@ -339,7 +347,15 @@ impl<'a> Interp<'a> {
                         Err(e) => return Err(e),
                         Ok(()) => {}
                     }
-                    if let Some(t) = &body.tail { self.expr(t, env)?; }
+                    // 体尾 break/continue 同捕(P1-A3 同批)
+                    if let Some(t) = &body.tail {
+                        match self.expr(t, env) {
+                            Ok(_) => {}
+                            Err(Flow::Break) => break,
+                            Err(Flow::Continue) => continue,
+                            Err(e) => return Err(e),
+                        }
+                    }
                 }
                 Ok(())
             }
@@ -356,7 +372,15 @@ impl<'a> Interp<'a> {
                         Err(e) => return Err(e),
                         Ok(()) => {}
                     }
-                    if let Some(t) = &body.tail { self.expr(t, env)?; }
+                    // 体尾 break/continue 同捕(P1-A3:尾 if{break} 形曾逃逸测试层)
+                    if let Some(t) = &body.tail {
+                        match self.expr(t, env) {
+                            Ok(_) => {}
+                            Err(Flow::Break) => break 'outer,
+                            Err(Flow::Continue) => continue,
+                            Err(e) => return Err(e),
+                        }
+                    }
                 }
                 Ok(())
             }

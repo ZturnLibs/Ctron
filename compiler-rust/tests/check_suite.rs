@@ -48,7 +48,7 @@ fn expectations() -> Vec<(&'static str, Vec<&'static str>)> {
         ("04d_bool_or_type.neg.ct", vec!["E2010"]),
         ("04d_bool_not_type.neg.ct", vec!["E2010"]),
         ("04e_break_closure.neg.ct", vec!["E2072"]),
-        ("04e_break_drop.neg.ct", vec!["E2071"]),
+        // P1-A3:E2071 已解除(04e_break_drop.neg 撤,翻面 04e_break_drop.ct 行为面)
         ("04f_infer_ambig.neg.ct", vec!["E2061"]),
         ("04f_infer_missing.neg.ct", vec!["E2060"]),
         ("04g_let_assign.neg.ct", vec!["E2080"]),

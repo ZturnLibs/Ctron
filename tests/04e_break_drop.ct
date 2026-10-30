@@ -1,0 +1,24 @@
+// 04e_break_drop.ct —— P1-A3(E2071 解除):break 越过带 Drop 局部的作用域
+// RAII 合同由发射面承接:Rust 镜像 break/continue 前逆序发射越界 Drop 局部
+// 析构;自举线 ctron_drop_unwind_to(循环体入口 drop 栈标记)。dtor 可观测
+// (println;双侧 rc=0;形状 = for-in,While+Drop 体走自举提升既有拒面)。
+//@ target: rust
+
+struct Ticket {
+    let id: I32
+}
+
+impl Drop for Ticket {
+    fn drop(var self) {
+        println("drop ran")
+    }
+}
+
+test "break crossing drop local unwinds dtor" {
+    var xs: List[I32] = List[I32]()
+    xs.push(1)
+    for x in xs {
+        let t: Ticket = Ticket { id: 1 }
+        if true { break }
+    }
+}

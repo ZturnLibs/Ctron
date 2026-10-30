@@ -1908,7 +1908,9 @@ impl<'a> Checker<'a> {
                 self.loop_depth -= 1;
             }
             // v0.7 修订二:break/continue 合法性(E2070 循环外 / E2072 穿越闭包边界;
-            // E2071 越过 Drop 局部待检查面 Drop 建模,interp 动态 drop 现已声音)
+            // E2071 已解除(P1-A3):发射面补 cleanup 路径——Rust 镜像 break/continue
+            // 前逆序发射越界 Drop 局部析构,自举线 drop 栈标记 unwind——RAII 合同
+            // 由发射保证,检查面不再静态拒绝)
             ast::Stmt::Break | ast::Stmt::Continue => {
                 let kw = if matches!(s, ast::Stmt::Break) { "break" } else { "continue" };
                 if self.loop_depth == 0 {
@@ -1916,14 +1918,6 @@ impl<'a> Checker<'a> {
                         self.err("E2072", format!("{kw} 不得穿越闭包边界(闭包体是独立函数,不可 break/continue 外层循环)"), Span::new(1, 1, 0, 0));
                     } else {
                         self.err("E2070", format!("{kw} 出现在循环外"), Span::new(1, 1, 0, 0));
-                    }
-                } else if let Some(&base) = self.loop_scope_base.last() {
-                    // v0.7 E2071:break/continue 需越过带 Drop 局部的作用域 → 静态拒绝
-                    // (C 直映发射无 cleanup 路径;RAII 合同优先。Drop 局部移入内层块或重构)
-                    let crosses_drop = self.scopes[base..].iter()
-                        .any(|sc| sc.values().any(|l| self.ty_has_drop(&l.ty)));
-                    if crosses_drop {
-                        self.err("E2071", format!("{kw} 需越过带 Drop 局部的作用域(RAII 清理无 cleanup 路径);将 Drop 局部移入内层块或重构循环"), Span::new(1, 1, 0, 0));
                     }
                 }
             }

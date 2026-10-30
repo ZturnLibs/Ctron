@@ -1087,3 +1087,18 @@ fn ct_res_wrap(code: Str, x: Str) -> Str {
     }
     return "(ct_i)(" + x + ")"
 }
+
+// T25 v2:Map/Set 槽码打包(ctron_list items 槽约定同构:Str 直存,
+// 标量经 (ct_i)(long) 中转——与 List push 臂 int 槽同形)
+fn ct_ms_wrap(code: Str, x: Str) -> Str {
+    if code == "s" { return x }
+    return "(const char*)(long)(ct_i)(" + x + ")"
+}
+
+// T25 v2:Map/Set 键等值(槽码内容等:Str strcmp,标量按槽宽解包比较;
+// a/b = 两槽 C 表达式,Char* 槽原文)
+fn ct_ms_eq(code: Str, a: Str, b: Str) -> Str {
+    if code == "s" { return "(strcmp((const char*)(" + a + "), (const char*)(" + b + ")) == 0)" }
+    if code == "6" { return "((int64_t)(long)(" + a + ")) == ((int64_t)(long)(" + b + "))" }
+    return "((int32_t)(long)(" + a + ")) == ((int32_t)(long)(" + b + "))"
+}

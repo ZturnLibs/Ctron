@@ -465,6 +465,13 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if or2(ot3 == "L", ct_is_tlcode(ot3)) {
                 return "((ctron_list*)(" + ct_expr(e[1], env, file) + "))->n"
             }
+            // T25 v2:Map/Set .len 值位(marker 槽;对 = n/2 整除,成员 = n-1)
+            if ot3.len > 1 && byte_at(ot3, 0) == 77 {
+                return "((ctron_list*)(" + ct_expr(e[1], env, file) + "))->n / 2"
+            }
+            if ot3.len > 1 && byte_at(ot3, 0) == 83 {
+                return "((ctron_list*)(" + ct_expr(e[1], env, file) + "))->n - 1"
+            }
             if ot3 == "N" {
                 // N 值二义:真串或节点皆有 .len(env 表元素是串,AST 槽是节点)→ 动态分派镜像 rt
                 return "ctron_len((const void*)(" + ct_expr(e[1], env, file) + "))"
@@ -1077,7 +1084,10 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 if objt == "R" {
                     var rdf = ct_expr(ag[1], env, file)
                     var rdc = ct_ctype(ct_typeof(ag[1], env, file))
-                    return "(\{ ct_res _co = (" + obj + "); " + rdc + "((_co.variant == 0) ? ((ct_i)(long)_co.v) : ((ct_i)(long)(" + rdf + "))); })"
+                    // _co 行唯一化(T25 v2 收口:嵌套 or 链探针实证块作用域遮蔽
+                    // 本就合法,唯一化为防御位——后件发射形变不再可撞名)
+                    var con = "_co" + nline(e)
+                    return "(\{ ct_res " + con + " = (" + obj + "); (" + rdc + ")((" + con + ".variant == 0) ? ((ct_i)(long)" + con + ".v) : ((ct_i)(long)(" + rdf + "))); })"
                 }
                 var dflt = ct_expr(ag[1], env, file)
                 var dt = ct_typeof(ag[1], env, file)
@@ -1324,6 +1334,84 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 var p_objt6 = ct_typeof(cal[1], env, file)
                 if p_objt6.len > 0 && byte_at(p_objt6, 0) == 76 {
                     return "(\{ ctron_list* _pp = (ctron_list*)(" + obj + "); ct_res _r; if (_pp->n == 0) \{ _r.variant = 1; _r.v = 0; } else \{ _pp->n -= 1; _r.variant = 0; _r.v = (ct_i)(long)_pp->items[_pp->n]; } _r; })"
+                }
+            }
+            // T25 v2:Map/Set 方法发射(marker 槽 ctron_list:[0]=marker,Map 自 1 起
+            // k,v 交错对,Set 自 1 起成员;等值 = 槽码内容等,插入序覆盖/删除保序)。
+            // get/remove → R 码 ct_res(or 臂 R 码单求值分支消费);contains_key/
+            // contains/remove(S)/insert(S) → b;insert(M) = unit;keys/values → 新表
+            if m == "insert" {
+                var i_objt = ct_typeof(cal[1], env, file)
+                if i_objt.len > 2 && byte_at(i_objt, 0) == 77 {
+                    if ag.len < 3 { panic("emit:insert arity") }
+                    var mkc = byte_slice(i_objt, 1, 2)
+                    var mvc = byte_slice(i_objt, 2, 3)
+                    var mkx = ct_ms_wrap(mkc, ct_expr(ag[1], env, file))
+                    var mvx = ct_ms_wrap(mvc, ct_expr(ag[2], env, file))
+                    var meq = ct_ms_eq(mkc, "_mp->items[_mi]", "_mk")
+                    return "(\{ ctron_list* _mp = (ctron_list*)(" + obj + "); const char* _mk = " + mkx + "; const char* _mv = " + mvx + "; int32_t _mi = 1; while (_mi + 1 < _mp->n) \{ if (" + meq + ") \{ _mp->items[_mi + 1] = _mv; break; } _mi += 2; } if (_mi + 1 >= _mp->n) \{ ctron_list_push(_mp, _mk); ctron_list_push(_mp, _mv); } })"
+                }
+                if i_objt.len > 1 && byte_at(i_objt, 0) == 83 {
+                    if ag.len < 2 { panic("emit:insert arity") }
+                    var sec2 = byte_slice(i_objt, 1, 2)
+                    var sex = ct_ms_wrap(sec2, ct_expr(ag[1], env, file))
+                    var seq3 = ct_ms_eq(sec2, "_sp->items[_si]", "_sk")
+                    return "(\{ ctron_list* _sp = (ctron_list*)(" + obj + "); const char* _sk = " + sex + "; int32_t _si = 1; int _sf = 0; while (_si < _sp->n) \{ if (" + seq3 + ") \{ _sf = 1; break; } _si += 1; } if (!_sf) \{ ctron_list_push(_sp, _sk); } !_sf; })"
+                }
+            }
+            if m == "get" {
+                var g_objt7 = ct_typeof(cal[1], env, file)
+                if g_objt7.len > 2 && byte_at(g_objt7, 0) == 77 {
+                    if ag.len < 2 { panic("emit:get arity") }
+                    var gkc = byte_slice(g_objt7, 1, 2)
+                    var gkx = ct_ms_wrap(gkc, ct_expr(ag[1], env, file))
+                    var geq = ct_ms_eq(gkc, "_mp->items[_mi]", "_mk")
+                    return "(\{ ctron_list* _mp = (ctron_list*)(" + obj + "); const char* _mk = " + gkx + "; ct_res _r; _r.variant = 1; _r.v = 0; int32_t _mi = 1; while (_mi + 1 < _mp->n) \{ if (" + geq + ") \{ _r.variant = 0; _r.v = (ct_i)(long)_mp->items[_mi + 1]; break; } _mi += 2; } _r; })"
+                }
+            }
+            if m == "remove" {
+                var r_objt = ct_typeof(cal[1], env, file)
+                if r_objt.len > 2 && byte_at(r_objt, 0) == 77 {
+                    if ag.len < 2 { panic("emit:remove arity") }
+                    var rkc = byte_slice(r_objt, 1, 2)
+                    var rkx = ct_ms_wrap(rkc, ct_expr(ag[1], env, file))
+                    var req = ct_ms_eq(rkc, "_mp->items[_mi]", "_mk")
+                    return "(\{ ctron_list* _mp = (ctron_list*)(" + obj + "); const char* _mk = " + rkx + "; ct_res _r; _r.variant = 1; _r.v = 0; int32_t _mi = 1; while (_mi + 1 < _mp->n) \{ if (" + req + ") \{ _r.variant = 0; _r.v = (ct_i)(long)_mp->items[_mi + 1]; int32_t _mj = _mi; while (_mj + 2 < _mp->n) \{ _mp->items[_mj] = _mp->items[_mj + 2]; _mj += 1; } _mp->n -= 2; break; } _mi += 2; } _r; })"
+                }
+                if r_objt.len > 1 && byte_at(r_objt, 0) == 83 {
+                    if ag.len < 2 { panic("emit:remove arity") }
+                    var rsec = byte_slice(r_objt, 1, 2)
+                    var rsx = ct_ms_wrap(rsec, ct_expr(ag[1], env, file))
+                    var req2 = ct_ms_eq(rsec, "_sp->items[_si]", "_sk")
+                    return "(\{ ctron_list* _sp = (ctron_list*)(" + obj + "); const char* _sk = " + rsx + "; int32_t _si = 1; int _sf = 0; while (_si < _sp->n) \{ if (" + req2 + ") \{ _sf = 1; int32_t _mj = _si; while (_mj + 1 < _sp->n) \{ _sp->items[_mj] = _sp->items[_mj + 1]; _mj += 1; } _sp->n -= 1; break; } _si += 1; } _sf; })"
+                }
+            }
+            if m == "contains_key" {
+                var c_objt = ct_typeof(cal[1], env, file)
+                if c_objt.len > 2 && byte_at(c_objt, 0) == 77 {
+                    if ag.len < 2 { panic("emit:contains_key arity") }
+                    var ckc = byte_slice(c_objt, 1, 2)
+                    var ckx = ct_ms_wrap(ckc, ct_expr(ag[1], env, file))
+                    var ceq = ct_ms_eq(ckc, "_mp->items[_mi]", "_mk")
+                    return "(\{ ctron_list* _mp = (ctron_list*)(" + obj + "); const char* _mk = " + ckx + "; int32_t _mi = 1; int _sf = 0; while (_mi + 1 < _mp->n) \{ if (" + ceq + ") \{ _sf = 1; break; } _mi += 2; } _sf; })"
+                }
+            }
+            if m == "contains" {
+                var c2_objt = ct_typeof(cal[1], env, file)
+                if c2_objt.len > 1 && byte_at(c2_objt, 0) == 83 {
+                    if ag.len < 2 { panic("emit:contains arity") }
+                    var cec = byte_slice(c2_objt, 1, 2)
+                    var cex = ct_ms_wrap(cec, ct_expr(ag[1], env, file))
+                    var ceq2 = ct_ms_eq(cec, "_sp->items[_si]", "_sk")
+                    return "(\{ ctron_list* _sp = (ctron_list*)(" + obj + "); const char* _sk = " + cex + "; int32_t _si = 1; int _sf = 0; while (_si < _sp->n) \{ if (" + ceq2 + ") \{ _sf = 1; break; } _si += 1; } _sf; })"
+                }
+            }
+            if or2(m == "keys", m == "values") {
+                var k_objt = ct_typeof(cal[1], env, file)
+                if k_objt.len > 2 && byte_at(k_objt, 0) == 77 {
+                    var koff = "0"
+                    if m == "values" { koff = "1" }
+                    return "(\{ ctron_list* _mp = (ctron_list*)(" + obj + "); ctron_list* _mr = ctron_list_new(); int32_t _mi = 1; while (_mi + 1 < _mp->n) \{ ctron_list_push(_mr, _mp->items[_mi + " + koff + "]); _mi += 2; } _mr; })"
                 }
             }
             if m == "into_gc" {
@@ -1699,11 +1787,8 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 if or2(objt == "L", ct_is_tlcode(objt)) {
                     return "((ctron_list*)(" + obj + "))->n"
                 }
-                // R-P2a:Map/Set len(cx[0] = marker,键值对/成员 = (n-1)/2)
-                if objt.len > 2 && byte_at(objt, 0) == 77 && byte_at(objt, 1) == 83 {
-                    return "((ctron_list*)(" + obj + "))->n / 2"
-                }
-                if objt.len > 1 && byte_at(objt, 0) == 77 { return "((ctron_list*)(" + obj + "))->n - 1" }
+                // R-P2a:Map/Set len(cx[0] = marker,键值对 = n/2 整除,成员 = n-1)
+                if objt.len > 1 && byte_at(objt, 0) == 77 { return "((ctron_list*)(" + obj + "))->n / 2" }
                 if objt.len > 1 && byte_at(objt, 0) == 83 { return "((ctron_list*)(" + obj + "))->n - 1" }
                 if objt.len >= 3 && byte_slice(objt, 0, 1) == "a" {
                     return a_count(objt)
