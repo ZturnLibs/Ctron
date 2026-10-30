@@ -644,6 +644,12 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 return ""
             }
             if base[0] == "Ident" && base[1] == "List" { return "ctron_list_new()" }
+            // R-P2a:Map/Set 空容器(marker 槽 cx[0];与 eval cx 布局一致)
+            if base[0] == "Ident" && or2(base[1] == "Map", base[1] == "Set") {
+                var mst = "S"
+                if base[1] == "Map" { mst = "M" }
+                return "(\{ ctron_list* _mm = ctron_list_new(); ctron_list_push(_mm, \"" + mst + "\"); (ctron_list*)_mm; })"
+            }
             // IP-01 W2b:downcast[E](e: AnyError) -> Option[E](§5.4;判别只在调用点,
             // 魔数+tname 比对,载荷指针回交 ct_res Ok 槽;未命中 None)
             if base[0] == "Ident" && base[1] == "downcast" {
@@ -1693,6 +1699,12 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 if or2(objt == "L", ct_is_tlcode(objt)) {
                     return "((ctron_list*)(" + obj + "))->n"
                 }
+                // R-P2a:Map/Set len(cx[0] = marker,键值对/成员 = (n-1)/2)
+                if objt.len > 2 && byte_at(objt, 0) == 77 && byte_at(objt, 1) == 83 {
+                    return "((ctron_list*)(" + obj + "))->n / 2"
+                }
+                if objt.len > 1 && byte_at(objt, 0) == 77 { return "((ctron_list*)(" + obj + "))->n - 1" }
+                if objt.len > 1 && byte_at(objt, 0) == 83 { return "((ctron_list*)(" + obj + "))->n - 1" }
                 if objt.len >= 3 && byte_slice(objt, 0, 1) == "a" {
                     return a_count(objt)
                 }

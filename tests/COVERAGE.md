@@ -3990,3 +3990,17 @@ or 臂 R 码分支(接收者绑 _co 单次,消双求值;载荷经 ct_i 槽按默
 (get or 链全绿;上轮 139 = or 臂 R 分支落地前产物,陈旧缓存假信号)。
 native_suite skip 精化:list 去 skip(native 绿);map/set 维持(Map/Set
 发射面在册 T25 v2);fb9_tuple cc 编译失败 = 既有族(早于本会话)。
+
+## 2026-10-30 终:or 臂 R 码单求值 + List get/set/pop 臂重装落地——t56_container_list native 端到端绿
+
+上轮"臂回退"实为**陈旧 T20 缓存假信号**(守卫加宽版从未真正实测)。
+本轮清缓存重测:三臂正常进门(守卫 = L 前缀 byte 76),or 臂 R 码单求值
+分支(`_co` 单绑定)消 pop 双求值根因——**t56_container_list native rc=0
+两臂逐字一致端到端绿**(get().or 链全绿)。
+
+native_suite skip 精化:list/send 去 skip(native 绿);map/set 维持
+(Map/Set 发射面 = ct_map 运行时,在册 T25 v2 余件);t57 去 skip(Clock
+发射面已落)。
+
+**登记债**:①Map/Set 发射面(ct_map 运行时 + 方法臂);②or 臂 _co 嵌套
+链二次 or 名冲突(语料避);③C 宿主 main-less/Clock 分发(归档泳道)。
