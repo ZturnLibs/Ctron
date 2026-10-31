@@ -4145,3 +4145,21 @@ panic 实证;首测容器值经名复用/共享态渗入次测)。三层缺陷�
 **处置**:③ = compiled-eval 测试驭动 env/arena 生命周期审计批(独立,
 须 lldb 脚本化/常驻 in-source 断点设施);①已销;②维持原始界。
 t56/t57 cc 面前置 = ③;Rust native_suite 全量入面(56/0)不受涉。
+
+## 2026-10-31 终:GC 默认关落地 + 编译形态容器面审计批收口
+
+**GC 默认关(v1 契约回归)**:`ct_gc_enabled` 翻转——发射二进制默认
+`CTRON_GC=0`(纯 arena,「解释器堆不回收」在册契约),`CTRON_GC=1`
+选入 T31 实验面。依据:收集器根集(ct_frn 池 + 条件保守栈扫)对
+解释器深帧/跨测试持有存在洞,阈值触发即回收活容器 = UAF(CTRON_GC=0
+下 139/SEGV 全灭实证)。
+
+**编译形态容器面审计批终局**(黑盒矩阵终界):探针矩阵
+(Set[I32]/Set[Str]/Map insert·get·or·len·contains·keys·values 隔离形)
+全绿;全语料(map t3 remove-or 链 + t4 keys/values/for)残余
+「method:remove」——内联 `remove().or()` 链与 let 绑定分叉 + 内部
+`mp.remove` 再派发(标记容器方法调用重入 call_mem 对应臂)的交互,
+须源级调试会话(eval 侧状态 vs Rust 参照逐操作对拍)。审计产出 =
+编码约定全图谱(v_box/v_unbox 盒编码贯穿、cx 标记表 L/M/ST/A/SB/MUX/T、
+编译面 .len = 裸 ->n、vals = v_box 编码)+ 快径验证环
+(emit 2min + cc 6s + ASAN/lldb)。t56/t57 cc 面前置维持。
