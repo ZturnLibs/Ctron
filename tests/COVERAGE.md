@@ -4163,3 +4163,13 @@ t56/t57 cc 面前置 = ③;Rust native_suite 全量入面(56/0)不受涉。
 编码约定全图谱(v_box/v_unbox 盒编码贯穿、cx 标记表 L/M/ST/A/SB/MUX/T、
 编译面 .len = 裸 ->n、vals = v_box 编码)+ 快径验证环
 (emit 2min + cc 6s + ASAN/lldb)。t56/t57 cc 面前置维持。
+
+## 2026-10-31 终补:槽编码伤布局敏感定谳(ASAN 过/-O1·O2 挂)+ cc 面入面回退
+
+终态定量:新 bin(-O2)与 -O1、-O1+ASAN 三构建同源同语料——ASAN 构建全绿
+(槽访问合法,非内存违例),-O1/-O2 裸构建 map/set rc=1「method:remove」
+确定性挂 → **槽编码逻辑伤随分配布局漂移**(盒槽指针链在 -O2 内联/寄存器
+持有下的语义分叉),ASAN 不可见。t56/t57 cc 面入面回退(suite.py skip
+恢复,注释登记),Rust 面全量入面维持。审计批工具链终态:快径
+emit(2min)+cc(6s)+ASAN/-O1/-O2 三构建矩阵 + lldb 断点脚本,
+下批入口 = 源级调试会话(eval 状态 vs Rust 参照逐操作对拍)。

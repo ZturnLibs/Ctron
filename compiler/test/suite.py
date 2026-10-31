@@ -94,9 +94,9 @@ gaps, disagree, bothfail = [], [], []
 for kind, pat in CATS:
     for path in sorted(glob.glob(os.path.join(TESTS, pat))):
         base = os.path.basename(path)
-        # T25 v2 后件(2026-10-31):t56/t57 的 cc 面 = 自举 bin 编译形态 eval
-        # ——Set ctor 派发/Map insert 派发/ctor 后 len SEGV 三个余债在册
-        # (Rust native_suite 已全量入面 56/0;t57 cc 面单测 rc=0 随批可入)。
+        # T25 v2 后件(2026-10-31):t56/t57 cc 面(自举 bin 编译形态 eval)残余
+        # 布局敏感缺陷(ASAN 过/-O1·O2 挂的槽编码逻辑伤,审计批在册
+        # COVERAGE 2026-10-31 终)→ 维持跳过;Rust native_suite 56/0 已全量入面。
         # t58 = R 线 NegGreen 锚(检查面 Rust check_suite 驱动),维持跳过
         if base.startswith("t56_container") or base.startswith("t57_time") or base.startswith("t58_"):
             continue
