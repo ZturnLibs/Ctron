@@ -1426,8 +1426,9 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 envw = env_bind(envw, nm, ty)
                 if ty.len > 2 && byte_slice(ty, 0, 2) == "u:" {
                     if has_drop_impl(file, byte_slice(ty, 2, ty.len)) {
-                        // while 体绑定泄漏到外层(eval keep=true):drop 挂外层,循环出口不发
-                        envw = dls_add(envw, nm, ty)
+                        // While+Drop(2026-10-31):drop 栈单机制(注册一次;break/
+                        // 正常出口经 unwind_mark(0) 析构末值;不入 dls——dls_pop_emit
+                        // 与 unwind 双机制叠加 = 双析构实证 2026-10-31)
                         eln("ctron_drop_push(ctron_dth_" + byte_slice(ty, 2, ty.len) + ", &t_" + nm + ");", env)
                     }
                 }
@@ -1453,8 +1454,9 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             }
             hi += 1
         }
-        // 非提升 Drop 局部响亮拒发(C 花括号出口时序 ≠ eval 泄漏语义)
-        dls_reject_unhoisted(body, envw, file, hl, "emit:while 体")
+        // While+Drop 提升面(2026-10-31):u: Drop 局部已入提升候选
+        // (ct_hoists 放行;零初始化 + ctron_drop_push + dls 逆序发射 =
+        // 析构一次于外层出口,中间迭代值按 v1 泄漏契约不析构)
         eln("if (ct_frn.spn < 32) \{ ct_frn.sv[ct_frn.spn] = ct_frn.pn; ct_frn.spn += 1; }", env)
         eln("while (" + ct_expr(st[1], envw, file) + ") \{", env)
         var benv = ct_stmts(body, envw, file, hl, hreg)
@@ -1466,7 +1468,8 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             ct_stmt(es, benv, file, hreg)
         }
         eln("}", env)
-        eln("ctron_drop_pop();", env)
+        // While+Drop:正常出口析构末值 + 消哨(break/continue 路径已在 unwind_mark 消化)
+        eln("ctron_drop_unwind_mark(0);", env)
         eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -= 1; }", env)
         if cand.len > 0 {
             eln("}", env)
