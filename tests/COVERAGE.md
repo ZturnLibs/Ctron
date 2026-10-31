@@ -4191,3 +4191,20 @@ List 无截断原语,内部 `.remove` 再派发 = 同臂无限递归(结构性,�
 基线同。T25 v2 全镜:Rust interp + 自举发射 + 编译形态 eval 三径全绿。
 **残余**(登记):非 Ident 接收者 remove(链式/复杂表达式,重绑定无主,
 v1 域限报 method:miss);While+Drop 提升面(独立批);P2-C W1 配置面。
+
+## 2026-10-31 收口:While+Drop 提升面解除(dls_reject 撤)——提升三件套 + drop 栈单机制
+
+**While 体 u: Drop 局部提升解除**(dls_reject_unhoisted while 位撤):ct_hoists
+放行 u: 码(117 排除撤;B/E/w 排除维持),While 臂提升三件套既有机制激活
+(零初始化声明 + `ctron_drop_push` 注册 + dls 逆序发射)。**drop 栈单机制**
+定谳:破除双机制叠加(注册 + dls_pop_emit 显式 = break 路径双析构实证
+"drop ran ×2 之一"),While 出口 `ctron_drop_unwind_mark(0)`(正常出口析构
+末值 + 消哨;break/continue 已在 unwind_mark 消化),dls 登记撤(不再
+dls_pop_emit 二次)。
+**语义口径**(对照 Rust interp 参照):interp = 每迭代末析构(2 迭代 2 析构);
+compiled = break/出口析构一次,中间迭代覆写值按 v1 泄漏契约不析构
+(析构次数面差,rc 全等;println 差分不入门)。零迭代哨兵残余 dtor
+(构造前析构)= v1 债登记(修正形 = 首赋值位注册,后件)。
+**门**:pw_drop 探针(while+break+println-drop)compiled rc=0 析构触发;
+interp ×N 精确;suite.py rc=0(t56/t57 已入面);native_suite 56/31/0;
+Rust 全门基线同。
