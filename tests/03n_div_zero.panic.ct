@@ -1,0 +1,9 @@
+// 03n_div_zero.panic.ct —— W2(2026-10-31):I32 除零 parity 钉
+// (四引擎 panic 对齐:interp/compiled-eval/bootstrap-emit(w_div 零门)/
+// Rust-emit(ct_div 零门);除零 UB 类闭合钉)
+//@ panic: division by zero
+
+test "i32 div zero panics" {
+    let a: I32 = 1
+    let _ = a / 0
+}

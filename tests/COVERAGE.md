@@ -4264,3 +4264,11 @@ sed 改(edit 工具模糊匹配混入 `\}` 三度实证,E1001);验证 = 快径�
 (探针/语料/ASAN/-O1/-O2)。
 **门**:pw_drop while+break 析构触发 rc=0;ps25/04e/probe_ops 全绿;
 suite.py rc=0(t56/t57 已入面);native_suite 57/31/0;Rust 全门基线同。
+
+## 2026-10-31 钉:03n_div_zero.panic.ct——I32 除零 parity 钉(四引擎,零代码)
+除零面四引擎本已对齐(interp/compiled-eval/bootstrap-emit w_div 零门/
+Rust-emit ct_div 零门),钉子入差分面固化:native_suite 58/31/0;panic 面
+四径 rc 对齐。会话收口:本日 15 提交(容器三伤全灭/While+Drop 终形/t56
+t57 入面/I32 检查算术 parity ×2 钉/P2-C W1+W2/审计批工具链);下一批
+入口 = P2-D 批① span 线程化(Rust AST ~40 变体 + parser 直传 + check
+91 点,专窗)。
