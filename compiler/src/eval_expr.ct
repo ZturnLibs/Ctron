@@ -283,7 +283,7 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> Flow {
                     if seq2(cx_of(recv)[0], "M") {
                         return e4("k", ob.env, vI((cx_of(recv).len - 1) / 2), ob.out)
                     }
-                    if seq2(cx_of(recv)[0], "S") {
+                    if seq2(cx_of(recv)[0], "ST") {
                         return e4("k", ob.env, vI(cx_of(recv).len - 1), ob.out)
                     }
                 }

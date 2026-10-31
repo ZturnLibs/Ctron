@@ -1809,7 +1809,7 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
             if seq2(m, "remove") && vals.len == 1 {
                 var ivv = v_unbox(vals[0])
                 var idx = ivv.iv.as[I32]()
-                if idx < 0 || idx >= lst.len {
+                if idx < 0 || idx >= lst.len - 1 {
                     panic("index out of bounds")
                 }
                 lst.remove(idx + 1)
@@ -1822,7 +1822,7 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
             if seq2(m, "insert") && vals.len == 2 {
                 var ki: I32 = -1
                 var ii: I32 = 1
-                while ii + 1 < mp.len * 2 + 1 {
+                while ii + 1 < mp.len {
                     if veq(v_unbox(mp[ii]), v_unbox(vals[0])) { ki = ii }
                     ii += 2
                 }
@@ -1837,7 +1837,7 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
             if or2(seq2(m, "get"), seq2(m, "remove")) && vals.len == 1 {
                 var ki: I32 = -1
                 var ji: I32 = 1
-                while ji + 1 < mp.len * 2 + 1 {
+                while ji + 1 < mp.len {
                     if veq(v_unbox(mp[ji]), v_unbox(vals[0])) { ki = ji }
                     ji += 2
                 }
@@ -1859,7 +1859,7 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
             if seq2(m, "contains_key") && vals.len == 1 {
                 var hit = false
                 var ii: I32 = 1
-                while ii + 1 < mp.len * 2 + 1 {
+                while ii + 1 < mp.len {
                     if veq(v_unbox(mp[ii]), v_unbox(vals[0])) { hit = true }
                     ii += 2
                 }
@@ -1869,7 +1869,7 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
                 var kl = List[Str]()
                 kl.push("L")
                 var ii: I32 = 1
-                while ii + 1 < mp.len * 2 + 1 {
+                while ii + 1 < mp.len {
                     kl.push(mp[ii])
                     ii += 2
                 }
@@ -1879,7 +1879,7 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
                 var vl = List[Str]()
                 vl.push("L")
                 var ii: I32 = 2
-                while ii < mp.len * 2 + 1 {
+                while ii < mp.len {
                     vl.push(mp[ii])
                     ii += 2
                 }
@@ -1887,12 +1887,12 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
             }
         }
         // R-P2a:Set 方法面(insert→Bool 新增性/contains/remove→Bool)
-        if seq2(cx_of(recv)[0], "S") {
+        if seq2(cx_of(recv)[0], "ST") {
             var st = cx_of(recv)
             if seq2(m, "insert") && vals.len == 1 {
                 var hit = false
                 var ii: I32 = 1
-                while ii < st.len + 1 {
+                while ii < st.len {
                     if veq(v_unbox(st[ii]), v_unbox(vals[0])) { hit = true }
                     ii += 1
                 }
@@ -1905,7 +1905,7 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
             if seq2(m, "contains") && vals.len == 1 {
                 var hit = false
                 var ii: I32 = 1
-                while ii < st.len + 1 {
+                while ii < st.len {
                     if veq(v_unbox(st[ii]), v_unbox(vals[0])) { hit = true }
                     ii += 1
                 }
@@ -1913,7 +1913,7 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
             }
             if seq2(m, "remove") && vals.len == 1 {
                 var ii: I32 = 1
-                while ii < st.len + 1 {
+                while ii < st.len {
                     if veq(v_unbox(st[ii]), v_unbox(vals[0])) {
                         // 内部 remove(k) = 删 cx 槽 k+1:命中槽 ii → remove(ii - 1)
                         st.remove(ii - 1)
@@ -2161,7 +2161,7 @@ fn eval_call(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> Flow {
         }
         if base[0] == "Ident" && seq2(base[1], "Set") {
             var sv = List[Str]()
-            sv.push("S")
+            sv.push("ST")
             return e4("k", env2, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(sv) }, out2)
         }
         if base[0] == "Ident" && seq2(base[1], "Atomic") {
