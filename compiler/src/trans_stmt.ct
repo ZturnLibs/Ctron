@@ -1181,6 +1181,27 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
     }
     if t == "Assign" {
         var tgt = st[1]
+        // While+Drop 首赋值注册(哨卫一次性;零迭代不注册 = 无幻析构)
+        if tgt[0] == "Ident" {
+            var wd9 = ct_env_ty(env, "#whdrop:" + tgt[1])
+            if wd9.len > 0 {
+                var p1 = -1
+                var p2 = -1
+                var k9: I32 = 0
+                while k9 < wd9.len {
+                    if byte_at(wd9, k9) == 64 {
+                        if p1 < 0 { p1 = k9 } else { p2 = k9 }
+                    }
+                    k9 += 1
+                }
+                if p1 > 0 && p2 > p1 {
+                    var wcn = byte_slice(wd9, 0, p1)
+                    var wdth = byte_slice(wd9, p1 + 1, p2)
+                    var wwf = byte_slice(wd9, p2 + 1, wd9.len)
+                    eln("if (!" + wwf + ") \{ ctron_drop_push(" + wdth + ", &" + wcn + "); " + wwf + " = 1; }", env)
+                }
+            }
+        }
         if tgt[0] == "Index" {
             // 索引赋值:目标 List/节点,元素槽 char*
             var tc0 = ct_typeof(tgt[1], env, file)
@@ -1426,10 +1447,10 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 envw = env_bind(envw, nm, ty)
                 if ty.len > 2 && byte_slice(ty, 0, 2) == "u:" {
                     if has_drop_impl(file, byte_slice(ty, 2, ty.len)) {
-                        // While+Drop(2026-10-31):drop 栈单机制(注册一次;break/
-                        // 正常出口经 unwind_mark(0) 析构末值;不入 dls——dls_pop_emit
-                        // 与 unwind 双机制叠加 = 双析构实证 2026-10-31)
-                        eln("ctron_drop_push(ctron_dth_" + byte_slice(ty, 2, ty.len) + ", &t_" + nm + ");", env)
+                        // While+Drop(2026-10-31):drop 栈注册移首赋值位(零迭代
+                        // 不注册 = 无幻析构);哨卫一次性;env 影条供 Assign 臂取
+                        envw = env_bind(envw, "#whdrop:" + nm, "t_" + nm + "@ctron_dth_" + byte_slice(ty, 2, ty.len) + "@t_whf_" + nm)
+                        eln("int t_whf_" + nm + " = 0;", env)
                     }
                 }
             } else {

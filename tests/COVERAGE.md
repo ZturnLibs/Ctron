@@ -4250,3 +4250,17 @@ Rust 全门基线同(check_suite 6 基线红)。
 门 ✓/interp ✓ 已对齐,无需语料钉);bench 逃生门(bench.sh 显式
 CTRON_CFG_EMIT_CHECKS=off,待排期);Rust 侧 off 逃生门(checked 本即默认,
 登记不加)。
+
+## 2026-10-31 收口:While+Drop 首赋值位注册(零迭代幻析构修复)+ 插桩规程化
+
+**While+Drop 终形**:提升三件套 = 零初始化声明 + `int t_whf_<nm> = 0` 哨卫
++ env 影条 `#whdrop:<nm>`(值 = cname@dth@whf 三段);**drop 栈注册移首赋值
+位**(Assign 臂顶哨卫钩:`if (!whf) { push; whf = 1; }`——C 层一次性,
+N 迭代 = 1 注册);break/出口 unwind 析构当前值 ✓;**零迭代/break 前无赋值
+= 无注册 = 无幻析构**(前形缺陷:提升位注册 → 零迭代幻析构实证)。
+**语义口径维持**:compiled 中间迭代覆写值不析构(v1 泄漏契约,析构次数面
+差 vs interp,rc 全等)。**规程沉淀**:trans_stmt 等自举源内字符串一律
+sed 改(edit 工具模糊匹配混入 `\}` 三度实证,E1001);验证 = 快径矩阵
+(探针/语料/ASAN/-O1/-O2)。
+**门**:pw_drop while+break 析构触发 rc=0;ps25/04e/probe_ops 全绿;
+suite.py rc=0(t56/t57 已入面);native_suite 57/31/0;Rust 全门基线同。
