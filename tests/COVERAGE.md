@@ -4173,3 +4173,21 @@ t56/t57 cc 面前置 = ③;Rust native_suite 全量入面(56/0)不受涉。
 恢复,注释登记),Rust 面全量入面维持。审计批工具链终态:快径
 emit(2min)+cc(6s)+ASAN/-O1/-O2 三构建矩阵 + lldb 断点脚本,
 下批入口 = 源级调试会话(eval 状态 vs Rust 参照逐操作对拍)。
+
+## 2026-10-31 收口:编译形态容器面源级调试会话闭环——三伤全灭,t56/t57 入 suite 行为面
+
+源级调试会话(框架变量 Dump + 源内插桩 + 快径矩阵)逐层闭环:
+①**Map/Set remove 重写** = APPEND-重建 + env 重绑定(命中键对跳过重建新 cx,
+`env_add(env, 接收者名, 新 Val)` 影子重绑定,Ident 接收者门控)——编译面
+List 无截断原语,内部 `.remove` 再派发 = 同臂无限递归(结构性,非语义伤),
+重建-重绑定 = 唯一安全删除形;Set remove 返回新增性 Bool 保持。
+②**Set remove 槽位正名**:内部 remove(k) 走 prop 路径 = 删槽 k 直语义
+(`st.remove(ii)` 删元素槽本位;旧 `ii - 1` 删标记槽 = cx[0] 变魔数逆序
+垃圾实证)。③Map remove 槽位对随 prop 语义回正(ki/ki)。
+④env_at_val 撤桩误伤修复(uv 未声明)。
+**门**:全新 bin/ctron-cc(10-31 19:43)下 t56_container_map/set/list/send
++ t57 + oob.panic 全族 rc=0;**suite.py rc=0 且 t56/t57 入行为面**
+(cc = 自举 bin,host = 同源 check+test);native_suite 56/31/0;Rust 全门
+基线同。T25 v2 全镜:Rust interp + 自举发射 + 编译形态 eval 三径全绿。
+**残余**(登记):非 Ident 接收者 remove(链式/复杂表达式,重绑定无主,
+v1 域限报 method:miss);While+Drop 提升面(独立批);P2-C W1 配置面。
