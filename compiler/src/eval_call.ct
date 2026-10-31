@@ -1847,9 +1847,24 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
                     tv.push("Some")
                     tv.push(mp[ki + 1])
                     if seq2(m, "remove") {
-                        // 内部 remove(k) = 删 cx 槽 k+1:先删值槽(ki+1)再删键槽(ki)
-                        mp.remove(ki)
-                        mp.remove(ki - 1)
+                        // APPEND-重建 + env 重绑定(2026-10-31 容器三伤终修):
+                        // 编译面 List 无截断原语,内部 .remove 再派发 = 同臂
+                        // 无限递归(RMENTER 矩阵实证)——命中键对跳过重建新 cx,
+                        // Ident 接收者 env_add 重绑定(影子最新者胜)
+                        var nm2 = List[Str]()
+                        nm2.push("M")
+                        var ii2: I32 = 1
+                        while ii2 + 1 < mp.len {
+                            if ii2 != ki {
+                                nm2.push(mp[ii2])
+                                nm2.push(mp[ii2 + 1])
+                            }
+                            ii2 += 2
+                        }
+                        if cal[1][0] == "Ident" {
+                            env = env_add(env, cal[1][1], Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(nm2) })
+                            ob.env = env
+                        }
                     }
                 } else {
                     tv.push("None")
@@ -1912,14 +1927,28 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
                 return e4("k", ob.env, vB(hit), ob.out)
             }
             if seq2(m, "remove") && vals.len == 1 {
+                // APPEND-重建 + env 重绑定(同 Map remove;返回新增性 Bool)
+                var hit: I32 = -1
                 var ii: I32 = 1
                 while ii < st.len {
-                    if veq(v_unbox(st[ii]), v_unbox(vals[0])) {
-                        // 内部 remove(k) = 删 cx 槽 k+1:命中槽 ii → remove(ii - 1)
-                        st.remove(ii - 1)
-                        return e4("k", ob.env, vB(true), ob.out)
-                    }
+                    if veq(v_unbox(st[ii]), v_unbox(vals[0])) { hit = ii }
                     ii += 1
+                }
+                var rm2 = List[Str]()
+                rm2.push("ST")
+                var ii2: I32 = 1
+                while ii2 < st.len {
+                    if ii2 != hit {
+                        rm2.push(st[ii2])
+                    }
+                    ii2 += 1
+                }
+                if hit > 0 {
+                    if cal[1][0] == "Ident" {
+                        env = env_add(env, cal[1][1], Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(rm2) })
+                        ob.env = env
+                    }
+                    return e4("k", ob.env, vB(true), ob.out)
                 }
                 return e4("k", ob.env, vB(false), ob.out)
             }

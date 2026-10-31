@@ -159,7 +159,8 @@ fn env_set(env: List[Str], nm: Str, val: Val) -> List[Str] {
 fn env_at_val(env: List[Str], nm: Str) -> Val {
     var en = env_at(env, nm)
     if en.len > 0 {
-        return v_unbox(en[1])
+        var uv = v_unbox(en[1])
+        return uv
     }
     return vV2()
 }
