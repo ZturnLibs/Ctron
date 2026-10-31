@@ -103,3 +103,4 @@ regkey "plugin.path" {
 regkey "plugin.codes" {
     type = "list"              // lint 形必填(W9xxx 第三方码先进表再使用,§10.6);derive 形禁止
 }
+

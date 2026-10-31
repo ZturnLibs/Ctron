@@ -8,6 +8,14 @@ ctron {
     config_version = 1
 }
 
+// P2-C W1:构建配置(ctc.sh 读 → E5043 校验 → CTRON_CFG_* env + 缓存键哈希;消费面 = W2)
+build {
+    profile = "full"
+    target = "native"
+    emit_checks = "on"
+    diag_collect = "on"
+}
+
 task "ex-gui-calc" {
     steps = ["mkdir -p build", "sh ../../vendor/gui/build.sh", "sh ../../compiler/ctc.sh build src/main.ct -o build/gui_calc.bin", "echo gui_calc: 构建+链接 OK - ctc build 自动链接", "env CTRON_GUI_HEADLESS=1 build/gui_calc.bin"]
     desc = "gui_calc 试点收编(原 run.sh 无条件核心:vendor 构建→ctc build 清单自动链接→headless 断言;产物 build/gui_calc.bin);真窗交互路径(--run)未收编:本任务跑绿后 cd examples/gui_calc 执行 build/gui_calc.bin 即开真窗口(不带 CTRON_GUI_HEADLESS,鼠标点按键,键盘 0-9 . + - * / = Enter ESC %)"

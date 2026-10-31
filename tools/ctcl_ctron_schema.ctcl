@@ -33,3 +33,30 @@ regkey "task.desc" {
 regkey "task.cwd" {
     type = "str"
 }
+
+// ---------- P2-C W1:构建配置(build 块;Ctron.ctcl 内;specs/2026-10-30-p2c-build-config-design.md D3 键集 v1) ----------
+// 语义:ctc.sh 读 → E5043 校验 → CTRON_CFG_* env 平铺 + cfg 哈希入 T20 缓存键(消费面 = W2)
+
+reg "build" {
+    kind = "record"
+}
+
+regkey "build.profile" {
+    type = "str"
+    pattern = "full|web|bare"
+}
+
+regkey "build.target" {
+    type = "str"
+    pattern = "native|thumbv7em-none-eabi|riscv32imac-unknown-none|wasm32-unknown-unknown"
+}
+
+regkey "build.emit_checks" {
+    type = "str"
+    pattern = "on|off"
+}
+
+regkey "build.diag_collect" {
+    type = "str"
+    pattern = "on|off"
+}

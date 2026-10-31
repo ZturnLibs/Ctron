@@ -4208,3 +4208,25 @@ compiled = break/出口析构一次,中间迭代覆写值按 v1 泄漏契约不�
 **门**:pw_drop 探针(while+break+println-drop)compiled rc=0 析构触发;
 interp ×N 精确;suite.py rc=0(t56/t57 已入面);native_suite 56/31/0;
 Rust 全门基线同。
+
+## 2026-10-31 收口:P2-C W1 配置面——build 块 + E5043 fail-closed + cfg 哈希入缓存键
+
+**W1 落地**(specs/2026-10-30-p2c-build-config-design.md W1;三伤审计批期间
+并行的低险面):①schema:`tools/ctcl_ctron_schema.ctcl` 增 `reg "build"` +
+四 regkey(profile/target/emit_checks/diag_collect;str + pattern 枚举;
+D3 键集 v1,点式键改下划线形 = W1 定谳,校验器深度 2 regkey 约定);
+②ctron.ctcl dogfood build 块(四键默认值);③ctc.sh:输入目录向上两级 +
+$ROOT 四点探测 Ctron.ctcl → ctcl_check.py 校验 fail-closed(E5043 族;
+未知键/非法值拒绝构建)→ awk/sed 平铺 `CTRON_CFG_*` env(消费面 = W2
+发射开关)→ `CTRON_GC` 式 cfg 哈希(`_cfg<sha12>`)追加 T20 缓存键
+(配置变更即键变即重译)。
+**冒烟**:键变循环(_diag on→off)= 缓存 _cfg 条目 1→2(键变实证);
+未知键 bogus_key → E5043 L17 + ctc.sh fail-closed rc=1;还原 rc=0。
+**门**:suite.py rc=0(t56/t57 已入面);ctcl_check --selftest ALL GREEN;
+ctron.ctcl E=0 W=0;native_suite 56/31/0。
+**设计偏差登记**:诊断码用既有 E5043(设计记录的 E5070 命名归并到清单
+校验器既有码族,不加平行码);分文件 Ctron.build.ctcl → 同文件 build 块
+(设计记录开放题定谳:schema pkg required=true 使独立文件需自带 pkg,
+单清单源更简);值文法 = CTCL 四类值的串形(裸标识符 = E5040 实证)。
+**W2 待排期**:CTRON_CFG_* 消费面(emit_checks → trans 算术臂选路、
+budget → 样板常量);CI 三线同构校验(python 参照外,Rust/自举线镜像)。

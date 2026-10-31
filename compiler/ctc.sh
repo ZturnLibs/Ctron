@@ -107,6 +107,30 @@ if [ ! -x "$HOST" ]; then
     echo "ctc.sh: 缺少宿主 seed $HOST(先: make -C \"$ROOT/compiler-c\")" >&2
     exit 2
 fi
+# P2-C W1:构建配置(Ctron.ctcl build 块;E5043 校验 fail-closed;CTRON_CFG_* env
+# 平铺 + cfg 哈希入 T20 缓存键——配置变更即键变即重译;消费面 = W2 发射开关)
+CFG_HASH=""
+if [ "$mode" != "targets" ] && [ "$mode" != "new" ] && [ -f "$1" ]; then
+    IND=$(CDPATH= cd -- "$(dirname -- "$1")" && pwd)
+    CFG_FILE=""
+    for _d in "$IND" "$IND/.." "$IND/../.." "$ROOT"; do
+        _d=$(CDPATH= cd -- "$_d" 2>/dev/null && pwd) || continue
+        [ -f "$_d/Ctron.ctcl" ] && CFG_FILE="$_d/Ctron.ctcl" && break
+    done
+    if [ -n "$CFG_FILE" ] && [ -f "$ROOT/tools/ctcl_check.py" ]; then
+        if ! python3 "$ROOT/tools/ctcl_check.py" "$CFG_FILE" >&2; then
+            echo "ctc.sh: 构建配置校验失败($CFG_FILE;E5043 族,fail-closed)" >&2
+            exit 1
+        fi
+        CFG_HASH=$( (shasum "$CFG_FILE" 2>/dev/null || sha256sum "$CFG_FILE" 2>/dev/null) | cut -d' ' -f1 | cut -c1-12)
+        _b=$(awk '/^build[ \t]*\{/{f=1;next} f && /^\}/{f=0} f' "$CFG_FILE" \
+            | sed 's/#.*//' | grep -E '^[ \t]*[a-z_]+[ \t]*=' \
+            | sed -E 's/^[ \t]*([a-z_]+)[ \t]*=[ \t]*"([^"]*)".*/\1=\2/')
+        for kv in $_b; do
+            export "CTRON_CFG_${kv%%=*}=${kv#*=}"
+        done
+    fi
+fi
 if [ "$mode" != "targets" ] && [ "$mode" != "new" ] && { [ $# -lt 1 ] || [ ! -f "$1" ]; }; then
     echo "用法: ctc.sh <input.ct> | ctc.sh check <input.ct> | ctc.sh emit <input.ct> [out.c] | ctc.sh fmt <input.ct> | ctc.sh doc <input.ct> [--format=json] | ctc.sh ast <input.ct> [--ast=dump] | ctc.sh build <input.ct> [--target native|thumbv7em-none-eabi|riscv32imac-unknown-none|wasm32-unknown-unknown] [-o bin] | ctc.sh new <dir> [--gui] | ctc.sh dep <Ctron.ctcl> | ctc.sh targets" >&2
     exit 2
@@ -454,7 +478,7 @@ case $mode in
         # v0.10 可移植:shasum 缺席(Linux 常态)回退 sha256sum;两者皆无 = 缓存禁用
         HB=$(command -v shasum 2>/dev/null || command -v sha256sum 2>/dev/null || true)
         if [ -n "$HB" ]; then
-            IN_HASH=$("$HB" "$IN" | cut -d' ' -f1)_$("$HB" "$DIR/build/cc_emit.ct" | cut -d' ' -f1 | cut -c1-12)
+            IN_HASH=$("$HB" "$IN" | cut -d' ' -f1)_$("$HB" "$DIR/build/cc_emit.ct" | cut -d' ' -f1 | cut -c1-12)${CFG_HASH:+_cfg$CFG_HASH}
         else
             IN_HASH=nocache$$
         fi
