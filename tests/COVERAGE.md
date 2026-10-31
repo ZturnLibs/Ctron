@@ -4230,3 +4230,23 @@ ctron.ctcl E=0 W=0;native_suite 56/31/0。
 单清单源更简);值文法 = CTCL 四类值的串形(裸标识符 = E5040 实证)。
 **W2 待排期**:CTRON_CFG_* 消费面(emit_checks → trans 算术臂选路、
 budget → 样板常量);CI 三线同构校验(python 参照外,Rust/自举线镜像)。
+
+## 2026-10-31 收口:P2-C W2 消费面——emit_checks 烛台贯通 + I32 主域检查算术 parity 钉
+
+**bootstrap 发射面**(trans_expr Binary 落底臂):I32 主域(329 裸 infix 落底
+= interp 溢出 panic/发射回绕的历史分歧点)→ 检查算术
+`ctron_w_add/sub/mul/div/mod`(I32 界 = (-2147483647 - 1)/2147483647 字面
+对;div/mod 零门 = 助手内建);cfg 烛台 = `ANCHORCFG`(ctc.sh emit sed 烙
+"on"/"off";seed 无 Env.get,ANCHOR 族 = 唯一零依赖注入形,未替换恒非 off
+= fail-toward-checked;`CTRON_CFG_EMIT_CHECKS=off` 逃生门 = 基准面)。
+**Rust 镜像零改**:trans.rs Int 算术本就 `ct_add(a,b,bits,us)` 全检
+(native_suite 56/0 正因于此)——分歧仅在 bootstrap 面,本批闭合。
+**parity 钉**:`tests/03m_i32_overflow.panic.ct`(I32 2147483647+1)——
+四引擎 panic 对齐(interp/compiled-eval/bootstrap-emit/Rust-emit 全族
+"integer overflow")。**门**:native.sh 全 bin 绿;native_suite **57/31/0**
+(+1 = parity 钉入差分面);suite.py rc=0(t56/t57 已入面 + 03m panic 面四径);
+Rust 全门基线同(check_suite 6 基线红)。
+**W2 余件**(登记):Div/Mod 除零 parity(Rust ct_div 门 ✓/bootstrap w_div
+门 ✓/interp ✓ 已对齐,无需语料钉);bench 逃生门(bench.sh 显式
+CTRON_CFG_EMIT_CHECKS=off,待排期);Rust 侧 off 逃生门(checked 本即默认,
+登记不加)。

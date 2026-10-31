@@ -326,6 +326,23 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if e[1] == "Div" { return "ctron_i64_div(" + a6 + ", " + b6 + ")" }
             if e[1] == "Mod" { return "ctron_i64_mod(" + a6 + ", " + b6 + ")" }
         }
+        // W2(2026-10-31):I32 主域检查算术(emit_checks;spec §4.5 默认检查;
+        // interp 溢出/除零 panic 对齐;CTRON_CFG_EMIT_CHECKS=off 逃生门 = 基准面)
+        if or2(lt == "i", rt6 == "i") {
+            // cfg 烛台 = ANCHORCFG(ctc.sh emit sed 烙 "on"/"off";未替换面
+            // 恒非 off = fail-toward-checked;seed 无 Env.get,ANCHOR 烛台
+            // = 唯一零依赖注入形,ANCHORINPUT/ANCHORLANG 同族)
+            var ckc = "ANCHORCFG"
+            if ckc != "off" {
+                var a8 = "(int32_t)(" + ct_expr(e[2], env, file) + ")"
+                var b8 = "(int32_t)(" + ct_expr(e[3], env, file) + ")"
+                if e[1] == "Add" { return "ctron_w_add(" + a8 + ", " + b8 + ", (-2147483647 - 1), 2147483647)" }
+                if e[1] == "Sub" { return "ctron_w_sub(" + a8 + ", " + b8 + ", (-2147483647 - 1), 2147483647)" }
+                if e[1] == "Mul" { return "ctron_w_mul(" + a8 + ", " + b8 + ", (-2147483647 - 1), 2147483647)" }
+                if e[1] == "Div" { return "ctron_w_div(" + a8 + ", " + b8 + ")" }
+                if e[1] == "Mod" { return "ctron_w_mod(" + a8 + ", " + b8 + ")" }
+            }
+        }
         return "(" + ct_expr(e[2], env, file) + " " + op + " " + ct_expr(e[3], env, file) + ")"
     }
     if t == "Index" {

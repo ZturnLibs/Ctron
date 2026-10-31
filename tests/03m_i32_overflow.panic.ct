@@ -1,0 +1,9 @@
+// 03m_i32_overflow.panic.ct —— W2(2026-10-31):I32 主域检查算术 parity 钉
+// (四引擎 panic 对齐:interp/compiled-eval/bootstrap-emit/Rust-emit;
+// 历史:bootstrap 发射面 I32 落裸 infix 回绕,与 interp panic 劈叉,本钉子闭合)
+//@ panic: overflow
+
+test "i32 add overflow panics" {
+    let a: I32 = 2147483647
+    let _ = a + 1
+}
