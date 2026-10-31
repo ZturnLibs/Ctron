@@ -4131,3 +4131,17 @@ t_eval_expr:35716 ← t_eval_call:39349)。Map 值同路径存活 = 编码巧合
 旧账"139 假信号" episodes 同族),须 in-source 编码审计批
 (eval_env 序列化格式 × v_box/v_unbox × ct_frn 池扫描三面),黑盒终界。
 三伤维持升格余债;t56/t57 cc 面前置不变。
+
+## 2026-10-31 终:三伤根因再深一层——跨测试状态污染(测试驭动 env 生命周期)
+
+ASAN+lldb+探针矩阵终局:`Set[I32]` 单测(insert/remove/len 全操作面)rc=0;
+同操作移入**多测文件第二测试位**即毁(值 cx 变乱码,`len target recv=<garbage>`
+panic 实证;首测容器值经名复用/共享态渗入次测)。三层缺陷链全景:
+①Set cx 标记 "S" 撞 v_unbox Str 盒标签 → 已修("ST",探针全绿);
+②扫描界/len 语义在「编译面 .len = 裸 ->n(含标记)」口径下原始界本对,
+  本批一次过修回退(试错界反而越界 +1);
+③**compiled-eval 测试驭动跨测试状态污染**(根因层)——次测容器值构造即毁,
+  与 ① 叠加成 SEGV/method:miss 双表现。
+**处置**:③ = compiled-eval 测试驭动 env/arena 生命周期审计批(独立,
+须 lldb 脚本化/常驻 in-source 断点设施);①已销;②维持原始界。
+t56/t57 cc 面前置 = ③;Rust native_suite 全量入面(56/0)不受涉。
