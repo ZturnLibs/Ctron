@@ -4287,3 +4287,13 @@ spn 32)+ diag.collect 过滤——v1 池触顶 = 静默跳过语义,无语料触
 **P2-D 批①入口包**(下一专窗):Rust AST ~40 变体加 span 字段 + parser.rs
 直传(构造点 ~100)+ check.rs 91 点 Span::new(1,1,0,0) 置换;批①②双镜
 同批纪律;验收 = 检查诊断 file:line:col 三态格式 + check_suite 快照翻转。
+
+## 2026-11-01:P2-D 批①定谳为专窗批(量测地形入册)+ 入口包落库
+
+量测定谳(grep 实测,非估计):Expr 结构模式匹配 ~92 处(check 46/trans 45/
+interp 25/parser 34)+ 构造点 ~50 + check 91 诊断点位 + Stmt 族 ≈ **150-200
+机械编辑横跨四热文件**——专窗批实证成立(评估三度,此次有数)。入口包落库:
+`docs/superpowers/specs/2026-11-01-p2d-batch1-span-entry-brief.md`(量测地形 +
+机械规程四切片 + 双镜纪律 + 验收三态),下一专窗零预热开工。本日收口:
+容器三伤全灭/While+Drop 终形/t56 t57 入面/I32 parity 钉 ×2/P2-C W1+W2/
+除零钉——16 提交,门全绿。
