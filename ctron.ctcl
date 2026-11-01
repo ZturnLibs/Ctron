@@ -12,7 +12,7 @@ ctron {
 build {
     profile = "full"
     target = "native"
-    emit_checks = "on"
+    emit_checks = "off"
     diag_collect = "on"
 }
 

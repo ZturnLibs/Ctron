@@ -4321,3 +4321,16 @@ cargo-JSON 驱动补丁器 v3(类驱动四类:unit→tuple 匹配补 (_)/模式�
 + 本自动化度量 = 专窗开场资产。**本日主线至此收官**(16+2 提交):
 容器三伤全灭/While+Drop 终形/t56 t57 入面/I32 parity 钉 ×2/P2-C W1+W2/
 除零钉/审计批工具链与入口包。下一专窗:P2-D 批①(188 人工位)。
+
+## 2026-11-01 终:W2 默认翻 off(loom 回归修复)——emit_checks = 选入式
+
+**loom 侧回归报告入注**(docs/2026-11-01-emit-oom-regression-report.md):
+fa966b98(W2 默认 on 烙入 native bin)→ loom 大闭包 OOM(rc=137)。
+**机制定谳**:native.sh 烙 ANCHORCFG candle 于构建时(repo ctron.ctcl "on"
+烘入 bin)——loom 的 CTRON_BIN env 不可达烙定字面,env 逃生门对 bin 无效。
+**裁决**:repo dogfood emit_checks "on"→"off"(与默认一致;checked 面 =
+CTRON_CFG_EMIT_CHECKS=on 显式运行协议,03m/03n 钉以此协议运行);
+native.sh 全量重建(0 错)后 t56/t57 全族 rc=0 全绿实测。
+**门**:native_build14 全 bin;t56/t57 五语料 rc=0;suite rc=0。
+**残余验证环注**:w_add grep ×1 残疑 = 本验证环 T20 缓存伪信号
+(非源态;权威判据 = 全新 bin 行为,已绿)。

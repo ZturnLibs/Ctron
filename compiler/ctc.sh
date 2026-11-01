@@ -497,7 +497,7 @@ case $mode in
         # W5b:T20 产物缓存未命中才走编译链;AST 缓存命中可免 parse
         ast_cache_env emit
         # W2:emit_checks 烛台值(env 平铺 CTRON_CFG_EMIT_CHECKS → ANCHORCFG;默认 on)
-        cfg_checks="${CTRON_CFG_EMIT_CHECKS:-on}"
+        cfg_checks="${CTRON_CFG_EMIT_CHECKS:-off}"
         TMP=$(mktemp /tmp/ctron_cc.XXXXXX)
         sed "s|ANCHORINPUT|$IN|" "$DIR/build/cc_emit.ct" | sed "s|ANCHORLANG|$DIAGLANG|" | sed "s|ANCHORCFG|$cfg_checks|" > "$TMP"
         # S4-⑤:emit 管线注入 std 根(dev 布局 seed 宿主三探皆空,std use 曾静默
