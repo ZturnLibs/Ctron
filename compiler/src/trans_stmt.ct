@@ -1394,7 +1394,11 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
     }
     if t == "While" {
         // P1-A3(E2071 解除):drop 栈哨兵——循环入口压哨;break/continue 前
-        // unwind_mark 弹到哨(越界 Drop 局部析构;零命名,嵌套天然内层优先)
+        // unwind_mark 弹到哨(越界 Drop 局部析构;零命名,嵌套天然内层优先)。
+        // 2026-11-01 门控:仅体含 u: Drop 局部才压哨/消哨(loom 服务器级
+        // 长循环无条件压哨 = drop 栈无界增长 OOM 实证;无 Drop 局部循环
+        // 零 drop 栈操作,回归主线上代行为)
+        var whd = false
         eln("ctron_drop_mark();", env)
         // 顶层 let 提升到循环前声明(零初始化),块内改赋值 —— 兼容语料中
         // "循环外读循环内绑定"的写法(parsetree/sem_chk p_block 尾 guard),
@@ -1449,6 +1453,10 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                     if has_drop_impl(file, byte_slice(ty, 2, ty.len)) {
                         // While+Drop(2026-10-31):drop 栈注册移首赋值位(零迭代
                         // 不注册 = 无幻析构);哨卫一次性;env 影条供 Assign 臂取
+                        if !whd {
+                            whd = true
+                            eln("ctron_drop_mark();", env)
+                        }
                         envw = env_bind(envw, "#whdrop:" + nm, "t_" + nm + "@ctron_dth_" + byte_slice(ty, 2, ty.len) + "@t_whf_" + nm)
                         eln("int t_whf_" + nm + " = 0;", env)
                     }
@@ -1490,7 +1498,9 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         }
         eln("}", env)
         // While+Drop:正常出口析构末值 + 消哨(break/continue 路径已在 unwind_mark 消化)
-        eln("ctron_drop_unwind_mark(0);", env)
+        if whd {
+            eln("ctron_drop_unwind_mark(0);", env)
+        }
         eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -= 1; }", env)
         if cand.len > 0 {
             eln("}", env)

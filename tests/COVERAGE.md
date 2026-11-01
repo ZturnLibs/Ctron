@@ -4334,3 +4334,15 @@ native.sh 全量重建(0 错)后 t56/t57 全族 rc=0 全绿实测。
 **门**:native_build14 全 bin;t56/t57 五语料 rc=0;suite rc=0。
 **残余验证环注**:w_add grep ×1 残疑 = 本验证环 T20 缓存伪信号
 (非源态;权威判据 = 全新 bin 行为,已绿)。
+
+## 2026-11-01 裁决终局:GC 默认 on 复归(a88fcea2 默认关回滚)——loom selftest 双模定量
+
+**双模定量**(loom-selftest full,重建后 bin):`CTRON_GC=1` → **rc=0,
+「64 checks, 0 failed」全绿**;`CTRON_GC=0` → **rc=137 OOM**(110s 超限杀,
+零输出)——GC 关 = 长跑 arena 无界增长 OOM 实证复现。
+**归因链修正**:a88fcea2「GC 默认关修容器 SEGV」= 归因错——容器三伤真因 =
+Set 标记撞车/槽位语义/标记槽吞噬(已独立修复),与收集器无关;GC 默认关
+反引入 loom 长跑 OOM(回归)。**裁决**:GC 默认复归 on(CTRON_GC=0/off
+选出式关闭维持,T31 实验面不变)。
+**门**:bins(native_build16)下 t56 全族 rc=0(03m/03n panic 面_rc=1 对齐);
+loom selftest GC=1 全绿;drv_parity/suite 前轮已绿。
