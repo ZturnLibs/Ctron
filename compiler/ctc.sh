@@ -127,7 +127,11 @@ if [ "$mode" != "targets" ] && [ "$mode" != "new" ] && [ -f "$1" ]; then
             | sed 's/#.*//' | grep -E '^[ \t]*[a-z_]+[ \t]*=' \
             | sed -E 's/^[ \t]*([a-z_]+)[ \t]*=[ \t]*"([^"]*)".*/\1=\2/')
         for kv in $_b; do
-            export "CTRON_CFG_${kv%%=*}=${kv#*=}"
+            # D1 优先级:env 先于文件(已设不覆写;bench 逃生门同款)
+            _k=${kv%%=*}
+            if [ -z "$(printenv "CTRON_CFG_$_k" 2>/dev/null)" ]; then
+                export "CTRON_CFG_$_k=${kv#*=}"
+            fi
         done
     fi
 fi

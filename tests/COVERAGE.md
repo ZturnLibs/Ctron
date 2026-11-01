@@ -4272,3 +4272,18 @@ Rust-emit ct_div 零门),钉子入差分面固化:native_suite 58/31/0;panic 面
 t57 入面/I32 检查算术 parity ×2 钉/P2-C W1+W2/审计批工具链);下一批
 入口 = P2-D 批① span 线程化(Rust AST ~40 变体 + parser 直传 + check
 91 点,专窗)。
+
+## 2026-11-01 收口:W2 逃生门/优先级验证 + W3 处置定谳(低 ROI 降级)
+
+**W2 验证补全**(方法论修正:先前 grep -c 计入助手定义行 ×1 底噪):
+`CTRON_CFG_EMIT_CHECKS=off` 发射 = 裸 infix(零 w_add 调用)✓;默认 on =
+w_add 调用 ×N ✓;优先级门 = env 先于文件(已设不覆写,printenv 门)✓;
+bench.sh 逃生门 = `export CTRON_CFG_EMIT_CHECKS=off`(S1 原生码生成基线
+数字与历史可比)✓。三态矩阵(off/on/未设)全通。
+**W3 处置定谳(低 ROI 降级)**:budget 池参数化(ct_drn 2048/ct_frn.pn 128/
+spn 32)+ diag.collect 过滤——v1 池触顶 = 静默跳过语义,无语料触顶实测,
+参数化 = 无消费者;重启条件 = 长跑工作负载触顶实测(镜像 COVERAGE:3572
+降级挂账范式)。W3 原验收「预算触顶 panic」= 语义新增非参数化,随批撤。
+**P2-D 批①入口包**(下一专窗):Rust AST ~40 变体加 span 字段 + parser.rs
+直传(构造点 ~100)+ check.rs 91 点 Span::new(1,1,0,0) 置换;批①②双镜
+同批纪律;验收 = 检查诊断 file:line:col 三态格式 + check_suite 快照翻转。

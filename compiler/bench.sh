@@ -9,6 +9,9 @@
 #
 # 用法: ./bench.sh
 set -u
+# P2-C W2 逃生门:基准面测未检查算术(emit_checks 文件默认 on 会拖累 S1
+# 原生码生成数字——历史基线可比性;D1 优先级 env > 文件)
+export CTRON_CFG_EMIT_CHECKS=off
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(dirname "$DIR")
 SEED="$ROOT/compiler-c/build/ctronc"
