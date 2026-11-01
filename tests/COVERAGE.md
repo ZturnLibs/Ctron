@@ -4297,3 +4297,16 @@ interp 25/parser 34)+ 构造点 ~50 + check 91 诊断点位 + Stmt 族 ≈ **150
 机械规程四切片 + 双镜纪律 + 验收三态),下一专窗零预热开工。本日收口:
 容器三伤全灭/While+Drop 终形/t56 t57 入面/I32 parity 钉 ×2/P2-C W1+W2/
 除零钉——16 提交,门全绿。
+
+## 2026-11-01 首片落地:P2-D 批①a——E2020 名字诊断真实行列(词法名→Span 表)
+
+**落地**(切片①a,零 parser/AST 改动):check_package 词法 Ident 流 →
+名字首现 Span 表(name_spans: HashMap<String, Span>)→ Checker 注入;
+E2020 未解析名/未解析类型两臂 = 表查实 Span(miss 回落 1:1)。
+**实证**:span_probe.ct(两未解析名,行 3/4 列 13)→ 诊断
+`file:line:col: E2020: 未解析的名称` 精确行列 ✓✓。
+**门**:check_suite 6 基线红同(方法缺臂未升级,登记);drv_parity
+136/0;native_suite 58/31/0;suite rc=0。
+**批①剩余**(后件):结构模式匹配 ~92 处 `..` 补齐 + 构造点 ~50 span 直传
+(全 Expr/Stmt 变体)→ 其余 89 诊断点位行列贯通;非名 E2020 臂
+(`X 无方法` 族,收者 span 需节点 span)。

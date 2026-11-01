@@ -861,8 +861,8 @@ pub fn check_package(
     manifest: Option<sem::Manifest>,
     profile: Profile,
 ) -> Vec<(String, Vec<Diagnostic>)> {
-    let parsed: Vec<(String, ast::File)> = files.iter()
-        .map(|(m, s)| (m.clone(), crate::parse_src(s).0)).collect();
+    let parsed: Vec<(String, ast::File, String)> = files.iter()
+        .map(|(m, s)| (m.clone(), crate::parse_src(s).0, s.clone())).collect();
     let (sema, mut per_module) = sem::build_package(files, manifest, profile);
 
     // 每模块的 fn id 表(body 检查用)
@@ -881,8 +881,18 @@ pub fn check_package(
             }
         }
     }
-    for (i, (mpath, ast_file)) in parsed.iter().enumerate() {
-        let mut c = Checker::new(&sema, mpath.clone(), tmap.clone());
+    for (i, (mpath, ast_file, src_string)) in parsed.iter().enumerate() {
+        // P2-D 批①前置:词法 Ident 流 → 名字首现 Span 表(E2020 行列诊断)
+        let mut name_spans: HashMap<String, Span> = HashMap::new();
+        {
+            let (toks, _) = crate::lex(src_string);
+            for t in &toks {
+                if let crate::token::Tok::Ident(n) = &t.tok {
+                    name_spans.entry(n.clone()).or_insert(t.span);
+                }
+            }
+        }
+        let mut c = Checker::new(&sema, mpath.clone(), tmap.clone(), name_spans);
         for d in &ast_file.decls {
             c.check_top(d, &mut checked);
         }
@@ -943,13 +953,16 @@ pub struct Checker<'a> {
     pure_dirty: Vec<bool>,
     /// §4.7 T27 E3070:各层闭包入口时的 scopes 栈深(绑定帧 idx < 顶基 = 捕获绑定)
     clo_bases: Vec<usize>,
+    /// P2-D 批①前置:名字 → 首现 Span(词法 Ident 流;E2020 未解析名行列诊断)
+    name_spans: HashMap<String, Span>,
 }
 
 impl<'a> Checker<'a> {
-    pub fn new(sema: &'a Sema, module: String, trait_method_alloc_map: HashMap<(String, String), bool>) -> Self {
+    pub fn new(sema: &'a Sema, module: String, trait_method_alloc_map: HashMap<(String, String), bool>, name_spans: HashMap<String, Span>) -> Self {
         let mut c = Checker {
             sema, subs: HashMap::new(), scopes: vec![HashMap::new()],
             diags: Vec::new(), module, cur_ret: Ty::Void, fresh: 0,
+            name_spans,
             moved: std::collections::HashSet::new(),
             handles: std::collections::HashSet::new(),
             in_own: false, no_alloc_ctx: false, no_spawn_ctx: false,
@@ -2444,7 +2457,8 @@ impl<'a> Checker<'a> {
                 if name == "arena" {
                     return self.named("Arena", vec![]);
                 }
-                self.err("E2020", format!("未解析的名称 `{}`", name), Span::new(1, 1, 0, 0));
+                let sp = self.name_spans.get(name).copied().unwrap_or_else(|| Span::new(1, 1, 0, 0));
+                self.err("E2020", format!("未解析的名称 `{}`", name), sp);
                 Ty::Err
             }
         }
@@ -2520,7 +2534,8 @@ impl<'a> Checker<'a> {
     fn check_struct_lit(&mut self, path: &[String], fields: &[ast::StructField]) -> Ty {
         let name = path.last().cloned().unwrap_or_default();
         let Some(def) = self.lookup_type(&name) else {
-            self.err("E2020", format!("未解析的类型 `{}`", name), Span::new(1, 1, 0, 0));
+            let tsp = self.name_spans.get(name.as_str()).copied().unwrap_or_else(|| Span::new(1, 1, 0, 0));
+            self.err("E2020", format!("未解析的类型 `{}`", name), tsp);
             return Ty::Err;
         };
         let param_vars: Vec<u32> = self.sema.defs[def].fields.iter()
