@@ -4367,3 +4367,85 @@ cargo check 门 + 人工多形位」推进,预计 4-8h。
 每点 ~15min 全量;粗二分 = 批边界,细二分 = 单提交);Ctron 侧门全绿维持
 (t56/t57 三径/03m 03n/suite/native_suite 58/31/0)。loom 侧临时回退 =
 CTRON_BIN=bfe5c621 构建(报告既有指引)。
+
+## 2026-11-02:语言层审计拨正——emit_checks 默认复归 on + 除零检查脱烛台门(f-emitchecks 分支)
+
+**审计命题**:loom 是 Ctron 的应用,其需求必须与语言自身规划/设计哲学一致;
+只做语言层工作,不为业务特化。全仓 loom 引用逐一过筛(FB 反哺批/GC 翻面/
+While+Drop/时钟 ns 面/u8s_str/容器三伤 = 语言级正当,loom 仅 dogfood 发现者;
+修的均为通用语义缺陷)。**两项违规定谳**:
+
+1. **9cd90360 emit_checks 默认翻 off = 业务特化**。理由链全部来自 loom OOM
+   回归;与 spec §4.5「默认检查算术」直接抵触;Rust 参考臂(trans.rs)与
+   native_suite 原生面本就默认 checked → C 工具链原生面与参考实现分叉(interp
+   panic / native 静默回绕 = 本仓 P0 定义「静默产生错误值」)。且归因后证伪:
+   d5a5be6f 双模双失败定谳 GC 非根因,36c8d8a8 与 9cd90360 两个默认旋钮均为
+   loom 症状驱动的误归因拨动。真实根因 = Oct-31 批内交互,二分专窗在案。
+2. **I32 Div/Mod 与溢出同门控 = 违反 spec §4.5「除零永不关」**。off 档裸 C
+   除法,除零 = SIGFPE 非干净 panic——spec 唯一「永不关」语义被破;I64 臂
+   ctron_i64_div/mod 恒检查,同语言两宽度口径不一。
+
+**拨正**(分支 f-emitchecks,基 d5a5be6f;主工作区由二分专窗持有,二分收口后并):
+- `compiler/src/trans_expr.ct`:I32 Div/Mod 脱 ANCHORCFG 烛台门恒检查
+  (off 档 = 溢出可关、除零不可关,I64 臂同口径);Add/Sub/Mul 溢出检查维持
+  门控(spec:release 可由构建配置关溢出检查)。
+- `compiler/ctc.sh`:烛台默认 `:-off` → `:-on`(spec §4.5 默认检查;env
+  逃生门维持,bench.sh 显式 off = 基准面协议不变)。
+- `ctron.ctcl`:build 块删 `emit_checks = "off"` 覆写,dogfood 回归默认路径
+  (默认漂移可被自宿门即时捕获)。
+- `docs/2026-11-01-emit-oom-regression-report.md`:归因链勘误入注。
+
+**探针拨出的第二层缺陷(同批修正)**:
+
+3. **W 域(I32)检查助手恒假 = 发射面检查算术从未真检**。`ctron_w_add/sub/mul`
+   原 `int32_t r = a+b; if (r < lo || r > hi)`——回绕后 r 恒落 [lo,hi](界门
+   恒假)且本体 C UB(-O1 常量折叠吞检);探针 `2147483647+1` DEFAULT 档
+   rc=0 静默回绕实证。修正 = int64_t 中间量 + 宽度界门(良定义、检查真实;
+   I64 臂 `__builtin_*_overflow` 本就正确,同族对齐)。
+4. **除法族 MIN/-1 硬件陷阱面无守卫**:`w_div/w_mod` 缺 `INT_MIN/-1` 守卫
+   (x86 SIGFPE 非干净 panic;ARM 静默 INT_MIN)。修正 = w_div/w_mod 恒守
+   (镜像 I64 臂 ctron_i64_div/mod 与其解释臂文本域守卫)+ `eval_val.ct`
+   I32 Div 族补同守卫(`integer overflow (/)/(%)`,消息逐字对齐 I64 口径)。
+5. **T20 缓存键缺 env 有效配置**:键 = 输入+发射模板+ctcl 文件哈希,不含
+   `CTRON_CFG_*` env——D1「env 先于文件」下 env 覆写后仍命中旧配置产物
+   (env-off 逃生门/bench 协议静默失效)。修正 = CTRON_CFG_* 全量(排序后)
+   入键。
+
+**登记不动**(非本批域,既有面):
+- I32 一元取负 `-INT_MIN`:解释臂与发射臂均裸回绕(两侧一致不劈叉),Neg
+  检查 = 未完成的 spec 面,留语言批。
+- `t56_container_list_oob.panic.ct`:interp 面消息错位("index target" ≠
+  "index out of bounds")+ native 面裸 `items[]` 无界(LI 臂)——T25 v2 在册
+  缺陷域(suite 对 t56_container* 明示跳过),非本审计引入。
+
+**W1/E5043 连带拨正(smoke 复入门骑出,同批修)**:
+- **ctc.sh 校验成功静默**:W1 起 `ctcl_check.py` PASS 输出常驻 stderr,捕获
+  stderr 的 smoke 步全量分歧 = 74 红(smoke 未入昨日门,漏检一日)。修 =
+  成功静默/失败诊断照出,fail-closed 不变。74 → 9。
+- **dep.blob 键 schema 漏登记 = blob 面断链**:S4-① 第四来源(工件
+  self_digest 内联)载具/驱动器/smoke 五步俱在,schema `dep` regkey/mutex
+  未含 blob → E5043 fail-closed 把正例/E5054 腿/E5049 腿/E5046 腿/driver
+  消解全拦死。修 = `regkey "dep.blob"`(pattern `sha256:[0-9a-f]{64}`,
+  畸形值 E5046)+ mutex 第四形 + E5049 文案补 blob。六步手工复验全绿
+  (t=12 正例/E5054 摘要精准拒/blob+version E5049/abc E5046)。
+
+**移交主线登记**(本批定性不动,基线即红、与 f-emitchecks diff 零交集):
+- smoke `自检 cc_run` decls 锁 538 → 实测 539:漂移早于 7c5571a4(全 src
+  fn 清单 7c5571a4==今),锁值陈旧,归因与「前注」补记归主线惯例。
+- `T35 值域未拦`:smoke 期望 E5040,ctcl_check 实发 E5046(键值 pattern 族
+  通用码)——E 码口径择一(专用码 E5040 vs 通用 E5046),归主线定谳。
+- `conc_with_expr 发射/编译失败`:同语句双 with 判别位失效,`t_wexp19_<bsum>`
+  同名双声明(基线生成 C 实证;fixture 无除法,f-emitchecks diff 惰性)——
+  T27-B ANF 命名判别需语句内站点序,归发射批。
+- `conc_time` 单步:前轮单发一次,终轮全门绿——负载 flake 定谳,非分歧。
+
+**终轮门**(2026-11-02,f-emitchecks 全链重建后):smoke 246 ok / 3 fail
+(余 = 上列三移交项,基线即红)/ suite 120/122 rc=0(缺 2 = cbox 链接既有)/
+drv_parity 136/0 / native_suite(Rust 参考臂)2/2 / t56 五语料 rc=0 / 四探针
+双模 + 解释臂 parity 逐字绿 / fx_time F64 混算原生==解释逐字一致。
+
+**验证面**(native.sh 全链重建后,四探针双模 + 全门):
+- 四探针(DEFAULT/OFF):溢出 = panic/静默回绕;除零 = 恒 panic;MIN/-1 =
+  恒 `integer overflow (/)`;正常算术双模 rc=0——解释臂 rc+消息逐字 parity。
+- smoke --full / suite.py / drv_parity / t56 五语料 rc=0(基线吻合)/
+  native_suite(Rust 参考臂)2/2。

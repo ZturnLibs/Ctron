@@ -279,6 +279,12 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             panic("emit:Simd 算术白名单外:" + e[1])
             return ""
         }
+        // F64 混算提升门(镜像 interp val_arith「逢 f 域整臂浮点」;2026-11-02 审计补:
+        // 宽度选臂只认自身类型码,`F64 × 整型` 落 i 臂 (int32_t) 截断——fx_time
+        // `SCALE*2==5` 原生 false 实证,默认 on 后暴露;裸 C 原生提升 = df_bin 同径)
+        if or2(lt == "f", ct_typeof(e[3], env, file) == "f") {
+            return "(" + ct_expr(e[2], env, file) + " " + op + " " + ct_expr(e[3], env, file) + ")"
+        }
         // W 域定宽检查算术(§3.1/§4.5;P1-B2):宽者定界,界门 panic 镜像 w_arith
         if lt.len > 2 && byte_at(lt, 0) == 119 {
             var wl = w_code_wider(lt, ct_typeof(e[3], env, file))
@@ -327,20 +333,30 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if e[1] == "Mod" { return "ctron_i64_mod(" + a6 + ", " + b6 + ")" }
         }
         // W2(2026-10-31):I32 主域检查算术(emit_checks;spec §4.5 默认检查;
-        // interp 溢出/除零 panic 对齐;CTRON_CFG_EMIT_CHECKS=off 逃生门 = 基准面)
+        // interp 溢出/除零 panic 对齐;CTRON_CFG_EMIT_CHECKS=off 逃生门 = 基准面)。
+        // 2026-11-02 语言层审计拨正:①9cd90360 默认翻 off 系 loom 业务回归
+        // 误归因旋钮(d5a5be6f 双模双失败定谳 GC 亦非根因),与 spec §4.5
+        // "默认检查"抵触且致 C 工具链原生面与 Rust 参考臂/interp 分叉,默认
+        // 复归 on;②spec §4.5 明文"除零永不关"——Div/Mod 脱烛台门恒检查
+        // (off 档裸 C 除法除零 = SIGFPE 非 panic,I64 臂 ctron_i64_div/mod
+        // 恒检查同口径):off 档 = 溢出可关、除零不可关。
         if or2(lt == "i", rt6 == "i") {
             // cfg 烛台 = ANCHORCFG(ctc.sh emit sed 烙 "on"/"off";未替换面
             // 恒非 off = fail-toward-checked;seed 无 Env.get,ANCHOR 烛台
             // = 唯一零依赖注入形,ANCHORINPUT/ANCHORLANG 同族)
             var ckc = "ANCHORCFG"
+            if or2(e[1] == "Div", e[1] == "Mod") {
+                var d8 = "(int32_t)(" + ct_expr(e[2], env, file) + ")"
+                var d9 = "(int32_t)(" + ct_expr(e[3], env, file) + ")"
+                if e[1] == "Div" { return "ctron_w_div(" + d8 + ", " + d9 + ")" }
+                return "ctron_w_mod(" + d8 + ", " + d9 + ")"
+            }
             if ckc != "off" {
                 var a8 = "(int32_t)(" + ct_expr(e[2], env, file) + ")"
                 var b8 = "(int32_t)(" + ct_expr(e[3], env, file) + ")"
                 if e[1] == "Add" { return "ctron_w_add(" + a8 + ", " + b8 + ", (-2147483647 - 1), 2147483647)" }
                 if e[1] == "Sub" { return "ctron_w_sub(" + a8 + ", " + b8 + ", (-2147483647 - 1), 2147483647)" }
                 if e[1] == "Mul" { return "ctron_w_mul(" + a8 + ", " + b8 + ", (-2147483647 - 1), 2147483647)" }
-                if e[1] == "Div" { return "ctron_w_div(" + a8 + ", " + b8 + ")" }
-                if e[1] == "Mod" { return "ctron_w_mod(" + a8 + ", " + b8 + ")" }
             }
         }
         return "(" + ct_expr(e[2], env, file) + " " + op + " " + ct_expr(e[3], env, file) + ")"

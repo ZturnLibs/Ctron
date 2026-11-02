@@ -311,7 +311,7 @@ def validate(blocks, ds, schema=None):
                                        % ("/".join(hit), "/".join(combo))))
                     hit = combo
             if hit is None:
-                ds.append(diag("E5049", b["ln"], "dep 需要且仅需要一种来源:path | git+rev | version"))
+                ds.append(diag("E5049", b["ln"], "dep 需要且仅需要一种来源:path | git+rev | version | blob"))
         if spec.get("required_keys"):
             # T49 member:E5051(规范 §6;非 E5047——member 是键控块,缺键属 workspace 块错族)
             present = {f["k"] for f in b["fields"]}

@@ -1800,6 +1800,14 @@ fn val_arith(op: Str, a: Val, b: Val) -> Val {
         if b.iv == 0 {
             panic("division by zero")
         }
+        // I32 MIN/-1 除法族溢出恒守(两补域硬件陷阱面,镜像 I64 文本域与
+        // ctron_i64_div/mod 恒守口径;2026-11-02 审计补)
+        if b.iv == -1 && a.iv == 0 - 2147483647 - 1 {
+            if or2(seq2(op, "Div"), seq2(op, "DivEq")) {
+                panic("integer overflow (/)")
+            }
+            panic("integer overflow (%)")
+        }
     }
     if or2(a.tag == 7, b.tag == 7) {
         return w_arith(op, a, b)

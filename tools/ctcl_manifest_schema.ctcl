@@ -21,7 +21,7 @@ reg "comptime" {
 reg "dep" {
     kind = "keyed"
     name_pattern = "[a-z][a-z0-9_-]*"        // 键控块名 = 包名;重复名 = E5045
-    mutex = ["path", "git+rev", "version"]   // 三来源互斥:恰取一组完整出现(E5049)
+    mutex = ["path", "git+rev", "version", "blob"]   // 四来源互斥:恰取一组完整出现(E5049;S4-① blob 第四形)
 }
 
 reg "plugin" {
@@ -89,6 +89,11 @@ regkey "dep.rev" {
 
 regkey "dep.version" {
     type = "str"
+}
+
+regkey "dep.blob" {
+    type = "str"
+    pattern = "sha256:[0-9a-f]{64}"   // S4-① 第四来源:工件 self_digest 内联;畸形值 = E5046
 }
 
 regkey "member.path" {

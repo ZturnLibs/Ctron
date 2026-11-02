@@ -118,10 +118,13 @@ if [ "$mode" != "targets" ] && [ "$mode" != "new" ] && [ -f "$1" ]; then
         [ -f "$_d/Ctron.ctcl" ] && CFG_FILE="$_d/Ctron.ctcl" && break
     done
     if [ -n "$CFG_FILE" ] && [ -f "$ROOT/tools/ctcl_check.py" ]; then
-        if ! python3 "$ROOT/tools/ctcl_check.py" "$CFG_FILE" >&2; then
+        # 校验成功静默(2026-11-02 审计修:W1 起 PASS 噪声入 stderr,捕获
+        # stderr 的 smoke 步全量输出分歧 = 74 红);失败诊断照出,fail-closed 不变
+        _cfgout=$(python3 "$ROOT/tools/ctcl_check.py" "$CFG_FILE" 2>&1) || {
+            echo "$_cfgout" >&2
             echo "ctc.sh: 构建配置校验失败($CFG_FILE;E5043 族,fail-closed)" >&2
             exit 1
-        fi
+        }
         CFG_HASH=$( (shasum "$CFG_FILE" 2>/dev/null || sha256sum "$CFG_FILE" 2>/dev/null) | cut -d' ' -f1 | cut -c1-12)
         _b=$(awk '/^build[ \t]*\{/{f=1;next} f && /^\}/{f=0} f' "$CFG_FILE" \
             | sed 's/#.*//' | grep -E '^[ \t]*[a-z_]+[ \t]*=' \
@@ -482,7 +485,11 @@ case $mode in
         # v0.10 可移植:shasum 缺席(Linux 常态)回退 sha256sum;两者皆无 = 缓存禁用
         HB=$(command -v shasum 2>/dev/null || command -v sha256sum 2>/dev/null || true)
         if [ -n "$HB" ]; then
-            IN_HASH=$("$HB" "$IN" | cut -d' ' -f1)_$("$HB" "$DIR/build/cc_emit.ct" | cut -d' ' -f1 | cut -c1-12)${CFG_HASH:+_cfg$CFG_HASH}
+            # D1 优先级 env 先于文件 → 有效配置含 CTRON_CFG_* env,必须入键
+            # (2026-11-02 审计补:旧键仅含文件哈希,env 覆写后仍命中旧配置
+            # 产物——off 逃生门/bench 协议静默失效)
+            _cfgenv=$(printenv | grep '^CTRON_CFG_' | sort | "$HB" | cut -d' ' -f1 | cut -c1-12 || true)
+            IN_HASH=$("$HB" "$IN" | cut -d' ' -f1)_$("$HB" "$DIR/build/cc_emit.ct" | cut -d' ' -f1 | cut -c1-12)${CFG_HASH:+_cfg$CFG_HASH}${_cfgenv:+_env$_cfgenv}
         else
             IN_HASH=nocache$$
         fi
@@ -497,7 +504,7 @@ case $mode in
         # W5b:T20 产物缓存未命中才走编译链;AST 缓存命中可免 parse
         ast_cache_env emit
         # W2:emit_checks 烛台值(env 平铺 CTRON_CFG_EMIT_CHECKS → ANCHORCFG;默认 on)
-        cfg_checks="${CTRON_CFG_EMIT_CHECKS:-off}"
+        cfg_checks="${CTRON_CFG_EMIT_CHECKS:-on}"
         TMP=$(mktemp /tmp/ctron_cc.XXXXXX)
         sed "s|ANCHORINPUT|$IN|" "$DIR/build/cc_emit.ct" | sed "s|ANCHORLANG|$DIAGLANG|" | sed "s|ANCHORCFG|$cfg_checks|" > "$TMP"
         # S4-⑤:emit 管线注入 std 根(dev 布局 seed 宿主三探皆空,std use 曾静默
