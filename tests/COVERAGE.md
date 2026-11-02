@@ -4434,15 +4434,17 @@ While+Drop/时钟 ns 面/u8s_str/容器三伤 = 语言级正当,loom 仅 dogfood
   fn 清单 7c5571a4==今),锁值陈旧,归因与「前注」补记归主线惯例。
 - `T35 值域未拦`:smoke 期望 E5040,ctcl_check 实发 E5046(键值 pattern 族
   通用码)——E 码口径择一(专用码 E5040 vs 通用 E5046),归主线定谳。
-- `conc_with_expr 发射/编译失败`:同语句双 with 判别位失效,`t_wexp19_<bsum>`
-  同名双声明(基线生成 C 实证;fixture 无除法,f-emitchecks diff 惰性)——
-  T27-B ANF 命名判别需语句内站点序,归发射批。
+- `conc_with_expr`:**已修**(同批第二笔)——真因 = 各宽度选臂先提操作数
+  ct_expr 串再按算符分发,比较类算符不消费 → 穿透裸 infix 回退时操作数
+  二次求值,带发射副作用操作数(with 调用)即临时双声明;四臂(i/6/u64/w8)
+  算符守卫前置,fx_with_expr 原生==解释逐字一致,smoke 247/2。
 - `conc_time` 单步:前轮单发一次,终轮全门绿——负载 flake 定谳,非分歧。
 
-**终轮门**(2026-11-02,f-emitchecks 全链重建后):smoke 246 ok / 3 fail
-(余 = 上列三移交项,基线即红)/ suite 120/122 rc=0(缺 2 = cbox 链接既有)/
-drv_parity 136/0 / native_suite(Rust 参考臂)2/2 / t56 五语料 rc=0 / 四探针
-双模 + 解释臂 parity 逐字绿 / fx_time F64 混算原生==解释逐字一致。
+**终轮门**(2026-11-02,f-emitchecks 全链重建后):smoke 247 ok / 2 fail
+(余 = decls 锁 + T35 E 码两移交项,基线即红)/ suite 120/122 rc=0(缺 2 =
+cbox 链接既有)/ drv_parity 136/0 / native_suite(Rust 参考臂)2/2 / t56
+五语料 rc=0 / 四探针双模 + 解释臂 parity 逐字绿 / fx_time F64 混算原生==
+解释逐字一致 / fx_with_expr 修复后逐字一致。
 
 **验证面**(native.sh 全链重建后,四探针双模 + 全门):
 - 四探针(DEFAULT/OFF):溢出 = panic/静默回绕;除零 = 恒 panic;MIN/-1 =

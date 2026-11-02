@@ -302,35 +302,44 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 wlo = "-32768"
                 whi = "32767"
             }
-            var a9 = "(int32_t)(" + ct_expr(e[2], env, file) + ")"
-            var b9 = "(int32_t)(" + ct_expr(e[3], env, file) + ")"
-            if e[1] == "Add" { return "ctron_w_add(" + a9 + ", " + b9 + ", " + wlo + ", " + whi + ")" }
-            if e[1] == "Sub" { return "ctron_w_sub(" + a9 + ", " + b9 + ", " + wlo + ", " + whi + ")" }
-            if e[1] == "Mul" { return "ctron_w_mul(" + a9 + ", " + b9 + ", " + wlo + ", " + whi + ")" }
-            if e[1] == "Div" { return "ctron_w_div(" + a9 + ", " + b9 + ")" }
-            if e[1] == "Mod" { return "ctron_w_mod(" + a9 + ", " + b9 + ")" }
+            // 算符守卫前置(同 i 臂:比较类穿透二次求值防御)
+            if or2(or3(e[1] == "Add", e[1] == "Sub", e[1] == "Mul"), or2(e[1] == "Div", e[1] == "Mod")) {
+                var a9 = "(int32_t)(" + ct_expr(e[2], env, file) + ")"
+                var b9 = "(int32_t)(" + ct_expr(e[3], env, file) + ")"
+                if e[1] == "Add" { return "ctron_w_add(" + a9 + ", " + b9 + ", " + wlo + ", " + whi + ")" }
+                if e[1] == "Sub" { return "ctron_w_sub(" + a9 + ", " + b9 + ", " + wlo + ", " + whi + ")" }
+                if e[1] == "Mul" { return "ctron_w_mul(" + a9 + ", " + b9 + ", " + wlo + ", " + whi + ")" }
+                if e[1] == "Div" { return "ctron_w_div(" + a9 + ", " + b9 + ")" }
+                return "ctron_w_mod(" + a9 + ", " + b9 + ")"
+            }
         }
         // U64/USize 域(P1-B):uint64_t 检查帮手(镜像 eval 界门,panic 消息同宿主);
         // "z"(USize→size_t,v0.7)同宽,经隐式转换走同一帮手
         if or3(lt == "7", lt == "z", or2(ct_typeof(e[3], env, file) == "7", ct_typeof(e[3], env, file) == "z")) {
-            var a7 = "(uint64_t)(" + ct_expr(e[2], env, file) + ")"
-            var b7 = "(uint64_t)(" + ct_expr(e[3], env, file) + ")"
-            if e[1] == "Add" { return "ctron_u64_add(" + a7 + ", " + b7 + ")" }
-            if e[1] == "Sub" { return "ctron_u64_sub(" + a7 + ", " + b7 + ")" }
-            if e[1] == "Mul" { return "ctron_u64_mul(" + a7 + ", " + b7 + ")" }
-            if e[1] == "Div" { return "ctron_u64_div(" + a7 + ", " + b7 + ")" }
-            if e[1] == "Mod" { return "ctron_u64_mod(" + a7 + ", " + b7 + ")" }
+            // 算符守卫前置(同 i 臂:比较类穿透二次求值防御)
+            if or2(or3(e[1] == "Add", e[1] == "Sub", e[1] == "Mul"), or2(e[1] == "Div", e[1] == "Mod")) {
+                var a7 = "(uint64_t)(" + ct_expr(e[2], env, file) + ")"
+                var b7 = "(uint64_t)(" + ct_expr(e[3], env, file) + ")"
+                if e[1] == "Add" { return "ctron_u64_add(" + a7 + ", " + b7 + ")" }
+                if e[1] == "Sub" { return "ctron_u64_sub(" + a7 + ", " + b7 + ")" }
+                if e[1] == "Mul" { return "ctron_u64_mul(" + a7 + ", " + b7 + ")" }
+                if e[1] == "Div" { return "ctron_u64_div(" + a7 + ", " + b7 + ")" }
+                return "ctron_u64_mod(" + a7 + ", " + b7 + ")"
+            }
         }
-        // 6 域算术:溢出检查帮手(镜像 eval 界门,§4.5 检查算术)
+        // 6 域算术:溢出检查帮手(镜像 eval 界门,§4.5 检查算术;恒检查无烛台)
         var rt6 = ct_typeof(e[3], env, file)
         if or2(lt == "6", rt6 == "6") {
-            var a6 = "(int64_t)(" + ct_expr(e[2], env, file) + ")"
-            var b6 = "(int64_t)(" + ct_expr(e[3], env, file) + ")"
-            if e[1] == "Add" { return "ctron_i64_add(" + a6 + ", " + b6 + ")" }
-            if e[1] == "Sub" { return "ctron_i64_sub(" + a6 + ", " + b6 + ")" }
-            if e[1] == "Mul" { return "ctron_i64_mul(" + a6 + ", " + b6 + ")" }
-            if e[1] == "Div" { return "ctron_i64_div(" + a6 + ", " + b6 + ")" }
-            if e[1] == "Mod" { return "ctron_i64_mod(" + a6 + ", " + b6 + ")" }
+            // 算符守卫前置(同 i 臂:比较类穿透二次求值防御)
+            if or2(or3(e[1] == "Add", e[1] == "Sub", e[1] == "Mul"), or2(e[1] == "Div", e[1] == "Mod")) {
+                var a6 = "(int64_t)(" + ct_expr(e[2], env, file) + ")"
+                var b6 = "(int64_t)(" + ct_expr(e[3], env, file) + ")"
+                if e[1] == "Add" { return "ctron_i64_add(" + a6 + ", " + b6 + ")" }
+                if e[1] == "Sub" { return "ctron_i64_sub(" + a6 + ", " + b6 + ")" }
+                if e[1] == "Mul" { return "ctron_i64_mul(" + a6 + ", " + b6 + ")" }
+                if e[1] == "Div" { return "ctron_i64_div(" + a6 + ", " + b6 + ")" }
+                return "ctron_i64_mod(" + a6 + ", " + b6 + ")"
+            }
         }
         // W2(2026-10-31):I32 主域检查算术(emit_checks;spec §4.5 默认检查;
         // interp 溢出/除零 panic 对齐;CTRON_CFG_EMIT_CHECKS=off 逃生门 = 基准面)。
@@ -351,12 +360,17 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 if e[1] == "Div" { return "ctron_w_div(" + d8 + ", " + d9 + ")" }
                 return "ctron_w_mod(" + d8 + ", " + d9 + ")"
             }
-            if ckc != "off" {
-                var a8 = "(int32_t)(" + ct_expr(e[2], env, file) + ")"
-                var b8 = "(int32_t)(" + ct_expr(e[3], env, file) + ")"
-                if e[1] == "Add" { return "ctron_w_add(" + a8 + ", " + b8 + ", (-2147483647 - 1), 2147483647)" }
-                if e[1] == "Sub" { return "ctron_w_sub(" + a8 + ", " + b8 + ", (-2147483647 - 1), 2147483647)" }
-                if e[1] == "Mul" { return "ctron_w_mul(" + a8 + ", " + b8 + ", (-2147483647 - 1), 2147483647)" }
+            // 算符守卫前置(2026-11-02 审计补):a8/b8 含 ct_expr 副作用,
+            // 比较类算符不消费 → 穿透裸 infix 回退时操作数二次求值
+            //(with 调用操作数 = 临时双发射,C 重定义);非算术算符零冗余
+            if or3(e[1] == "Add", e[1] == "Sub", e[1] == "Mul") {
+                if ckc != "off" {
+                    var a8 = "(int32_t)(" + ct_expr(e[2], env, file) + ")"
+                    var b8 = "(int32_t)(" + ct_expr(e[3], env, file) + ")"
+                    if e[1] == "Add" { return "ctron_w_add(" + a8 + ", " + b8 + ", (-2147483647 - 1), 2147483647)" }
+                    if e[1] == "Sub" { return "ctron_w_sub(" + a8 + ", " + b8 + ", (-2147483647 - 1), 2147483647)" }
+                    return "ctron_w_mul(" + a8 + ", " + b8 + ", (-2147483647 - 1), 2147483647)"
+                }
             }
         }
         return "(" + ct_expr(e[2], env, file) + " " + op + " " + ct_expr(e[3], env, file) + ")"
