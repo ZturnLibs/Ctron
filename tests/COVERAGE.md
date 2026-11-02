@@ -4356,3 +4356,14 @@ v4 补丁器(新增 OR 模式类)试运行:每轮 21 修后语法门回退循环
 多形/多行 188 类 = 人工逐处;入口包 + 补丁器脚本(/tmp/spanfix4.py,
 会话临时) = 专窗开场资产。**建议**:专窗以「rustc 错误驱动 + 逐轮
 cargo check 门 + 人工多形位」推进,预计 4-8h。
+
+## 2026-11-01 终:loom selftest 双模双失败——回归根因在 Oct-31 批内,需二分专窗
+
+双模定量(重建后 loom-selftest full):`CTRON_GC=1` → 145s OOM-kill(rc=137);
+默认/GC=0 → 110s OOM-kill(rc=137)——**两模皆挂**,bfe5c621 基线同测双绿
+(回归报告对照)。GC 模式非根因;根因 = Oct-31 批内某提交与 loom-selftest
+的交互(候选:容器面重写/标记 ST/remove 语义/While+Drop 机制/W2 检查算术)。
+**处置**:二分专窗立项(git bisect bfe5c621..fa966b98 × loom gate-all,
+每点 ~15min 全量;粗二分 = 批边界,细二分 = 单提交);Ctron 侧门全绿维持
+(t56/t57 三径/03m 03n/suite/native_suite 58/31/0)。loom 侧临时回退 =
+CTRON_BIN=bfe5c621 构建(报告既有指引)。
