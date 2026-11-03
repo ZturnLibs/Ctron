@@ -67,7 +67,9 @@ regkey "pkg.caps" {
 
 regkey "pkg.tier" {
     type = "str"
-    pattern = "(core|alloc|std)"   // T35 分层 stdlib:包申报档(§9 档位矩阵);缺省 std(缺键不校)
+    // T35 分层 stdlib:包申报档(§9 档位矩阵);缺省 std(缺键不校)。
+    // 值域属主 = 检查器 E5040.tier(parse_pkg 专用语义诊断;2026-11-03 审计定谳:
+    // schema pattern 会以 E5046 前置抢占,检查面 E5040 永不可达,双层重复属主)
 }
 
 regkey "comptime.budget_ms" {

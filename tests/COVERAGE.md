@@ -4429,22 +4429,26 @@ While+Drop/时钟 ns 面/u8s_str/容器三伤 = 语言级正当,loom 仅 dogfood
   畸形值 E5046)+ mutex 第四形 + E5049 文案补 blob。六步手工复验全绿
   (t=12 正例/E5054 摘要精准拒/blob+version E5049/abc E5046)。
 
-**移交主线登记**(本批定性不动,基线即红、与 f-emitchecks diff 零交集):
-- smoke `自检 cc_run` decls 锁 538 → 实测 539:漂移早于 7c5571a4(全 src
-  fn 清单 7c5571a4==今),锁值陈旧,归因与「前注」补记归主线惯例。
-- `T35 值域未拦`:smoke 期望 E5040,ctcl_check 实发 E5046(键值 pattern 族
-  通用码)——E 码口径择一(专用码 E5040 vs 通用 E5046),归主线定谳。
+**移交项收口(2026-11-03 续,同分支第三笔;本节标题沿旧,项下即收口账)**:
+- smoke `自检 cc_run` decls 锁 538 → **已修,锁 539 + 前注**:归因 = 合并源
+  顶层 extern +2(`ctron_bit_i64` W5b-bit 宿主口/`ctron_clock_now_ns` 时钟
+  ns 面)− fn 净 −1(bit_dec2bin/bit_bin2dec/bit_comb → bit_tc64/bit_ret64
+  文本径重写)= 净 +1。锁值陈旧非漂移,前注按惯例申报。
+- `T35 值域未拦`:**已修,schema 去 pattern**——`pkg.tier` 值域属主定谳为
+  检查器 E5040.tier(parse_pkg 专用语义诊断,parse_pkg.ct:438 fail-closed);
+  昨日 schema pattern 以 E5046 前置抢占 = 双层重复属主,E5040 永不可达。
+  schema 退场(type=str 保留),检查面 E5040 复达,T35 步绿,ctcl_check
+  selftest ALL GREEN。
 - `conc_with_expr`:**已修**(同批第二笔)——真因 = 各宽度选臂先提操作数
   ct_expr 串再按算符分发,比较类算符不消费 → 穿透裸 infix 回退时操作数
   二次求值,带发射副作用操作数(with 调用)即临时双声明;四臂(i/6/u64/w8)
   算符守卫前置,fx_with_expr 原生==解释逐字一致,smoke 247/2。
 - `conc_time` 单步:前轮单发一次,终轮全门绿——负载 flake 定谳,非分歧。
 
-**终轮门**(2026-11-02,f-emitchecks 全链重建后):smoke 247 ok / 2 fail
-(余 = decls 锁 + T35 E 码两移交项,基线即红)/ suite 120/122 rc=0(缺 2 =
-cbox 链接既有)/ drv_parity 136/0 / native_suite(Rust 参考臂)2/2 / t56
-五语料 rc=0 / 四探针双模 + 解释臂 parity 逐字绿 / fx_time F64 混算原生==
-解释逐字一致 / fx_with_expr 修复后逐字一致。
+**终轮门**(2026-11-03,第三笔后):smoke **249 ok / 0 fail 全绿** / suite
+120/122 rc=0(缺 2 = cbox 链接既有)/ drv_parity 136/0 / native_suite(Rust
+参考臂)2/2 / t56 五语料 rc=0 / 四探针双模 + 解释臂 parity 逐字绿 /
+fx_time、fx_with_expr 原生==解释逐字一致 / ctcl_check selftest ALL GREEN。
 
 **验证面**(native.sh 全链重建后,四探针双模 + 全门):
 - 四探针(DEFAULT/OFF):溢出 = panic/静默回绕;除零 = 恒 panic;MIN/-1 =
