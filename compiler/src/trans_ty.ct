@@ -1286,6 +1286,15 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 if seq2(e[1][3], "real") { return "CK" }
                 if or2(seq2(e[1][3], "now"), seq2(e[1][3], "elapsed_since")) { return "6" }
             }
+            // bit.* 内建型别随名后缀(§4.5 T01;and/or/xor/not/shl/shr;_i64/_u64 → 6,
+            // _i32 → i,_u32 → U32 码与 ns_bit 宽度解析同口径)。此前缺席 → 位内建恒
+            // "i":循环节内 I64 位算赋值发 w_add I32 降型(截断操作数 + I32 检查臂),
+            // CDC 滚动哈希等值域跨 I32 的算法发射即假 panic(2026-11-03 loom 反哺)。
+            if e[1][1][0] == "Ident" && seq2(e[1][1][1], "bit") {
+                var bm = e[1][3]
+                if or2(seq2(bm, "and_i64"), or2(seq2(bm, "or_i64"), or2(seq2(bm, "xor_i64"), or2(seq2(bm, "not_i64"), or2(seq2(bm, "shl_i64"), seq2(bm, "shr_i64")))))) { return "6" }
+                if or2(seq2(bm, "and_u64"), or2(seq2(bm, "or_u64"), or2(seq2(bm, "xor_u64"), or2(seq2(bm, "not_u64"), or2(seq2(bm, "shl_u64"), seq2(bm, "shr_u64")))))) { return "7" }
+            }
         }
     }
     if t == "Float" { return "f" }

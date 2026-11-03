@@ -1,3 +1,7 @@
+> **loom 反哺两缺陷批(2026-11-03;Loom 执行会话检查算术新面消账发现;docs/2026-11-03-bit-intrinsic-type-width-feedback.md)。**
+> ①bit.* 内建静态型别缺席(trans_ty.ct ct_typeof 无 Call-Member bit 分支)→ 位内建调用恒型 "i":循环节内 I64 位算赋值发 ctron_w_add I32 降型(截断操作数+I32 检查臂),CDC 滚动哈希值域跨 I32 即假 panic,drv_parity 劈叉(interp 值正确)。修复=型别随名后缀(_i64→6,_u64→7,与 ns_bit 同口径)。②1fee8724 While 臂行源修复四 hunk 半截迁移:Break/Continue 臂改读 "#whdmark" 而写侧 env_bind 未落地,ct_env_ty 未命中回退 "i" 被直发 C 标识符(ctron_drop_unwind_to(i) 未声明×20)→ native.sh 自举必死;条件表达式部分形态无 nstamp → 多环同名 t_dm0 重定义;whd 哨兵恒 false 死代码。处置=四 hunk 逆向回退 b954ef49 自包含哨兵形(ctron_drop_mark/unwind_mark(0/1)),1fee8724 真内容(byte_at 行源/条件行源槽)保留。门:自举 rc=0+drv_parity 136/0+smoke 249 ok/1(3j3 sort/uuid Rust 臂账面在册)+suite rc=0(07a/10_trace 在册分歧);下游 loom 全量门 64/0 ALL GREEN 首通(检查开+GC开)。
+> **J2 半落地在册(③,未修)**:S4③(936fe068,10-04)分配位点已翻 ct_gc_alloc,而 driver_emit.ct:282 ct_gc_enabled 仍 getenv 选入式(CTRON_GC=1/on 才开)——默认关=串拼接族(ctron_str_concat 等)无回收,loom check_cdc 30 万次拼接 RSS 2GB+ SIGKILL(rc=137)实录;CTRON_GC=1 即 64/0 全绿。:157 注释称"默认开"与码面相抵,裁执劈叉待专窗翻正。
+>
 > **IP-23 23a 设计轮落库(2026-10-20,specs/2026-10-20-ip23-json-numeric-design.md;纯设计批——共享树对端在飞窗口零码零构建)。**
 > 现状勘定(实测):解析=jnum_end RFC 8259 严格扫描+原文存表(无词法分类)/读取=
 > jget_i64(越界→range 非回绕)+jget_f64(量级窗)+jget_bool,缺 jget_u64 与 Big 原文
