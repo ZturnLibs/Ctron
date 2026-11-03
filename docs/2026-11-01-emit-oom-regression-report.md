@@ -17,3 +17,16 @@
 **现状**:默认复归 checked(spec 面);除零检查脱烛台门恒检查(spec「除零永不关」,旧 off 档裸 C 除法除零 = SIGFPE)。真实根因由二分专窗在 Oct-31 批内定位(bfe5c621..fa966b98);若定谳 W2 检查算术,语言层正解 = 修缺陷,非默认关检。loom 侧按报告既有指引回退 bfe5c621 构建。
 
 **二分参考(f-emitchecks 审计附带)**:W2 检查算术作为 OOM 候选可基本机制排除——发射臂 `ctron_w_add/sub/mul` 检查恒假(回绕后恒落 [lo,hi],运行期从未 panic;探针实证 `2147483647+1` rc=0 静默回绕),运行时形态增量 = 每次 I32 算术一次函数调用+比较,零分配零增长;fa966b98 的二进制增重为纯 text。OOM 根因应优先在容器运行时/标记面/While+Drop 栈机制候选取证。
+
+---
+## 追注(2026-11-03,loom 执行会话复验定谳)
+
+**结论:OOM 未因 1fee8724 While 臂修复闭环;真根因 = J2 半落地(GC 默认关×分配位点已翻 gc_alloc),CTRON_GC=1 运行即全绿闭环。**
+
+复验实录(loom 全量门 [6/6] native selftest full,1fee8724+loom 反哺两修复):
+- 默认 env:rc=137(SIGKILL)三连(59s/109s/43.8s);RSS 曲线 257MB→1.93GB(5s)爆冲后死亡;死亡区 = check_cdc(pty 逐行实证末标记 »check_cdc)
+- 排除复验:CTRON_CFG_EMIT_CHECKS=off 仍 137(检查算术排除,审计结论成立);CTRON_GC=0 仍 137(然 = 无效证,见下)
+- **真根因**:S4③(936fe068,10-04)分配位点翻 ct_gc_alloc(cron_str_concat 等),而 driver_emit.ct:282 ct_gc_enabled = getenv 选入式(**默认关**,与 :157「默认开」注释相抵)→ check_cdc 30 万次 `b = b + str_byte(...)` 拼接全量无回收 → RSS 爆
+- **闭环条件:CTRON_GC=1 → 64 检 0 败 ALL GREEN(60s)**;loom 全量门同 env ALL GREEN 首通(检查开+GC开组合)
+- fa966b98 同象归因更新:彼 rc=137 = 同根(GC 默认关×gc_alloc 拼接),非 GC/检查算术本身,亦非 While 臂;While 臂修复有效但非此症
+- 待办:Ctron 侧翻正 ct_gc_enabled 默认(J2 裁执合一)或拼接面 bump 回退;COVERAGE.md ③在册
