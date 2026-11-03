@@ -1399,7 +1399,9 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         // 长循环无条件压哨 = drop 栈无界增长 OOM 实证;无 Drop 局部循环
         // 零 drop 栈操作,回归主线上代行为)
         var whd = false
-        eln("ctron_drop_mark();", env)
+        // While 节点无行尾槽 → 行号取条件表达式节点(expr 节点恒 nstamp 尾槽)
+        var dmk = "t_dm" + nline(st[1])
+        eln("int32_t " + dmk + " = ct_drn;", env)
         // 顶层 let 提升到循环前声明(零初始化),块内改赋值 —— 兼容语料中
         // "循环外读循环内绑定"的写法(parsetree/sem_chk p_block 尾 guard),
         // 使发射产物可编译;rt 语义下该读路径本不应执行(执行即宿主 abort)。
@@ -1453,10 +1455,6 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                     if has_drop_impl(file, byte_slice(ty, 2, ty.len)) {
                         // While+Drop(2026-10-31):drop 栈注册移首赋值位(零迭代
                         // 不注册 = 无幻析构);哨卫一次性;env 影条供 Assign 臂取
-                        if !whd {
-                            whd = true
-                            eln("ctron_drop_mark();", env)
-                        }
                         envw = env_bind(envw, "#whdrop:" + nm, "t_" + nm + "@ctron_dth_" + byte_slice(ty, 2, ty.len) + "@t_whf_" + nm)
                         eln("int t_whf_" + nm + " = 0;", env)
                     }
@@ -1497,9 +1495,9 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             ct_stmt(es, benv, file, hreg)
         }
         eln("}", env)
-        // While+Drop:正常出口析构末值 + 消哨(break/continue 路径已在 unwind_mark 消化)
+        // While+Drop:正常出口按深度截断析构末值(break/continue 路径同款)
         if whd {
-            eln("ctron_drop_unwind_mark(0);", env)
+            eln("ctron_drop_unwind_to(" + dmk + ");", env)
         }
         eln("if (ct_frn.spn > 0) \{ ct_frn.pn = ct_frn.sv[ct_frn.spn - 1]; ct_frn.spn -= 1; }", env)
         if cand.len > 0 {
@@ -2122,7 +2120,10 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         // P1-A3(E2071 解除):越界 Drop 局部清理——unwind 到循环体入口的
         // drop 栈标记(自举 RAII = ctron_drop_push 动态栈;与 Rust 镜像
         // 静态逆序析构同语义),再走池保存栈恢复与直映跳转
-        if t == "Break" { eln("ctron_drop_unwind_mark(0);", env) } else { eln("ctron_drop_unwind_mark(1);", env) }
+        // P1-A3(E2071 解除):break/continue 按循环深度截断析构(unwind_to
+        // 弹到循环入口界;越界 Drop 局部析构;与 While 臂深度捕获配对)
+        var mkd = ct_env_ty(env, "#whdmark")
+        if mkd.len > 0 { eln("ctron_drop_unwind_to(" + mkd + ");", env) }
         // v0.7 修订二:直映 C break;/continue;(E2070/E2072 检查面把关合法性;
         // E2071 已解除——越界 Drop 清理由上方 unwind_mark(哨兵)承接)
         // T31 S4①:跳出/续跳弹池保存栈(环合恢复配对;break 跳过环合时防陈旧保存值误缩活槽)
