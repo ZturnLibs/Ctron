@@ -4459,3 +4459,28 @@ fx_time、fx_with_expr 原生==解释逐字一致 / ctcl_check selftest ALL GREE
   恒 `integer overflow (/)`;正常算术双模 rc=0——解释臂 rc+消息逐字 parity。
 - smoke --full / suite.py / drv_parity / t56 五语料 rc=0(基线吻合)/
   native_suite(Rust 参考臂)2/2。
+
+## 2026-11-03 续:List 索引越界恒守(P0 静默错误值族清偿)——oob 钉回归入面
+
+**审计移交项 #1 定谳与修复**:`t56_container_list_oob.panic.ct` 三面三态——
+native 面裸 `items[idx]`(越界读 = 静默垃圾/堆越权,**越界写 = 堆腐蚀**)、
+自宿 interp 消息错位("index target")、seed rt_eval 本已正确("index out of
+bounds")。spec §4.5「索引永远边界检查」的 List 族在发射面完全失守。
+
+**修复**(四编辑):
+- `trans_expr.ct` 索引读:四臂(Lu:/LF 定型槽、LI、L6、L/N)收束为单守卫
+  块——`ct_is_tlcode(ot) || L/N` 门,语句表达式单求值 obj/idx(`t_lx`
+  作用域隔离镜像 `t_vx` 惯例),越界恒 `ctron_panic("index out of bounds")`;
+- `trans_stmt.ct` 索引写:LI/L6/L/N 落槽臂补语句级界门(`t_lw` 块,OOB 写 =
+  堆腐蚀优先级最高);切片视图/定长数组既有界门不动;
+- `eval_expr.ct` interp OOB 消息归位("index target" → "index out of
+  bounds",idx<0 与越上界两臂;非索引目标 "index target" 保留 = 类型错族);
+- `suite.py` 例外放行:panic 钉不触发射槽编码,回归入面(T25 v2 其余维持跳过)。
+
+**四向实测**:越界写 native/interp 双面 panic;界内读写 native `7`/interp `7`;
+oob 钉原生 rc=1 消息逐字 = interp rc=1 消息;溢出探针回归 rc=1 不动。
+**连带面**:自宿编译器自身源码满布 List 索引,守卫全量生效 = 诚实 dogfood
+(native.sh 全链重建 0 错即证明)。
+**门**:smoke 249/0;suite **panic 14/14**(钉入面即绿),合计 121/123,
+rc=0(cbox 两红 = 移交项 #2 在册);drv_parity 136/0;Rust 面无涉(trans 对
+List 索引域外拒译 → native_suite skip 口径不变)。

@@ -97,8 +97,10 @@ for kind, pat in CATS:
         # T25 v2 后件(2026-10-31):t56/t57 cc 面(自举 bin 编译形态 eval)残余
         # 布局敏感缺陷(ASAN 过/-O1·O2 挂的槽编码逻辑伤,审计批在册
         # COVERAGE 2026-10-31 终)→ 维持跳过;Rust native_suite 56/0 已全量入面。
-        # t58 = R 线 NegGreen 锚(检查面 Rust check_suite 驱动),维持跳过
-        if base.startswith("t56_container") or base.startswith("t57_time") or base.startswith("t58_"):
+        # t58 = R 线 NegGreen 锚(检查面 Rust check_suite 驱动),维持跳过。
+        # 例外(2026-11-03):t56 oob panic 钉回归入面——List 索引越界恒守已补
+        # (emit 界门 + interp 消息归位),pin 走 interp/宿主双 face 不触发射槽编码。
+        if (base.startswith("t56_container") and not base.endswith(".panic.ct")) or base.startswith("t57_time") or base.startswith("t58_"):
             continue
         if kind == "behavior" and re.search(r"\.(neg|lint|panic)\.ct$", base):
             continue

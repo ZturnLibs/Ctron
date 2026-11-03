@@ -1258,7 +1258,9 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 // 标量元素槽写(LI=int32/L6=int64):经 long 中转全宽入槽(镜像索引读)
                 vtxt = "(const char*)(long)(" + ct_expr(st[3], env, file) + ")"
             }
-            eln("((ctron_list*)(" + tv + "))->items[" + ct_expr(tgt[2], env, file) + "] = " + vtxt + ";", env)
+            // 越界恒守(镜像读臂;语句级 t_lw 块单求值 idx/obj——OOB 写 = 堆腐蚀,
+            // spec §4.5「索引永远边界检查」;2026-11-03 审计补)
+            eln("\{ int64_t t_lw = " + ct_expr(tgt[2], env, file) + "; if (t_lw < 0 || t_lw >= (int64_t)((ctron_list*)(" + tv + "))->n) \{ ctron_panic(\"index out of bounds\"); } ((ctron_list*)(" + tv + "))->items[t_lw] = " + vtxt + "; }", env)
             return env
         }
         if tgt[0] == "Member" {

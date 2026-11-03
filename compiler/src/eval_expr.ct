@@ -499,11 +499,11 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> Flow {
             return e4("a", env, vV2(), out)
         }
         if idx < 0 {
-            panic("index target")
+            panic("index out of bounds")
             return e4("a", env, vV2(), out)
         }
         if idx >= cx_of(arrv).len - 1 {
-            panic("index target")
+            panic("index out of bounds")
             return e4("a", env, vV2(), out)
         }
         return e4("k", ix.env, v_unbox(cx_of(arrv)[idx + 1]), ix.out)

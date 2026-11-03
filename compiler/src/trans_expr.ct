@@ -416,22 +416,21 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             }
             return "(\{ int64_t t_vx = " + ct_expr(e[2], env, file) + "; if (t_vx < 0 || t_vx >= t_" + e[1][1] + ".n) \{ ctron_panic(\"index out of bounds\"); } (" + ct_ctype(byte_slice(ot, 1, ot.len)) + ")(t_" + e[1][1] + ".d[t_vx]); })"
         }
-        if ct_is_lcode(ot) {
-            // Lu: 族索引(T14-②):槽为堆盒指针,解引用取回 struct 值拷贝(§3.2 值语义)
-            var ity = ct_ctype(byte_slice(ot, 1, ot.len))
-            return "(*(" + ity + "*)((ctron_list*)(" + ct_expr(e[1], env, file) + "))->items[" + ct_expr(e[2], env, file) + "])"
-        }
-        if ot == "LI" {
-            // List[I32] 索引:槽经 long 取回标量
-            return "((int32_t)(long)((ctron_list*)(" + ct_expr(e[1], env, file) + "))->items[" + ct_expr(e[2], env, file) + "])"
-        }
-        if ot == "L6" {
-            // T54:List[I64] 索引:槽经 long 全宽取回(消「索引读静默截断」在册债)
-            return "((int64_t)(long)((ctron_list*)(" + ct_expr(e[1], env, file) + "))->items[" + ct_expr(e[2], env, file) + "])"
-        }
-        if or2(ot == "L", ot == "N") {
-            // List/节点索引:元素槽即 char*(节点 = 动态转型的 ctron_list*)
-            return "((const char*)((ctron_list*)(" + ct_expr(e[1], env, file) + "))->items[" + ct_expr(e[2], env, file) + "])"
+        // List 族索引读:越界恒守(spec §4.5「索引永远边界检查」;2026-11-03 审计补——
+        // 原裸 items[idx] 越界 = 静默垃圾读/堆越权;消息对齐 seed rt_eval
+        // 「index out of bounds」;语句表达式单求值 obj/idx,t_lx 作用域隔离镜像 t_vx 惯例)
+        if or2(ct_is_tlcode(ot), or2(ot == "L", ot == "N")) {
+            var lobj = ct_expr(e[1], env, file)
+            var lidx = ct_expr(e[2], env, file)
+            var litu = ""
+            if ot == "LI" { litu = "((int32_t)(long)((ctron_list*)(" + lobj + "))->items[t_lx])" }
+            if ot == "L6" { litu = "((int64_t)(long)((ctron_list*)(" + lobj + "))->items[t_lx])" }
+            if or2(ot == "L", ot == "N") { litu = "((const char*)((ctron_list*)(" + lobj + "))->items[t_lx])" }
+            if litu == "" {
+                var ity = ct_ctype(byte_slice(ot, 1, ot.len))
+                litu = "(*(" + ity + "*)((ctron_list*)(" + lobj + "))->items[t_lx])"
+            }
+            return "(\{ int64_t t_lx = " + lidx + "; if (t_lx < 0 || t_lx >= (int64_t)((ctron_list*)(" + lobj + "))->n) \{ ctron_panic(\"index out of bounds\"); } (" + litu + "); })"
         }
 
         panic("ct_expr:index 目标非 List/数组:" + ot + " 名:" + e[1][1] + " 下标:" + e[2][1] + " 节点元数:" + e.len.to_string() + " 尾槽tag:" + e[e.len - 1][0])
