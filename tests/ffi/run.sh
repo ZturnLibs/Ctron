@@ -111,7 +111,11 @@ for d in "$DIR"/*/; do
         esac
         continue
     fi
-    if ! cc -O1 -w -o "$T/$name.bin" "$T/$name.c" "$d"/c_src/*.c 2>"$T/$name.ccerr"; then
+    # cbox 三例有下方专道(std 路径 + lib/ffi 垫片双链),通用臂跳过防双跑假红
+    case "$name" in
+        cbox|cbox_dblfree|cbox_useafter) continue ;;
+    esac
+    if ! cc -O1 -w -o "$T/$name.bin" "$T/$name.c" "$d"/c_src/*.c "$ROOT"/lib/ffi/c_src/*.c 2>"$T/$name.ccerr"; then
         echo "  [FAIL] $name — cc 失败: $(head -1 "$T/$name.ccerr")"
         fail=$((fail + 1))
         continue

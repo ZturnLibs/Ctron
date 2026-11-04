@@ -4493,3 +4493,21 @@ suite rc=0;native_suite 58/31/0;Rust 全门基线同(check_suite 6 基线红)。
 树与 origin 同步。**接续计划**:下一批 = While 体 Drop 局部析构语义对齐
 (对端已回退半截迁移至自包含哨兵形 → 本侧深度变量方案待重放,双方案
 对拍后定谳);再后 = P2-D 批① span 线程化(入口包就绪)。
+
+## 2026-11-04:库包 C 垫片链接契约(use 声明即链接义务)——cbox 三例清偿
+
+**审计移交项 #2 定谳与修复**:`_ctron_cbox_drop` undefined 非发射缺陷——
+`ctron_cbox_*` 实现居 `lib/ffi/c_src/ctron_ffi.c`(库垫片),而 cbox 消费方
+夹具的链接口径只链包内 `c_src/*.c`(suite ffi 面/模块面/tests/ffi/run.sh
+通用臂三处同缺);run.sh cbox 专道本就双链(196 行)故独立绿,口径分裂。
+
+**链接口径定谳**:`use` 声明即链接义务——消费方 entry 的 `use <根>` 若
+`lib/<根>/c_src/` 存在,垫片自动入链接(消费方零手工 cc)。
+**实现**:suite.py `lib_shim_srcs()`(use 根扫描 → 垫片收集)接入 ffi_emit_run
+与模块 has_csrc 双分支;tests/ffi/run.sh 通用臂跳过 cbox 三例(专道在下防双跑
+假红)。
+**门**:ffi 自举 30/30(原 27/30,cbox/cbox_dblfree/cbox_useafter 归位);
+tests/ffi/run.sh 38 过 / 0 败;suite 合计 121/123 rc=0(余缺 = 03m_binary_nul
+L4 判定与 07a E4010 两在册);smoke 249/0、drv_parity 136/0 维持。
+**登记后续**:驱动器级(ctc.sh build/emit)use 图扫描自动链接 = 构建面特性,
+当前口径为 lane 自治(与 net/proc/crypto lane 同惯例),不入本批。

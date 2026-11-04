@@ -133,6 +133,28 @@ for kind, pat in CATS:
 # 自举侧:bin/ctron-cc run <entry>(加载器常开:use 解析/可见性/合并/循环检测)。
 # 宿主侧:ctronc pkg <dir>(包检查 oracle,仅 check 面;宿主无包运行口径,行为用例不对齐运行)。
 print(f"\n== modules/ 多文件包(§6)==")
+
+def lib_shim_srcs(entry):
+    # use 根 → lib/<根>/c_src/*.c(库包 C 垫片自动链接;2026-11-04 cbox 反哺面:
+    # ctron_cbox_* 实现居 lib/ffi/c_src/ctron_ffi.c,消费方 use ffi 即产生链接
+    # 义务——链接口径 = use 声明即链接义务,消费方零手工 cc)
+    import re
+    roots = set()
+    try:
+        with open(entry, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                m = re.match(r"\s*use\s+([a-z][a-z0-9_]*)", line)
+                if m:
+                    roots.add(m.group(1))
+    except OSError:
+        pass
+    out = []
+    for r in sorted(roots):
+        d = os.path.join(ROOT, "lib", r, "c_src")
+        if os.path.isdir(d):
+            out += sorted(glob.glob(os.path.join(d, "*.c")))
+    return out
+
 mpass, hpass, mnotes = [0, 0], [0, 0], []
 for case in sorted(glob.glob(os.path.join(TESTS, "modules", "*"))):
     if not os.path.isdir(case):
@@ -165,7 +187,7 @@ for case in sorted(glob.glob(os.path.join(TESTS, "modules", "*"))):
                 ok, why = False, f"emit 失败: {first_line(p1.stdout + p1.stderr)}"
             else:
                 open(em, "w").write(p1.stdout)
-                srcs = sorted(glob.glob(os.path.join(case, "c_src", "*.c")))
+                srcs = sorted(glob.glob(os.path.join(case, "c_src", "*.c"))) + lib_shim_srcs(entry)
                 p2 = sp.run(["cc", "-O1", "-w", "-o", binp, em] + srcs, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60)
                 if p2.returncode != 0:
                     ok, why = False, f"cc 失败: {first_line(p2.stderr)}"
@@ -212,7 +234,7 @@ def ffi_emit_run(case, entry, mk, kind):
         if p1.returncode != 0:
             return False, f"emit 失败: {first_line(p1.stdout + p1.stderr)}"
         open(em, "w").write(p1.stdout)
-        srcs = sorted(glob.glob(os.path.join(case, "c_src", "*.c")))
+        srcs = sorted(glob.glob(os.path.join(case, "c_src", "*.c"))) + lib_shim_srcs(entry)
         p2 = sp2.run(["cc", "-O1", "-w", "-o", binp, em] + srcs, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60)
         if p2.returncode != 0:
             return False, f"cc 失败: {first_line(p2.stderr)}"
