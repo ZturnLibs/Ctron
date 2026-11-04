@@ -4602,3 +4602,39 @@ ffi 38/0、组合/db 探针绿。重放按设计文档「S1 实施增量」五�
 
 **登记**:①S1 重放批(全谱含两编译修复);②smoke decls 锁 540 归因申报随对端;
 ③net/http 残红归因(基线工作树构建收口后补账)。
+
+## 2026-11-04 终:P2-D 批① span 线程化(Rust 线)+ 批② 自举尾槽复合化——双镜同窗收口
+
+**批①(Rust 线;入口包 specs/2026-11-01-p2d-batch1-span-entry-brief.md 专窗兑现)**:
+ast.rs Expr(24)/Stmt(8) 逐变体加 `id: u32` + 侧表(`nid/span_of/spans_reset`;SYNTHETIC_ID=0
+哨兵,合成节点 span_of 回落 1:1)。reset 挂调用方(lib.rs check_src/check_package 双入口)——
+多文件包后解析文件不得洗先解析文件的 span 表。parser 构造点 39(E0063×27+E0061×12)span 直传,
+源三级协议(就近 token span > 首子节点 span_of > 入口 cur_span 快照);trans/interp 匹配面 `..`
+吸收(or-pattern 五处特修);check.rs 分派臂 28 处捕获 id,91 诊断点位 Span::new(1,1,0,0) →
+span_of(id) 置换 81 点(委派链 id 形参:check_binary/check_call/check_ident_call(_global)/
+check_member/check_named_member/check_method_call/check_user_method/check_ident;Symbol::Fn(id)
+遮蔽两处改名 fid)。余 10 点保留 1:1(decl 级/深度哨兵/name_spans 语义,在册)。
+「无方法/无属性」族(批①a 登记的收者 span 臂)全量升实 span。darwin/debug 栈适配:
+deep_nesting_capped 自 spawn 32MB 栈线程(libtest 默认 8MiB 不容 256 上限三帧展开;断言零改)。
+
+**批②(自举线;D3/D4 双镜同批)**:nstamp 三元化,尾槽 "123" → "行:列";cols 随 lns 走全链
+(29 签名 + 25 nstamp 调用 + 105 实参点;parse_decl/expr/stmt 三文件 + eval_env/trans_expr
+插值重扫两 caller);nline 冒号拆分(88+ 消费零改,无冒号透传保旧槽);ncol 新增(列部访问器,
+decls 锁 539→540 前注申报);AST dump = S 串槽透传(加列不换形;W5b 冷径/命中径/腐坏回退三腿
+ok;E-AST-SHAPE 验证面零动);@LINE 机制不动;emit 锚经 nline → 输出逐字节不变(drv_parity 证)。
+
+**门(批①)**:cargo lib 51/51;十套件与基线逐项 parity(check_suite 6 基线红集合 md5 相同,
+fmt/parse/run/lex/native 同挂同因——全部为基线携带/环境性,非本批);drv_parity 136/0。
+**门(批②)**:native.sh 全链重建 0 错;smoke 237/0(锁 540 过;总数 237 vs 旧账 249 = 对端
+deflate 腿尚未回填,非缺门);suite 123/125 与批② 前完全同(2 能力缺口在册 03m/07a;09c=对端
+在途语料 W8030;10_trace=宿主 assert,pre-fec 二分同挂,cc 侧过——host lane 在册非本批);
+meta_check 4 红全基线/对端取证(1395/1406 缓存私清 HEAD 原在;04e_break=对端新夹具;两注解缺
+夹具面旧账);drv_parity 136/0(复合尾槽经 nline 拆分 → emit 锚零变)。
+
+**对端协同**:工作树与对端会话(C 垫片消解)并行——全程绕行 lib/http、lib/db、tests 新语料;
+一次 stash 冲突按路径取回解净(对端 enc.ct 中间态保全);对端 COVERAGE 亦申报本批在飞阻断面,
+锁 540 归因互认。
+
+**验收对账**:批①三态格式(file:line:col)贯通 + check_suite 快照红集合字节同;批② 尾槽
+复合化 + nline/ncol 消费协议 + dump 固定点;双侧节点槽协议同批落库,拆批漂移风险清零。
+后续在册:批③ interp panic 源位置(r4b 翻转)、批④ fixes 数据形、批⑤ LSP 反查。
