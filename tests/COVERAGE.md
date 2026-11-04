@@ -4484,3 +4484,12 @@ oob 钉原生 rc=1 消息逐字 = interp rc=1 消息;溢出探针回归 rc=1 不
 **门**:smoke 249/0;suite **panic 14/14**(钉入面即绿),合计 121/123,
 rc=0(cbox 两红 = 移交项 #2 在册);drv_parity 136/0;Rust 面无涉(trans 对
 List 索引域外拒译 → native_suite skip 口径不变)。
+
+## 2026-11-04 接续:离线窗口对端推进对账(3ae71306 前置)
+对账(2026-11-04):离线窗口(11-01 晚—11-04)对端推进 4 提交(bit.* 型别随名
+后缀/While 臂半截迁移回退至 b954ef49 自包含哨兵形/List 索引越界恒守/OOM
+复验追注/smoke Rust 臂 parity 欠账清账)。当前 HEAD = 3ae71306;门全绿:
+suite rc=0;native_suite 58/31/0;Rust 全门基线同(check_suite 6 基线红)。
+树与 origin 同步。**接续计划**:下一批 = While 体 Drop 局部析构语义对齐
+(对端已回退半截迁移至自包含哨兵形 → 本侧深度变量方案待重放,双方案
+对拍后定谳);再后 = P2-D 批① span 线程化(入口包就绪)。
