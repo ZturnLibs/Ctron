@@ -36,11 +36,13 @@ pub fn run_main_file(src: &str, profile: sem::Profile) -> Result<i32, String> {
 }
 
 pub fn check_src(src: &str, profile: sem::Profile) -> Vec<token::Diagnostic> {
+    ast::spans_reset(); // P2-D 批①:span 侧表随检查单元重置(多文件包不得逐文件洗表)
     check::check_src(src, profile)
 }
 
 /// 多文件包语义检查
 pub fn check_package(files: &[(String, String)], manifest: Option<sem::Manifest>, profile: sem::Profile)
     -> Vec<(String, Vec<token::Diagnostic>)> {
+    ast::spans_reset(); // P2-D 批①:reset 先于包解析循环(id 全包单调,各文件 span 互不洗)
     check::check_package(files, manifest, profile)
 }

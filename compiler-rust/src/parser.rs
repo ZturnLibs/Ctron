@@ -757,7 +757,7 @@ impl Parser {
         while self.at(&Tok::OrOr) {
             self.bump();
             let rhs = self.parse_or(allow_struct);
-            lhs = Expr::Binary { op: BinOp::OrOr, lhs: Box::new(lhs), rhs: Box::new(rhs) };
+            { let id = nid(span_of(eid(&lhs))); lhs = Expr::Binary { op: BinOp::OrOr, lhs: Box::new(lhs), rhs: Box::new(rhs), id };}
         }
         lhs
     }
@@ -767,7 +767,7 @@ impl Parser {
         while self.at(&Tok::Or) {
             self.bump();
             let rhs = self.parse_and(allow_struct);
-            lhs = Expr::Binary { op: BinOp::Or, lhs: Box::new(lhs), rhs: Box::new(rhs) };
+            { let id = nid(span_of(eid(&lhs))); lhs = Expr::Binary { op: BinOp::Or, lhs: Box::new(lhs), rhs: Box::new(rhs), id };}
         }
         lhs
     }
@@ -777,7 +777,7 @@ impl Parser {
         while self.at(&Tok::AndAnd) {
             self.bump();
             let rhs = self.parse_compare(allow_struct);
-            lhs = Expr::Binary { op: BinOp::AndAnd, lhs: Box::new(lhs), rhs: Box::new(rhs) };
+            { let id = nid(span_of(eid(&lhs))); lhs = Expr::Binary { op: BinOp::AndAnd, lhs: Box::new(lhs), rhs: Box::new(rhs), id };}
         }
         lhs
     }
@@ -794,7 +794,7 @@ impl Parser {
             };
             self.bump();
             let rhs = self.parse_range(allow_struct);
-            lhs = Expr::Binary { op, lhs: Box::new(lhs), rhs: Box::new(rhs) };
+            { let id = nid(span_of(eid(&lhs))); lhs = Expr::Binary { op, lhs: Box::new(lhs), rhs: Box::new(rhs), id };}
             // 比较不可链(§4.3)
             if matches!(self.peek(), Tok::EqEq | Tok::NotEq | Tok::Lt | Tok::Gt | Tok::LtEq | Tok::GtEq) {
                 if !chained_reported {
@@ -814,7 +814,7 @@ impl Parser {
             let inclusive = self.at(&Tok::DotDotEq);
             self.bump();
             let to = self.parse_additive(allow_struct);
-            return Expr::Range { inclusive, from: Box::new(from), to: Box::new(to) };
+            { let id = nid(span_of(eid(&from))); return Expr::Range { inclusive, from: Box::new(from), to: Box::new(to), id };}
         }
         from
     }
@@ -829,7 +829,7 @@ impl Parser {
             };
             self.bump();
             let rhs = self.parse_multiplicative(allow_struct);
-            lhs = Expr::Binary { op, lhs: Box::new(lhs), rhs: Box::new(rhs) };
+            { let id = nid(span_of(eid(&lhs))); lhs = Expr::Binary { op, lhs: Box::new(lhs), rhs: Box::new(rhs), id };}
         }
         lhs
     }
@@ -838,15 +838,15 @@ impl Parser {
         let mut lhs = self.parse_unary(allow_struct);
         loop {
             // W5:repeat 字面量 `[elem] ** N`(1009 裁决:专节点非结合;count 编译期整数字面量)
-            if matches!(self.peek(), Tok::StarStar) && matches!(lhs, Expr::Array(_)) {
+            if matches!(self.peek(), Tok::StarStar) && matches!(lhs, Expr::Array(_, _)) {
                 self.bump();
                 let count = self.parse_unary(allow_struct);
                 // 非结合:count 位再遇 `**` 直接判非法(镜像自举 parse_expr.ct:120-126)
                 if matches!(self.peek(), Tok::StarStar) {
                     self.err_here("E1001", "repeat 计数位不可再接 `**`(非结合)".into());
-                    return Expr::Void;
+                    return Expr::Void(nid(self.cur_span()));
                 }
-                lhs = Expr::Repeat { elem: Box::new(lhs), count: Box::new(count) };
+                { let id = nid(span_of(eid(&lhs))); lhs = Expr::Repeat { elem: Box::new(lhs), count: Box::new(count), id };}
                 continue;
             }
             let op = match self.peek() {
@@ -855,7 +855,7 @@ impl Parser {
             };
             self.bump();
             let rhs = self.parse_unary(allow_struct);
-            lhs = Expr::Binary { op, lhs: Box::new(lhs), rhs: Box::new(rhs) };
+            { let id = nid(span_of(eid(&lhs))); lhs = Expr::Binary { op, lhs: Box::new(lhs), rhs: Box::new(rhs), id };}
         }
         lhs
     }
@@ -863,11 +863,11 @@ impl Parser {
     fn parse_unary(&mut self, allow_struct: bool) -> Expr {
         if self.eat(&Tok::Minus) {
             let e = self.parse_unary(allow_struct);
-            return Expr::Unary { op: UnOp::Neg, expr: Box::new(e) };
+            { let id = nid(span_of(eid(&e))); return Expr::Unary { op: UnOp::Neg, expr: Box::new(e), id };}
         }
         if self.eat(&Tok::Bang) {
             let e = self.parse_unary(allow_struct);
-            return Expr::Unary { op: UnOp::Not, expr: Box::new(e) };
+            { let id = nid(span_of(eid(&e))); return Expr::Unary { op: UnOp::Not, expr: Box::new(e), id };}
         }
         self.parse_postfix(allow_struct)
     }
@@ -897,7 +897,7 @@ impl Parser {
                         if !self.eat(&Tok::Comma) { break; }
                     }
                     self.expect(&Tok::RParen, "实参表");
-                    e = Expr::Call { callee: Box::new(e), args };
+                    { let id = nid(span_of(eid(&e))); e = Expr::Call { callee: Box::new(e), args, id };}
                 }
                 Tok::LBracket => {
                     if self.bracket_followed_by_call_or_lit() {
@@ -914,7 +914,7 @@ impl Parser {
                             e = self.parse_typeargs_suffix(e);
                         } else {
                             self.expect(&Tok::RBracket, "索引");
-                            e = Expr::Index { obj: Box::new(e), index: Box::new(idx) };
+                            { let id = nid(span_of(eid(&e))); e = Expr::Index { obj: Box::new(e), index: Box::new(idx), id };}
                         }
                     }
                 }
@@ -931,9 +931,9 @@ impl Parser {
                             MemberTarget::Name(String::new())
                         }
                     };
-                    e = Expr::Member { obj: Box::new(e), target };
+                    { let id = nid(span_of(eid(&e))); e = Expr::Member { obj: Box::new(e), target, id };}
                 }
-                Tok::Question => { self.bump(); e = Expr::Try(Box::new(e)); }
+                Tok::Question => { self.bump(); e = { let id = nid(span_of(eid(&e))); Expr::Try(Box::new(e), id) }; }
                 _ => break,
             }
         }
@@ -949,7 +949,7 @@ impl Parser {
             if !self.eat(&Tok::Comma) { break; }
         }
         self.expect(&Tok::RBracket, "类型实参结束");
-        Expr::TypeArgs { expr: Box::new(e), args }
+        { let id = nid(span_of(eid(&e))); Expr::TypeArgs { expr: Box::new(e), args, id }}
     }
 
     fn parse_primary(&mut self, allow_struct: bool) -> Expr {
@@ -957,7 +957,7 @@ impl Parser {
         if self.depth > MAX_EXPR_DEPTH {
             self.err_here("E1001", "表达式嵌套过深".into());
             self.depth -= 1;
-            return Expr::Void;
+            return Expr::Void(nid(self.cur_span()));
         }
         let e = self.parse_primary_inner(allow_struct);
         self.depth -= 1;
@@ -966,29 +966,29 @@ impl Parser {
 
     fn parse_primary_inner(&mut self, allow_struct: bool) -> Expr {
         match self.peek().clone() {
-            Tok::Int { text, suffix } => { self.bump(); Expr::Int { text, suffix: suffix_name(&suffix) } }
-            Tok::Float { text, suffix } => { self.bump(); Expr::Float { text, suffix: suffix_name(&suffix) } }
+            Tok::Int { text, suffix } => { let t = self.bump(); Expr::Int { text, suffix: suffix_name(&suffix), id: nid(t.span) } }
+            Tok::Float { text, suffix } => { let t = self.bump(); Expr::Float { text, suffix: suffix_name(&suffix), id: nid(t.span) } }
             Tok::Str { parts } => {
-                self.bump();
+                let t = self.bump();
                 Expr::Str { parts: parts.into_iter().map(|p| match p {
-                    TokStrPart::Text(t) => StrPart::Text(t),
-                    TokStrPart::Interp(t) => StrPart::Interp(t),
-                }).collect() }
+                    TokStrPart::Text(x) => StrPart::Text(x),
+                    TokStrPart::Interp(x) => StrPart::Interp(x),
+                }).collect(), id: nid(t.span) }
             }
-            Tok::True => { self.bump(); Expr::Bool(true) }
-            Tok::False => { self.bump(); Expr::Bool(false) }
-            Tok::Void => { self.bump(); Expr::Void }
-            Tok::SelfKw => { self.bump(); Expr::Ident("self".into()) }
+            Tok::True => { let t = self.bump(); Expr::Bool(true, nid(t.span)) }
+            Tok::False => { let t = self.bump(); Expr::Bool(false, nid(t.span)) }
+            Tok::Void => { let t = self.bump(); Expr::Void(nid(t.span)) }
+            Tok::SelfKw => { let t = self.bump(); Expr::Ident("self".into(), nid(t.span)) }
             Tok::Ident(name) => {
-                self.bump();
+                let t = self.bump();
                 if allow_struct && self.at(&Tok::LBrace) {
                     return self.parse_struct_lit(vec![name]);
                 }
-                Expr::Ident(name)
+                Expr::Ident(name, nid(t.span))
             }
             Tok::LParen => {
-                self.bump();
-                if self.at(&Tok::RParen) { self.bump(); return Expr::Tuple(vec![]); }
+                let t = self.bump();
+                if self.at(&Tok::RParen) { self.bump(); return Expr::Tuple(vec![], nid(t.span)); }
                 let mut items = vec![self.parse_expr()];
                 let mut is_tuple = false;
                 while self.eat(&Tok::Comma) {
@@ -997,10 +997,10 @@ impl Parser {
                     is_tuple = true;
                 }
                 self.expect(&Tok::RParen, "括号/元组");
-                if is_tuple { Expr::Tuple(items) } else { items.remove(0) }
+                if is_tuple { Expr::Tuple(items, nid(t.span)) } else { items.remove(0) }
             }
             Tok::LBracket => {
-                self.bump();
+                let t = self.bump();
                 let mut items = Vec::new();
                 loop {
                     if self.at(&Tok::RBracket) { break; }
@@ -1008,9 +1008,9 @@ impl Parser {
                     if !self.eat(&Tok::Comma) { break; }
                 }
                 self.expect(&Tok::RBracket, "数组字面量");
-                Expr::Array(items)
+                Expr::Array(items, nid(t.span))
             }
-            Tok::LBrace => Expr::BlockExpr(self.parse_block()),
+            Tok::LBrace => { let t = self.bump(); let b = self.parse_block_after_lbrace(); Expr::BlockExpr(b, nid(t.span)) }
             Tok::If => self.parse_if(),
             Tok::Match => self.parse_match(),
             Tok::Scope => self.parse_scope(),
@@ -1020,14 +1020,14 @@ impl Parser {
             Tok::OrOr => { self.bump(); self.parse_closure_tail(Vec::new()) }
             other => {
                 self.err_here("E1001", format!("意外的记号 {:?} 在表达式位置", other));
-                self.bump();
-                Expr::Void
+                let t = self.bump();
+                Expr::Void(nid(t.span))
             }
         }
     }
 
     fn parse_struct_lit(&mut self, path: Vec<String>) -> Expr {
-        self.expect(&Tok::LBrace, "构造字面量");
+        let start = self.expect(&Tok::LBrace, "构造字面量");
         let mut fields = Vec::new();
         loop {
             self.skip_newlines();
@@ -1045,10 +1045,11 @@ impl Parser {
                 }
             }
         }
-        Expr::StructLit { path, type_args: Vec::new(), fields }
+        Expr::StructLit { path, type_args: Vec::new(), fields, id: nid(start) }
     }
 
     fn parse_if(&mut self) -> Expr {
+        let start = self.cur_span();
         self.bump(); // if
         let cond = self.parse_expr_flags(false);
         let then = self.parse_block();
@@ -1062,14 +1063,15 @@ impl Parser {
             self.bump(); // else
             els = Some(Box::new(self.parse_else_branch()));
         }
-        Expr::If { cond: Box::new(cond), then, els }
+        Expr::If { cond: Box::new(cond), then, els, id: nid(start) }
     }
 
     fn parse_else_branch(&mut self) -> Expr {
-        if self.at(&Tok::If) { self.parse_if() } else { Expr::BlockExpr(self.parse_block()) }
+        if self.at(&Tok::If) { self.parse_if() } else { let t = self.bump(); let b = self.parse_block_after_lbrace(); Expr::BlockExpr(b, nid(t.span)) }
     }
 
     fn parse_match(&mut self) -> Expr {
+        let start = self.cur_span();
         self.bump(); // match
         let scrutinee = self.parse_expr_flags(false);
         self.expect(&Tok::LBrace, "match 体");
@@ -1100,26 +1102,28 @@ impl Parser {
                 self.err_here("E1001", format!("match 臂后应为换行,实际 {:?}", self.peek()));
             }
         }
-        Expr::Match { expr: Box::new(scrutinee), arms }
+        Expr::Match { expr: Box::new(scrutinee), arms, id: nid(start) }
     }
 
     fn parse_scope(&mut self) -> Expr {
+        let start = self.cur_span();
         self.bump(); // scope
         self.expect(&Tok::LBrace, "scope 块");
         self.expect(&Tok::Pipe, "scope 参数");
         let param = self.expect_ident("scope 参数");
         self.expect(&Tok::Pipe, "scope 参数");
         let body = self.parse_block_after_lbrace();
-        Expr::Scope { param, body }
+        Expr::Scope { param, body, id: nid(start) }
     }
 
     fn parse_own(&mut self) -> Expr {
+        let start = self.cur_span();
         self.bump(); // own
         self.expect(&Tok::LParen, "own 块");
         let arena = self.expect_ident("arena 名");
         self.expect(&Tok::RParen, "own 块");
         let body = self.parse_block();
-        Expr::Own { arena, body }
+        Expr::Own { arena, body, id: nid(start) }
     }
 
     fn parse_closure(&mut self) -> Expr {
@@ -1140,9 +1144,10 @@ impl Parser {
 
     /// 闭包参数表之后的公共尾部(返回标注 + 体);零参闭包(||)复用
     fn parse_closure_tail(&mut self, params: Vec<ClosureParam>) -> Expr {
+        let start = self.cur_span();
         let ret = if self.eat(&Tok::Arrow) { Some(Box::new(self.parse_type())) } else { None };
         let body = Box::new(self.parse_expr());
-        Expr::Closure { params, ret, body }
+        Expr::Closure { params, ret, body, id: nid(start) }
     }
 
     // ---------- 块与语句 ----------
@@ -1169,14 +1174,15 @@ impl Parser {
                     let ty = if self.eat(&Tok::Colon) { Some(self.parse_type()) } else { None };
                     self.expect(&Tok::Assign, "绑定");
                     let expr = self.parse_expr();
-                    stmts.push(Stmt::Let { is_var, pattern, ty, expr });
+                    { let id = nid(span_of(eid(&expr))); stmts.push(Stmt::Let { is_var, pattern, ty, expr, id });}
                     self.ensure_progress(before);
                     self.require_stmt_end();
                 }
                 Tok::Return => {
-                    self.bump();
+                    let t = self.bump();
                     let e = if self.at(&Tok::Newline) || self.at(&Tok::RBrace) { None } else { Some(self.parse_expr()) };
-                    stmts.push(Stmt::Return(e));
+                    let id = e.as_ref().map_or(t.span, |x| span_of(eid(x)));
+                    stmts.push(Stmt::Return(e, nid(id)));
                     self.require_stmt_end();
                 }
                 Tok::For => {
@@ -1185,19 +1191,19 @@ impl Parser {
                     self.expect(&Tok::In, "for");
                     let iter = self.parse_expr_flags(false);
                     let body = self.parse_block();
-                    stmts.push(Stmt::For { pattern, iter, body });
+                    { let id = nid(span_of(eid(&iter))); stmts.push(Stmt::For { pattern, iter, body, id });}
                     self.require_stmt_end();
                 }
                 Tok::While => {
                     self.bump();
                     let cond = self.parse_expr_flags(false);
                     let body = self.parse_block();
-                    stmts.push(Stmt::While { cond, body });
+                    { let id = nid(span_of(eid(&cond))); stmts.push(Stmt::While { cond, body, id });}
                     self.require_stmt_end();
                 }
                 // v0.7 修订二:break/continue 语句(绑同函数体最近循环)
-                Tok::Break => { self.bump(); stmts.push(Stmt::Break); self.require_stmt_end(); }
-                Tok::Continue => { self.bump(); stmts.push(Stmt::Continue); self.require_stmt_end(); }
+                Tok::Break => { let t = self.bump(); stmts.push(Stmt::Break(nid(t.span))); self.require_stmt_end(); }
+                Tok::Continue => { let t = self.bump(); stmts.push(Stmt::Continue(nid(t.span))); self.require_stmt_end(); }
                 _ => {
                     let e = self.parse_expr();
                     let aop = match self.peek() {
@@ -1208,11 +1214,11 @@ impl Parser {
                     };
                     if let Some(op) = aop {
                         self.bump();
-                        if !matches!(e, Expr::Ident(_) | Expr::Member { .. } | Expr::Index { .. }) {
+                        if !matches!(e, Expr::Ident(_, _) | Expr::Member { .. } | Expr::Index { .. }) {
                             self.err_here("E1001", "无效的赋值目标".into());
                         }
                         let value = self.parse_expr();
-                        stmts.push(Stmt::Assign { target: e, op, value });
+                        { let id = nid(span_of(eid(&value))); stmts.push(Stmt::Assign { target: e, op, value, id });}
                         self.require_stmt_end();
                     } else {
                         // 尾表达式判定:其后(可跨换行)是 } 或 EOF → tail(块值,优先)
@@ -1229,7 +1235,8 @@ impl Parser {
                                 break;
                             }
                             _ => {
-                                stmts.push(Stmt::Expr(e));
+                                let id = nid(span_of(eid(&e)));
+                                stmts.push(Stmt::Expr(e, id));
                                 if self.at(&Tok::Newline) { self.skip_newlines(); }
                                 else {
                                     self.err_here("E1001", format!("语句后应为换行,实际 {:?}", self.peek()));
@@ -1325,6 +1332,21 @@ impl Parser {
                 Pattern::Wildcard
             }
         }
+    }
+}
+
+/// Expr node id (span side-table slot); used to read the first child's id.
+fn eid(e: &Expr) -> u32 {
+    match e {
+        Expr::Int { id, .. } | Expr::Float { id, .. } | Expr::Str { id, .. } => *id,
+        Expr::Bool(_, id) | Expr::Void(id) | Expr::Ident(_, id) => *id,
+        Expr::Tuple(_, id) | Expr::Array(_, id) => *id,
+        Expr::StructLit { id, .. } | Expr::Unary { id, .. } | Expr::Binary { id, .. }
+        | Expr::Range { id, .. } | Expr::Call { id, .. } | Expr::Repeat { id, .. }
+        | Expr::Index { id, .. } | Expr::Member { id, .. } | Expr::TypeArgs { id, .. }
+        | Expr::Closure { id, .. } | Expr::Scope { id, .. } | Expr::Own { id, .. }
+        | Expr::If { id, .. } | Expr::Match { id, .. } => *id,
+        Expr::Try(_, id) | Expr::BlockExpr(_, id) => *id,
     }
 }
 
@@ -1484,7 +1506,7 @@ mod tests {
         let (e, d) = expr("\"hi {name}\"");
         assert!(d.is_empty());
         match e {
-            Expr::Str { parts } => {
+            Expr::Str { parts, .. } => {
                 assert_eq!(parts, vec![StrPart::Text("hi ".into()), StrPart::Interp("name".into())]);
             }
             other => panic!("{:?}", other),
@@ -1640,7 +1662,7 @@ use app.extra.widget_new as panel_new");
         assert!(matches!(&b.stmts[0], Stmt::For { pattern: Pattern::Wildcard, .. }));
         let (b, d) = block("{ return Ok(v) }");
         assert!(d.is_empty());
-        assert!(matches!(&b.stmts[0], Stmt::Return(Some(_))));
+        assert!(matches!(&b.stmts[0], Stmt::Return(Some(_), _)));
     }
 
     #[test]
@@ -1718,8 +1740,11 @@ mod final_review_pins {
 
     #[test]
     fn deep_nesting_capped() {
-        // 恢复路径盲区回归:2000 个连续 ( 在默认测试线程上必须正常退出且产出诊断
-        // (曾因 postfix 的 LParen 恢复分支与 parse_expr 互递归而栈溢出 abort)
+        // 恢复路径盲区回归:2000 个连续 ( 在 darwin/debug 巨帧下超出 libtest 默认
+        // 8MiB 线程栈(256 深度上限 × parse_expr/primary/postfix 三帧 debug 展开
+        // ≈9MB;Linux 容器同上限不触顶)——自 spawn 32MB 栈线程跑,断言不变:
+        // 优雅上帽报 E1001 嵌套过深,不 abort。
+        let run = std::thread::Builder::new().stack_size(32 << 20).spawn(|| {
         let src = format!("fn f() -> I32 {{ return {}1{} }}", "(".repeat(2000), ")".repeat(2000));
         let (_, d) = crate::parse_src(&src);
         assert!(!d.is_empty());
@@ -1729,6 +1754,8 @@ mod final_review_pins {
         let (_, d) = crate::parse_src(&src);
         assert!(!d.is_empty());
         assert!(d.iter().any(|x| x.message.contains("嵌套过深")));
+        }).unwrap();
+        run.join().unwrap();
     }
 }
 

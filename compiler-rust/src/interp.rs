@@ -279,14 +279,14 @@ impl<'a> Interp<'a> {
                 self.scopes_push_bind(pattern, &v, env);
                 Ok(())
             }
-            ast::Stmt::Return(e) => {
+            ast::Stmt::Return(e, _) => {
                 let v = match e { Some(e) => self.expr(e, env)?, None => Value::Void };
                 Err(Flow::EarlyReturn(v))
             }
             // v0.7 修订二:向最近 enclosing 循环传播(For/While 执行器捕获)
-            ast::Stmt::Break => Err(Flow::Break),
-            ast::Stmt::Continue => Err(Flow::Continue),
-            ast::Stmt::For { pattern, iter, body } => {
+            ast::Stmt::Break(_) => Err(Flow::Break),
+            ast::Stmt::Continue(_) => Err(Flow::Continue),
+            ast::Stmt::For { pattern, iter, body, .. } => {
                 let it = self.expr(iter, env)?;
                 // Iterator 协议(T15;§3.8.2):struct 值有 next 方法 → for = next 调用循环。
                 // R 线 struct 值字段经 Rc<RefCell> 共享 → 方法体 self.cur += 1 天然对
@@ -359,7 +359,7 @@ impl<'a> Interp<'a> {
                 }
                 Ok(())
             }
-            ast::Stmt::While { cond, body } => {
+            ast::Stmt::While { cond, body, .. } => {
                 'outer: loop {
                     let c = self.expr(cond, env)?;
                     if !truthy(&c) { break; }
@@ -384,12 +384,12 @@ impl<'a> Interp<'a> {
                 }
                 Ok(())
             }
-            ast::Stmt::Assign { target, op, value } => {
+            ast::Stmt::Assign { target, op, value, .. } => {
                 let v = self.expr(value, env)?;
                 self.assign_target(target, env, op, v)?;
                 Ok(())
             }
-            ast::Stmt::Expr(e) => { self.expr(e, env)?; Ok(()) }
+            ast::Stmt::Expr(e, _) => { self.expr(e, env)?; Ok(()) }
         }
     }
 
@@ -441,7 +441,7 @@ impl<'a> Interp<'a> {
 
     fn assign_target(&mut self, target: &ast::Expr, env: &Rc<Env>, op: &ast::AssignOp, v: Value) -> Result<(), Flow> {
         match target {
-            Expr::Ident(n) => {
+            Expr::Ident(n, _) => {
                 let cur = env.get(n).map(|l| l.value).unwrap_or(Value::Void);
                 let nv = apply_assign_op(op, &cur, &v)?;
                 if !env.assign(n, Local { value: nv.clone() }) {
@@ -449,7 +449,7 @@ impl<'a> Interp<'a> {
                 }
                 Ok(())
             }
-            Expr::Member { obj, target: mt } => {
+            Expr::Member { obj, target: mt, .. } => {
                 let recv = self.expr(obj, env)?;
                 let name = member_name(mt);
                 let cur = self.member(&recv, &name)?;
@@ -457,7 +457,7 @@ impl<'a> Interp<'a> {
                 self.set_member(&recv, &name, nv);
                 Ok(())
             }
-            Expr::Index { obj, index } => {
+            Expr::Index { obj, index, .. } => {
                 let o = self.expr(obj, env)?;
                 let i = self.expr(index, env)?;
                 let idx = runtime_index_usize(&o, &i);
@@ -502,7 +502,7 @@ impl<'a> Interp<'a> {
 
     fn expr_inner(&mut self, e: &ast::Expr, env: &Rc<Env>) -> EvalResult {
         match e {
-            Expr::Int { text, suffix } => {
+            Expr::Int { text, suffix, .. } => {
                 let cleaned = text.replace('_', "");
                 let v = parse_int(&cleaned).unwrap_or(0);
                 if !suffix.is_empty() {
@@ -526,13 +526,13 @@ impl<'a> Interp<'a> {
                 }
                 Ok(Value::Int(v))
             }
-            Expr::Float { text, suffix } => {
+            Expr::Float { text, suffix, .. } => {
                 let cleaned = text.replace('_', "");
                 let v: f64 = cleaned.parse().unwrap_or(0.0);
                 if suffix == "F32" { return Ok(Value::F32(v as f32)); }
                 Ok(Value::F64(v))
             }
-            Expr::Str { parts } => {
+            Expr::Str { parts, .. } => {
                 let mut out = String::new();
                 for p in parts {
                     match p {
@@ -545,15 +545,15 @@ impl<'a> Interp<'a> {
                 }
                 Ok(Value::Str(Rc::new(out)))
             }
-            Expr::Bool(b) => Ok(Value::Bool(*b)),
-            Expr::Void => Ok(Value::Void),
-            Expr::Ident(name) => self.eval_ident(name, env),
-            Expr::Tuple(items) => {
+            Expr::Bool(b, _) => Ok(Value::Bool(*b)),
+            Expr::Void(_) => Ok(Value::Void),
+            Expr::Ident(name, _) => self.eval_ident(name, env),
+            Expr::Tuple(items, _) => {
                 let mut vs = Vec::new();
                 for i in items { vs.push(self.expr(i, env)?); }
                 Ok(Value::Tuple(vs))
             }
-            Expr::Array(items) => {
+            Expr::Array(items, _) => {
                 let mut vs = Vec::new();
                 for i in items { vs.push(self.expr(i, env)?); }
                 Ok(Value::Array(Rc::new(RefCell::new(vs))))
@@ -565,12 +565,12 @@ impl<'a> Interp<'a> {
                 };
                 let mut fv = Vec::new();
                 for f in fields {
-                    let v = self.expr(f.value.as_ref().unwrap_or(&ast::Expr::Void), env)?;
+                    let v = self.expr(f.value.as_ref().unwrap_or(&ast::Expr::Void(crate::ast::SYNTHETIC_ID)), env)?;
                     fv.push((f.name.clone(), v));
                 }
                 Ok(Value::Struct { def, fields: Rc::new(RefCell::new(fv)) })
             }
-            Expr::Unary { op, expr } => {
+            Expr::Unary { op, expr, .. } => {
                 let v = self.expr(expr, env)?;
                 match op {
                     ast::UnOp::Neg => Ok(match v {
@@ -601,19 +601,19 @@ impl<'a> Interp<'a> {
                     ast::UnOp::Not => Ok(Value::Bool(!truthy(&v))),
                 }
             }
-            Expr::Binary { op, lhs, rhs } => {
+            Expr::Binary { op, lhs, rhs, .. } => {
                 let a = self.expr(lhs, env)?;
                 self.eval_binop(op, &a, rhs, env)
             }
-            Expr::Range { inclusive, from, to } => {
+            Expr::Range { inclusive, from, to, .. } => {
                 let Value::Int(f) = self.expr(from, env)? else { return Ok(Value::Void) };
                 let Value::Int(t) = self.expr(to, env)? else { return Ok(Value::Void) };
                 Ok(Value::Range { from: f, to: t, inclusive: *inclusive })
             }
-            Expr::Call { callee, args } => self.eval_call(callee, args, env),
+            Expr::Call { callee, args, .. } => self.eval_call(callee, args, env),
             // W5:repeat 字面量 `[elem] ** N`——elem 块一次物化 N 份拼接展平
             // (`[1,2] ** 3` → [1,2,1,2,1,2];负计数 panic;镜像自举 eval_expr.ct:411-415)
-            Expr::Repeat { elem, count } => {
+            Expr::Repeat { elem, count, .. } => {
                 let ev = self.expr(elem, env)?;
                 let cv = self.expr(count, env)?;
                 let n = match cv { Value::Int(i) | Value::IntW(_, i) => i, Value::UInt(u) | Value::UIntW(_, u) => u as i64, _ => 0 };
@@ -629,18 +629,18 @@ impl<'a> Interp<'a> {
                 }
                 Ok(Value::Array(Rc::new(RefCell::new(items))))
             }
-            Expr::Index { obj, index } => {
+            Expr::Index { obj, index, .. } => {
                 let o = self.expr(obj, env)?;
                 let i = self.expr(index, env)?;
                 runtime_index(&o, &i)
             }
-            Expr::Member { obj, target } => {
+            Expr::Member { obj, target, .. } => {
                 let o = self.expr(obj, env)?;
                 self.member(&o, &member_name(target))
             }
-            Expr::TypeArgs { expr, args } => {
+            Expr::TypeArgs { expr, args, .. } => {
                 // 非调用位置的泛型类型表达式:Simd[F32, N] → 定宽标记值
-                if let Expr::Ident(ty_name) = &**expr {
+                if let Expr::Ident(ty_name, _) = &**expr {
                     if ty_name == "Simd" {
                         let n = args.get(1).and_then(|t| match t {
                             ast::Type::ComptimeVal(s) => s.trim().parse::<usize>().ok(),
@@ -652,7 +652,7 @@ impl<'a> Interp<'a> {
                 }
                 self.expr(expr, env)
             }
-            Expr::Try(e) => {
+            Expr::Try(e, _) => {
                 let v = self.expr(e, env)?;
                 match v {
                     Value::Enum { def, variant, mut payload } => {
@@ -682,7 +682,7 @@ impl<'a> Interp<'a> {
                 params: params.clone(), body: Rc::new((**body).clone()), env: env.clone(),
             }),
             // (call_fn_value 的 ast-args 包装在下方 call_fn_value_ast)
-            Expr::Scope { param, body } => {
+            Expr::Scope { param, body, .. } => {
                 let sid = self.fresh_scope();
                 let env2 = Env::child(env);
                 env2.define(param.clone(), Local { value: Value::Void });
@@ -690,7 +690,7 @@ impl<'a> Interp<'a> {
                 self.cancelled_scopes.borrow_mut().insert(sid);
                 r
             }
-            Expr::Own { arena, body } => {
+            Expr::Own { arena, body, .. } => {
                 let saved = self.in_own;
                 self.in_own = true;
                 let arena_env = Env::child(env);
@@ -699,7 +699,7 @@ impl<'a> Interp<'a> {
                 self.in_own = saved;
                 r
             }
-            Expr::If { cond, then, els } => {
+            Expr::If { cond, then, els, .. } => {
                 let c = self.expr(cond, env)?;
                 if truthy(&c) {
                     self.check_block(then, env)
@@ -707,7 +707,7 @@ impl<'a> Interp<'a> {
                     self.expr(e2, env)
                 } else { Ok(Value::Void) }
             }
-            Expr::Match { expr: scrut, arms } => {
+            Expr::Match { expr: scrut, arms, .. } => {
                 let sv = self.expr(scrut, env)?;
                 for arm in arms {
                     let arm_env = Env::child(env);
@@ -728,7 +728,7 @@ impl<'a> Interp<'a> {
                 }
                 Err(Flow::Panic("match 无匹配臂".into()))
             }
-            Expr::BlockExpr(b) => self.check_block(b, env),
+            Expr::BlockExpr(b, _) => self.check_block(b, env),
         }
     }
 
@@ -818,7 +818,7 @@ impl<'a> Interp<'a> {
     }
     fn eval_call(&mut self, callee: &ast::Expr, args: &[ast::Expr], env: &Rc<Env>) -> EvalResult {
         match callee {
-            Expr::Ident(name) => {
+            Expr::Ident(name, _) => {
                 // StringBuilder()(§3.8.2;T03)
                 if name == "StringBuilder" {
                     if !args.is_empty() { return Err(Flow::Panic("StringBuilder arity".into())); }
@@ -826,9 +826,9 @@ impl<'a> Interp<'a> {
                 }
                 self.call_ident(name, args, env)
             }
-            Expr::Member { obj, target } => {
+            Expr::Member { obj, target, .. } => {
                 let m = member_name(target);
-                if let Expr::Ident(on) = &**obj {
+                if let Expr::Ident(on, _) = &**obj {
                     // bit.* 位运算内建(§4.5;T01):调用位直接拦截,Rust 原生位运算
                     if on == "bit" {
                         return self.call_bit(&m, args, env);
@@ -845,9 +845,9 @@ impl<'a> Interp<'a> {
                 }
                 self.eval_method(obj, &m, args, env)
             }
-            Expr::TypeArgs { expr: inner, args: type_args_ast } => {
+            Expr::TypeArgs { expr: inner, args: type_args_ast, .. } => {
                 // 1) inner = Ident(类型名) → 泛型类型构造器:Atomic[I32](0), Box[T](v), Channel[T](cap)
-                if let Expr::Ident(ty_name) = &**inner {
+                if let Expr::Ident(ty_name, _) = &**inner {
                     let mut vals = Vec::new();
                     for a in args { vals.push(self.expr(a, env)?); }
                     return match ty_name.as_str() {
@@ -913,7 +913,7 @@ impl<'a> Interp<'a> {
                     };
                 }
                 // 2) inner = Member(泛型方法):arena.list[I32](), x.as[I8]() 等
-                if let Expr::Member { obj: recv_expr, target: ast::MemberTarget::Name(method) } = &**inner {
+                if let Expr::Member { obj: recv_expr, target: ast::MemberTarget::Name(method), .. } = &**inner {
                     let recv = self.expr(recv_expr, env)?;
                     // `as` 方法:数值转换(截断语义,§3.6)
                     if method == "as" {
@@ -2008,7 +2008,7 @@ impl<'a> Interp<'a> {
                     cenv.define(p.name.clone(), Local { value: v });
                 }
                 match &**body {
-                    Expr::BlockExpr(b) => self.check_block(b, &cenv),
+                    Expr::BlockExpr(b, _) => self.check_block(b, &cenv),
                     other => self.expr(other, &cenv),
                 }
             }
@@ -2072,7 +2072,7 @@ impl<'a> Interp<'a> {
         let (body, env) = (task.borrow().closure.clone(), task.borrow().env.clone());
         let r = match &*body {
             Expr::Closure { body: inner, .. } => match &**inner {
-                Expr::BlockExpr(b) => self.check_block(b, &env),
+                Expr::BlockExpr(b, _) => self.check_block(b, &env),
                 other => self.expr(other, &env),
             },
             other => self.expr(other, &env),
@@ -2101,7 +2101,7 @@ impl<'a> Interp<'a> {
             let (body, env) = (task.borrow().closure.clone(), task.borrow().env.clone());
             let r = match &*body {
                 Expr::Closure { body: inner, .. } => match &**inner {
-                    Expr::BlockExpr(b) => self.check_block(b, &env),
+                    Expr::BlockExpr(b, _) => self.check_block(b, &env),
                     other => self.expr(other, &env),
                 },
                 other => self.expr(other, &env),

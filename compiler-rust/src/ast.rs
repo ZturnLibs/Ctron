@@ -1,6 +1,40 @@
 //! 纯数据 AST:P1-B「核心接口」骨架逐字落地(字段即契约;全部 pub,
 //! 全部 derive(Debug, Clone, PartialEq);无方法无 impl)。Task 2-4 的解析器按此构造。
 
+use std::cell::RefCell;
+use crate::token::Span;
+
+// ---- span 侧表(P2-D 批①:Expr/Stmt 节点 id → Span;parse 期填充,check 期读)----
+// id=0 哨兵:合成节点(无源位);span_of(0) 回落 1:1。
+// reset 挂调用方(单文件入口/check_package),不在 parser 内——多文件包逐文件
+// reset 会洗掉先解析文件的 span 表。
+pub const SYNTHETIC_ID: u32 = 0;
+
+thread_local! {
+    static SPANS: RefCell<Vec<Span>> = RefCell::new(Vec::new());
+}
+
+pub fn spans_reset() {
+    SPANS.with(|s| {
+        let mut v = s.borrow_mut();
+        v.clear();
+        v.push(Span::new(1, 1, 0, 0)); // 槽 0 = 哨兵
+    });
+}
+
+/// 分配节点 id 并记 span(构造序 = id 序)。
+pub fn nid(span: Span) -> u32 {
+    SPANS.with(|s| {
+        let mut v = s.borrow_mut();
+        v.push(span);
+        (v.len() - 1) as u32
+    })
+}
+
+pub fn span_of(id: u32) -> Span {
+    SPANS.with(|s| s.borrow().get(id as usize).copied().unwrap_or_else(|| Span::new(1, 1, 0, 0)))
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct File { pub decls: Vec<Decl> }
 #[derive(Debug, Clone, PartialEq)]
@@ -60,26 +94,26 @@ pub struct Field { pub vis: Vis, pub is_var: bool, pub name: String, pub ty: Typ
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
-    Int { text: String, suffix: String }, Float { text: String, suffix: String },
-    Str { parts: Vec<StrPart> }, Bool(bool), Void,
-    Ident(String), Tuple(Vec<Expr>), Array(Vec<Expr>),
-    StructLit { path: Vec<String>, type_args: Vec<Type>, fields: Vec<StructField> },
-    Unary { op: UnOp, expr: Box<Expr> },
-    Binary { op: BinOp, lhs: Box<Expr>, rhs: Box<Expr> },
-    Range { inclusive: bool, from: Box<Expr>, to: Box<Expr> },
-    Call { callee: Box<Expr>, args: Vec<Expr> },
+    Int { text: String, suffix: String, id: u32 }, Float { text: String, suffix: String, id: u32 },
+    Str { parts: Vec<StrPart>, id: u32 }, Bool(bool, u32), Void(u32),
+    Ident(String, u32), Tuple(Vec<Expr>, u32), Array(Vec<Expr>, u32),
+    StructLit { path: Vec<String>, type_args: Vec<Type>, fields: Vec<StructField>, id: u32 },
+    Unary { op: UnOp, expr: Box<Expr>, id: u32 },
+    Binary { op: BinOp, lhs: Box<Expr>, rhs: Box<Expr>, id: u32 },
+    Range { inclusive: bool, from: Box<Expr>, to: Box<Expr>, id: u32 },
+    Call { callee: Box<Expr>, args: Vec<Expr>, id: u32 },
     /// W5:repeat 字面量 `[elem] ** N`(1009 裁决:专节点非结合)
-    Repeat { elem: Box<Expr>, count: Box<Expr> },
-    Index { obj: Box<Expr>, index: Box<Expr> },
-    Member { obj: Box<Expr>, target: MemberTarget },     // Name(String) | TupleIndex(u32)
-    TypeArgs { expr: Box<Expr>, args: Vec<Type> },
-    Try(Box<Expr>),
-    Closure { params: Vec<ClosureParam>, ret: Option<Box<Type>>, body: Box<Expr> },
-    Scope { param: String, body: Block },
-    Own { arena: String, body: Block },
-    If { cond: Box<Expr>, then: Block, els: Option<Box<Expr>> },   // els: If 或 BlockExpr
-    Match { expr: Box<Expr>, arms: Vec<MatchArm> },
-    BlockExpr(Block),
+    Repeat { elem: Box<Expr>, count: Box<Expr>, id: u32 },
+    Index { obj: Box<Expr>, index: Box<Expr>, id: u32 },
+    Member { obj: Box<Expr>, target: MemberTarget, id: u32 },     // Name(String) | TupleIndex(u32)
+    TypeArgs { expr: Box<Expr>, args: Vec<Type>, id: u32 },
+    Try(Box<Expr>, u32),
+    Closure { params: Vec<ClosureParam>, ret: Option<Box<Type>>, body: Box<Expr>, id: u32 },
+    Scope { param: String, body: Block, id: u32 },
+    Own { arena: String, body: Block, id: u32 },
+    If { cond: Box<Expr>, then: Block, els: Option<Box<Expr>>, id: u32 },   // els: If 或 BlockExpr
+    Match { expr: Box<Expr>, arms: Vec<MatchArm>, id: u32 },
+    BlockExpr(Block, u32),
 }
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructField { pub name: String, pub value: Option<Expr> } // 简写 = None
@@ -100,15 +134,15 @@ pub enum StrPart { Text(String), Interp(String) }
 pub struct Block { pub stmts: Vec<Stmt>, pub tail: Option<Box<Expr>> }
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
-    Let { is_var: bool, pattern: Pattern, ty: Option<Type>, expr: Expr },
-    Return(Option<Expr>),
-    For { pattern: Pattern, iter: Expr, body: Block },
-    While { cond: Expr, body: Block },
-    Assign { target: Expr, op: AssignOp, value: Expr },
-    Expr(Expr),
+    Let { is_var: bool, pattern: Pattern, ty: Option<Type>, expr: Expr, id: u32 },
+    Return(Option<Expr>, u32),
+    For { pattern: Pattern, iter: Expr, body: Block, id: u32 },
+    While { cond: Expr, body: Block, id: u32 },
+    Assign { target: Expr, op: AssignOp, value: Expr, id: u32 },
+    Expr(Expr, u32),
     // v0.7 修订二:语句级、无值、绑同函数体最近循环(§4 提案)
-    Break,
-    Continue,
+    Break(u32),
+    Continue(u32),
 }
 #[derive(Debug, Clone, PartialEq)]
 pub enum AssignOp { Eq, AddEq, SubEq, MulEq, DivEq, ModEq }

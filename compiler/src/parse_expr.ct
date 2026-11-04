@@ -5,19 +5,19 @@
 // p_tpars/p_typ 类型;p_* 均携带 lns 做 span 行号戳。
 // =====================================================================
 // v0.7 修订一:第 0 层 || 逻辑或(§4.3;中缀位为运算符,起始位在 p_pri 为零参闭包)
-fn p_oror(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str] {
-    var l = p_or(toks, cur, lns, al)
+fn p_oror(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], al: Str) -> List[Str] {
+    var l = p_or(toks, cur, lns, cols, al)
     var go = true
     while go {
         if tok(toks, cur) == "||" {
             adv(cur)
-            var r = p_or(toks, cur, lns, al)
+            var r = p_or(toks, cur, lns, cols, al)
             var nb = mk("Binary")
             nb.push("OrOr")
             nb.push(l)
             nb.push(r)
             // v0.7 修订一:Binary 节点补行号戳——E2010 检查的 nline 依赖末位为行号字符串
-            nstamp(nb, lns[cur.load()])
+            nstamp(nb, lns[cur.load()], cols[cur.load()])
             l = nb
         } else {
             go = false
@@ -26,27 +26,27 @@ fn p_oror(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[St
     return l
 }
 
-fn p_and(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str] {
-    var l = p_cmp(toks, cur, lns, al)
+fn p_and(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], al: Str) -> List[Str] {
+    var l = p_cmp(toks, cur, lns, cols, al)
     var go = true
     while go {
         if tok(toks, cur) == "&&" {
             adv(cur)
-            var r = p_cmp(toks, cur, lns, al)
+            var r = p_cmp(toks, cur, lns, cols, al)
             var nb = mk("Binary")
             nb.push("AndAnd")
             nb.push(l)
             nb.push(r)
             // v0.7 修订一:Binary 节点补行号戳——E2010 检查的 nline 依赖末位为行号字符串
-            nstamp(nb, lns[cur.load()])
+            nstamp(nb, lns[cur.load()], cols[cur.load()])
             l = nb
         } else { go = false }
     }
     return l
 }
 
-fn p_cmp(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str] {
-    var l = p_rng(toks, cur, lns, al)
+fn p_cmp(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], al: Str) -> List[Str] {
+    var l = p_rng(toks, cur, lns, cols, al)
     var go = true
     while go {
         var t = tok(toks, cur)
@@ -59,25 +59,25 @@ fn p_cmp(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str
         if t == ">=" { op = "Ge" }
         if op == "" { go = false } else {
             adv(cur)
-            var r = p_rng(toks, cur, lns, al)
+            var r = p_rng(toks, cur, lns, cols, al)
             var nb = mk("Binary")
             nb.push(op)
             nb.push(l)
             nb.push(r)
             // v0.7 修订一:Binary 节点补行号戳——E2010 检查的 nline 依赖末位为行号字符串
-            nstamp(nb, lns[cur.load()])
+            nstamp(nb, lns[cur.load()], cols[cur.load()])
             l = nb
         }
     }
     return l
 }
 
-fn p_rng(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str] {
-    var f = p_add(toks, cur, lns, al)
+fn p_rng(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], al: Str) -> List[Str] {
+    var f = p_add(toks, cur, lns, cols, al)
     var t = tok(toks, cur)
     if or2(t == "..", t == "..=") {
         adv(cur)
-        var to = p_add(toks, cur, lns, al)
+        var to = p_add(toks, cur, lns, cols, al)
         var nb = mk("Range")
         if t == "..=" {
             nb.push("true")
@@ -91,8 +91,8 @@ fn p_rng(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str
     return f
 }
 
-fn p_add(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str] {
-    var l = p_mul(toks, cur, lns, al)
+fn p_add(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], al: Str) -> List[Str] {
+    var l = p_mul(toks, cur, lns, cols, al)
     var go = true
     while go {
         var t = tok(toks, cur)
@@ -103,31 +103,31 @@ fn p_add(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str
         if t == "-%" { op = "WrapSub" }
         if op == "" { go = false } else {
             adv(cur)
-            var r = p_mul(toks, cur, lns, al)
+            var r = p_mul(toks, cur, lns, cols, al)
             var nb = mk("Binary")
             nb.push(op)
             nb.push(l)
             nb.push(r)
             // v0.7 修订一:Binary 节点补行号戳——E2010 检查的 nline 依赖末位为行号字符串
-            nstamp(nb, lns[cur.load()])
+            nstamp(nb, lns[cur.load()], cols[cur.load()])
             l = nb
         }
     }
     return l
 }
 
-fn p_mul(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str] {
-    var l = p_una(toks, cur, lns, al)
+fn p_mul(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], al: Str) -> List[Str] {
+    var l = p_una(toks, cur, lns, cols, al)
     // G1-T8(W1):`**` repeat 后缀(1009 裁决:拼写 [v] ** N;专节点 Repeat
     // [elem, count] + nstamp,不复用 Binary——count 编译期/结果维度相乘,规则
     // 特异防污染 Mul 通道)。非结合:`a ** b ** c` 直接 E1001(嵌套 repeat 无语义)。
     if tok(toks, cur) == "**" {
         adv(cur)
-        var rc = p_una(toks, cur, lns, al)
+        var rc = p_una(toks, cur, lns, cols, al)
         var nr = mk("Repeat")
         nr.push(l)
         nr.push(rc)
-        nstamp(nr, lns[cur.load()])
+        nstamp(nr, lns[cur.load()], cols[cur.load()])
         l = nr
         // 双重 ** 非结合:第二 ** 记号悬垂,交既有「非期望记号」错误机器(E1001)
     }
@@ -140,24 +140,24 @@ fn p_mul(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str
         if t == "%" { op = "Mod" }
         if op == "" { go = false } else {
             adv(cur)
-            var r = p_una(toks, cur, lns, al)
+            var r = p_una(toks, cur, lns, cols, al)
             var nb = mk("Binary")
             nb.push(op)
             nb.push(l)
             nb.push(r)
             // v0.7 修订一:Binary 节点补行号戳——E2010 检查的 nline 依赖末位为行号字符串
-            nstamp(nb, lns[cur.load()])
+            nstamp(nb, lns[cur.load()], cols[cur.load()])
             l = nb
         }
     }
     return l
 }
 
-fn p_una(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str] {
+fn p_una(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], al: Str) -> List[Str] {
     var t = tok(toks, cur)
     if t == "-" {
         adv(cur)
-        var e = p_una(toks, cur, lns, al)
+        var e = p_una(toks, cur, lns, cols, al)
         var nu = mk("Unary")
         nu.push("Neg")
         nu.push(e)
@@ -165,17 +165,17 @@ fn p_una(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str
     }
     if t == "!" {
         adv(cur)
-        var e = p_una(toks, cur, lns, al)
+        var e = p_una(toks, cur, lns, cols, al)
         var nu = mk("Unary")
         nu.push("Not")
         nu.push(e)
         return nu
     }
-    return p_post(toks, cur, lns, al)
+    return p_post(toks, cur, lns, cols, al)
 }
 
-fn p_post(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str] {
-    var e = p_pri(toks, cur, lns, al)
+fn p_post(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], al: Str) -> List[Str] {
+    var e = p_pri(toks, cur, lns, cols, al)
     var go = true
     while go {
         while tok(toks, cur) == "NL" && toks[cur.load() + 1] == "." {
@@ -183,6 +183,7 @@ fn p_post(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[St
         }
         var t = tok(toks, cur)
         var ln0 = lns[cur.load()]
+        var ln0c = cols[cur.load()]
         if t == "(" {
             adv(cur)
             var ag = mk("Args")
@@ -193,14 +194,14 @@ fn p_post(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[St
                 } else {
                     // SL-8c-4:命名实参(ViewCall 组件实例化 `View(prop: expr)`;
                     // 泛化文法——原为解析错,放开向后兼容;sem 按被调面裁决)
-                    var a0 = p_stmt_expr(toks, cur, lns, "1")
+                    var a0 = p_stmt_expr(toks, cur, lns, cols, "1")
                     if tok(toks, cur) == ":" {
                         if a0[0] == "Ident" {
                             adv(cur)
                             var np = mk("NParg")
                             np.push(a0[1])
-                            np.push(p_stmt_expr(toks, cur, lns, "1"))
-                            nstamp(np, ln0)
+                            np.push(p_stmt_expr(toks, cur, lns, cols, "1"))
+                            nstamp(np, ln0, ln0c)
                             ag.push(np)
                         } else {
                             ag.push(a0)
@@ -219,7 +220,7 @@ fn p_post(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[St
             var cl = mk("Call")
             cl.push(e)
             cl.push(ag)
-            nstamp(cl, ln0)
+            nstamp(cl, ln0, ln0c)
             e = cl
         } else if t == "." {
             adv(cur)
@@ -228,6 +229,7 @@ fn p_post(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[St
             var mb = mk("Member")
             mb.push(e)
             var mbline = ln0
+            var mblinec = ln0c
             if is_digit(byte_at(nm, 0)) {
                 mb.push("TIdx")
                 mb.push(num_text(nm))
@@ -235,7 +237,7 @@ fn p_post(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[St
                 mb.push("Nm")
                 mb.push(nm)
             }
-            nstamp(mb, mbline)
+            nstamp(mb, mbline, mblinec)
             e = mb
         } else if t == "[" {
             var d: I32 = 1
@@ -266,7 +268,7 @@ fn p_post(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[St
                             ag.push(cv)
                             adv(cur)
                         } else {
-                            ag.push(p_typ(toks, cur, lns))
+                            ag.push(p_typ(toks, cur, lns, cols))
                         }
                         if tok(toks, cur) == "," { adv(cur) } else { more = false }
                     }
@@ -278,7 +280,7 @@ fn p_post(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[St
                 e = tg
             } else {
                 adv(cur)
-                var ix = p_stmt_expr(toks, cur, lns, "1")
+                var ix = p_stmt_expr(toks, cur, lns, cols, "1")
                 adv(cur)
                 var inode = mk("Index")
                 inode.push(e)
@@ -289,7 +291,7 @@ fn p_post(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[St
             adv(cur)
             var tr = mk("Try")
             tr.push(e)
-            nstamp(tr, ln0)
+            nstamp(tr, ln0, ln0c)
             e = tr
         } else {
             go = false
@@ -298,7 +300,7 @@ fn p_post(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[St
     return e
 }
 
-fn p_pri(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str] {
+fn p_pri(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], al: Str) -> List[Str] {
     var t = tok(toks, cur)
     var b0 = byte_at(t, 0)
     if is_digit(b0) {
@@ -334,10 +336,10 @@ fn p_pri(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str
         return nb
     }
     if t == "if" {
-        return p_if(toks, cur, lns)
+        return p_if(toks, cur, lns, cols)
     }
     if t == "match" {
-        return p_match(toks, cur, lns)
+        return p_match(toks, cur, lns, cols)
     }
     if t == "void" {
         adv(cur)
@@ -364,7 +366,7 @@ fn p_pri(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str
         adv(cur)
         var ow = mk("Own")
         ow.push(an)
-        ow.push(p_block(toks, cur, lns))
+        ow.push(p_block(toks, cur, lns, cols))
         return ow
     }
     if t == "||" {
@@ -372,21 +374,23 @@ fn p_pri(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str
         adv(cur)
         var cl = mk("Closure")
         var cln0 = lns[cur.load()]
+        var cln0c = cols[cur.load()]
         cl.push(mk("CPs"))
         var ret0 = mk("None")
         if tok(toks, cur) == "->" {
             adv(cur)
-            ret0 = p_typ(toks, cur, lns)
+            ret0 = p_typ(toks, cur, lns, cols)
         }
         cl.push(ret0)
-        cl.push(p_stmt_expr(toks, cur, lns, "1"))
-        nstamp(cl, cln0)
+        cl.push(p_stmt_expr(toks, cur, lns, cols, "1"))
+        nstamp(cl, cln0, cln0c)
         return cl
     }
     if t == "|" {
         adv(cur)
         var cl = mk("Closure")
         var cln = lns[cur.load()]
+        var clnc = cols[cur.load()]
         var cp = mk("CPs")
         var more = true
         while more {
@@ -403,7 +407,7 @@ fn p_pri(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str
                 var ty = mk("None")
                 if tok(toks, cur) == ":" {
                     adv(cur)
-                    ty = p_typ(toks, cur, lns)
+                    ty = p_typ(toks, cur, lns, cols)
                 }
                 cpar.push(ty)
                 cp.push(cpar)
@@ -414,12 +418,12 @@ fn p_pri(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str
         var ret = mk("None")
         if tok(toks, cur) == "->" {
             adv(cur)
-            ret = p_typ(toks, cur, lns)
+            ret = p_typ(toks, cur, lns, cols)
         }
         cl.push(cp)
         cl.push(ret)
-        cl.push(p_stmt_expr(toks, cur, lns, "1"))
-        nstamp(cl, cln)
+        cl.push(p_stmt_expr(toks, cur, lns, cols, "1"))
+        nstamp(cl, cln, clnc)
         return cl
     }
     if t == "scope" {
@@ -431,7 +435,7 @@ fn p_pri(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str
         adv(cur)
         var sc = mk("Scope")
         sc.push(pn)
-        sc.push(p_block(toks, cur, lns))
+        sc.push(p_block(toks, cur, lns, cols))
         return sc
     }
     if b0 == 34 {
@@ -443,7 +447,7 @@ fn p_pri(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str
     if t == "\{" {
         adv(cur)
         var be = mk("BlockExpr")
-        be.push(p_block(toks, cur, lns))
+        be.push(p_block(toks, cur, lns, cols))
         return be
     }
     if t == "[" {
@@ -452,7 +456,7 @@ fn p_pri(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str
         var more = true
         while more {
             if tok(toks, cur) == "]" { more = false } else {
-                al.push(p_stmt_expr(toks, cur, lns, "1"))
+                al.push(p_stmt_expr(toks, cur, lns, cols, "1"))
                 if tok(toks, cur) == "," { adv(cur) } else { more = false }
             }
         }
@@ -461,7 +465,7 @@ fn p_pri(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str
     }
     if t == "(" {
         adv(cur)
-        var e0 = p_oror(toks, cur, lns, "1")
+        var e0 = p_oror(toks, cur, lns, cols, "1")
         if tok(toks, cur) == "," {
             var tn = mk("TupleE")
             tn.push(e0)
@@ -471,7 +475,7 @@ fn p_pri(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str
                     adv(cur)
                     // v0.8 修:元组第 2 起元素走完整布尔链——原 p_and 不消费 ||,
                     // (a, b || c) 与 if 条件同病(5b6fa5e);语料零覆盖
-                    tn.push(p_oror(toks, cur, lns, "1"))
+                    tn.push(p_oror(toks, cur, lns, cols, "1"))
                 } else {
                     more = false
                 }
@@ -501,14 +505,14 @@ fn p_pri(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str
                 adv(cur)
                 var fv = mk("LField")
                 fv.push(fnm)
-                fv.push(p_stmt_expr(toks, cur, lns, "1"))
+                fv.push(p_stmt_expr(toks, cur, lns, cols, "1"))
                 lf.push(fv)
                 if tok(toks, cur) == "," { adv(cur) }
             }
         }
         adv(cur)
         sl.push(lf)
-        nstamp(sl, lns[cur.load()])
+        nstamp(sl, lns[cur.load()], cols[cur.load()])
         return sl
     }
     adv(cur)
@@ -552,7 +556,7 @@ fn p_tpars(toks: List[Str], cur: Atomic[I32]) -> List[Str] {
     return tp
 }
 
-fn p_typ(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
+fn p_typ(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str]) -> List[Str] {
     var t = tok(toks, cur)
     if t == "(" {
         adv(cur)
@@ -560,7 +564,7 @@ fn p_typ(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
         var more = true
         while more {
             if tok(toks, cur) == ")" { more = false } else {
-                tt.push(p_typ(toks, cur, lns))
+                tt.push(p_typ(toks, cur, lns, cols))
                 if tok(toks, cur) == "," { adv(cur) } else { more = false }
             }
         }
@@ -570,7 +574,7 @@ fn p_typ(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
     if t == "&" {
         adv(cur)
         var rf = mk("Ref")
-        rf.push(p_typ(toks, cur, lns))
+        rf.push(p_typ(toks, cur, lns, cols))
         if tok(toks, cur) == "?" {
             adv(cur)
             var op = mk("Optional")
@@ -586,7 +590,7 @@ fn p_typ(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
         var more2 = true
         while more2 {
             if tok(toks, cur) == ")" { more2 = false } else {
-                ft.push(p_typ(toks, cur, lns))
+                ft.push(p_typ(toks, cur, lns, cols))
                 if tok(toks, cur) == "," { adv(cur) } else { more2 = false }
             }
         }
@@ -594,7 +598,7 @@ fn p_typ(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
         var fret = mk("None")
         if tok(toks, cur) == "->" {
             adv(cur)
-            fret = p_typ(toks, cur, lns)
+            fret = p_typ(toks, cur, lns, cols)
         }
         var ftn = mk("FnType")
         ftn.push(ft)
@@ -623,7 +627,7 @@ fn p_typ(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
             var more = true
             while more {
                 if tok(toks, cur) == "]" { more = false } else {
-                    ta.push(p_typ(toks, cur, lns))
+                    ta.push(p_typ(toks, cur, lns, cols))
                     if tok(toks, cur) == "," { adv(cur) } else { more = false }
                 }
             }
@@ -646,7 +650,7 @@ fn p_typ(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
                 sl.push(base)
                 base = sl
             } else {
-                var sz = p_stmt_expr(toks, cur, lns, "1")
+                var sz = p_stmt_expr(toks, cur, lns, cols, "1")
                 adv(cur)
                 var ar = mk("ArrayT")
                 ar.push(base)
@@ -666,19 +670,19 @@ fn p_typ(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
     return base
 }
 
-fn p_or(toks: List[Str], cur: Atomic[I32], lns: List[Str], al: Str) -> List[Str] {
-    var l = p_and(toks, cur, lns, al)
+fn p_or(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], al: Str) -> List[Str] {
+    var l = p_and(toks, cur, lns, cols, al)
     var go = true
     while go {
         if tok(toks, cur) == "or" {
             adv(cur)
-            var r = p_and(toks, cur, lns, al)
+            var r = p_and(toks, cur, lns, cols, al)
             var nb = mk("Binary")
             nb.push("Or")
             nb.push(l)
             nb.push(r)
             // v0.7 修订一:Binary 节点补行号戳——E2010 检查的 nline 依赖末位为行号字符串
-            nstamp(nb, lns[cur.load()])
+            nstamp(nb, lns[cur.load()], cols[cur.load()])
             l = nb
         } else {
             go = false

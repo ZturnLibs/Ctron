@@ -2,7 +2,7 @@
 //! 诊断码:E2010/E2020/E2030/E2060/E2061/E2070/E2071/E2072/E3010/E3020/E3031/E3040/E3060/E3070/E4010/E4020/E4030/E6010/E6020/W8020。
 //! (E2060/E2061=v0.7 修订三 调用点推断;E2070/E2071/E2072=v0.7 修订二 break/continue)
 
-use crate::ast::{self, Expr};
+use crate::ast::{self, Expr, span_of};
 use crate::sem::{self, DefId, DefKind, IntW, Profile, Sema, Symbol, Ty};
 use crate::ast::BinOp;
 use crate::token::{Diagnostic, Span};
@@ -1219,16 +1219,16 @@ impl<'a> Checker<'a> {
                       direct: &mut [bool], edges: &mut [HashSet<usize>],
                       fn_ids: &HashMap<&str, Vec<usize>>) {
         match s {
-            ast::Stmt::Break | ast::Stmt::Continue => {}
+            ast::Stmt::Break(_) | ast::Stmt::Continue(_) => {}
             ast::Stmt::Let { expr, .. } => Self::scan_pure_expr(sema, expr, params, id, direct, edges, fn_ids),
-            ast::Stmt::Return(e) => {
+            ast::Stmt::Return(e, _) => {
                 if let Some(e) = e { Self::scan_pure_expr(sema, e, params, id, direct, edges, fn_ids); }
             }
             ast::Stmt::For { iter, body, .. } => {
                 Self::scan_pure_expr(sema, iter, params, id, direct, edges, fn_ids);
                 Self::scan_pure_block(sema, &body.stmts, body.tail.as_deref(), params, id, direct, edges, fn_ids);
             }
-            ast::Stmt::While { cond, body } => {
+            ast::Stmt::While { cond, body, .. } => {
                 Self::scan_pure_expr(sema, cond, params, id, direct, edges, fn_ids);
                 Self::scan_pure_block(sema, &body.stmts, body.tail.as_deref(), params, id, direct, edges, fn_ids);
             }
@@ -1236,7 +1236,7 @@ impl<'a> Checker<'a> {
                 Self::scan_pure_expr(sema, target, params, id, direct, edges, fn_ids);
                 Self::scan_pure_expr(sema, value, params, id, direct, edges, fn_ids);
             }
-            ast::Stmt::Expr(e) => Self::scan_pure_expr(sema, e, params, id, direct, edges, fn_ids),
+            ast::Stmt::Expr(e, _) => Self::scan_pure_expr(sema, e, params, id, direct, edges, fn_ids),
         }
     }
 
@@ -1245,17 +1245,17 @@ impl<'a> Checker<'a> {
                       fn_ids: &HashMap<&str, Vec<usize>>) {
         use ast::Expr::*;
         match e {
-            Repeat { elem, count } => {
+            Repeat { elem, count, .. } => {
                 Self::scan_pure_expr(sema, elem, params, id, direct, edges, fn_ids);
                 Self::scan_pure_expr(sema, count, params, id, direct, edges, fn_ids);
             }
-            Call { callee, args } => {
+            Call { callee, args, .. } => {
                 match &**callee {
-                    Ident(name) => Self::note_call_edge(name, id, edges, fn_ids),
+                    Ident(name, _) => Self::note_call_edge(name, id, edges, fn_ids),
                     TypeArgs { expr, .. } => {
-                        if let Ident(name) = &**expr { Self::note_call_edge(name, id, edges, fn_ids); }
+                        if let Ident(name, _) = &**expr { Self::note_call_edge(name, id, edges, fn_ids); }
                     }
-                    Member { obj, target: ast::MemberTarget::Name(m) } => {
+                    Member { obj, target: ast::MemberTarget::Name(m), .. } => {
                         // 接收者直触能力(形参/类型名;Cap trait 判据与运行期同源)
                         if Self::recv_is_cap(sema, obj, params) { direct[id] = true; }
                         // 模块限定调用(链前缀构成已注册模块路径)→ 尾段建边
@@ -1271,7 +1271,7 @@ impl<'a> Checker<'a> {
                 }
             }
             Str { .. } => {}
-            Tuple(v) | Array(v) => {
+            Tuple(v, _) | Array(v, _) => {
                 for x in v { Self::scan_pure_expr(sema, x, params, id, direct, edges, fn_ids); }
             }
             StructLit { fields, .. } => {
@@ -1279,12 +1279,12 @@ impl<'a> Checker<'a> {
                     Self::scan_pure_expr(sema, f, params, id, direct, edges, fn_ids);
                 }
             }
-            Unary { expr, .. } | Try(expr) => Self::scan_pure_expr(sema, expr, params, id, direct, edges, fn_ids),
+            Unary { expr, .. } | Try(expr, _) => Self::scan_pure_expr(sema, expr, params, id, direct, edges, fn_ids),
             Binary { lhs, rhs, .. } | Range { from: lhs, to: rhs, .. } => {
                 Self::scan_pure_expr(sema, lhs, params, id, direct, edges, fn_ids);
                 Self::scan_pure_expr(sema, rhs, params, id, direct, edges, fn_ids);
             }
-            Index { obj, index } => {
+            Index { obj, index, .. } => {
                 Self::scan_pure_expr(sema, obj, params, id, direct, edges, fn_ids);
                 Self::scan_pure_expr(sema, index, params, id, direct, edges, fn_ids);
             }
@@ -1296,12 +1296,12 @@ impl<'a> Checker<'a> {
             Scope { body, .. } | Own { body, .. } => {
                 Self::scan_pure_block(sema, &body.stmts, body.tail.as_deref(), params, id, direct, edges, fn_ids);
             }
-            If { cond, then, els } => {
+            If { cond, then, els, .. } => {
                 Self::scan_pure_expr(sema, cond, params, id, direct, edges, fn_ids);
                 Self::scan_pure_block(sema, &then.stmts, then.tail.as_deref(), params, id, direct, edges, fn_ids);
                 if let Some(e) = els { Self::scan_pure_expr(sema, e, params, id, direct, edges, fn_ids); }
             }
-            Match { expr, arms } => {
+            Match { expr, arms, .. } => {
                 Self::scan_pure_expr(sema, expr, params, id, direct, edges, fn_ids);
                 for a in arms {
                     if let Some(g) = &a.guard {
@@ -1310,16 +1310,16 @@ impl<'a> Checker<'a> {
                     Self::scan_pure_expr(sema, &a.expr, params, id, direct, edges, fn_ids);
                 }
             }
-            BlockExpr(b) => {
+            BlockExpr(b, _) => {
                 Self::scan_pure_block(sema, &b.stmts, b.tail.as_deref(), params, id, direct, edges, fn_ids);
             }
-            Int { .. } | Float { .. } | Bool(_) | Void | Ident(_) => {}
+            Int { .. } | Float { .. } | Bool(_, _) | Void(_) | Ident(_, _) => {}
         }
     }
 
     /// 接收者触能力直判:形参类型 / 类型名静态面(Clock.now()),剥 Ref 与 cap_hit 同口径
     fn recv_is_cap(sema: &Sema, obj: &ast::Expr, params: &HashMap<&str, &Ty>) -> bool {
-        let Expr::Ident(x) = obj else { return false };
+        let Expr::Ident(x, _) = obj else { return false };
         if let Some(&def) = sema.def_by_name.get(x.as_str()) {
             return sema.defs[def].cap;
         }
@@ -1337,8 +1337,8 @@ impl<'a> Checker<'a> {
         let mut cur = e;
         loop {
             match cur {
-                Expr::Ident(n) => { segs.push(n.as_str()); break; }
-                Expr::Member { obj, target: ast::MemberTarget::Name(n) } => { segs.push(n.as_str()); cur = obj; }
+                Expr::Ident(n, _) => { segs.push(n.as_str()); break; }
+                Expr::Member { obj, target: ast::MemberTarget::Name(n), .. } => { segs.push(n.as_str()); cur = obj; }
                 Expr::TypeArgs { expr, .. } => { cur = expr; }
                 _ => return None,
             }
@@ -1381,31 +1381,31 @@ impl<'a> Checker<'a> {
 
     fn scan_stmt_gc(&self, s: &ast::Stmt, seen: &mut HashSet<String>) -> bool {
         match s {
-            ast::Stmt::Break | ast::Stmt::Continue => false,
+            ast::Stmt::Break(_) | ast::Stmt::Continue(_) => false,
             ast::Stmt::Let { expr, .. } => self.scan_expr_gc(expr, seen),
-            ast::Stmt::Return(e) => e.as_ref().map(|e| self.scan_expr_gc(e, seen)).unwrap_or(false),
+            ast::Stmt::Return(e, _) => e.as_ref().map(|e| self.scan_expr_gc(e, seen)).unwrap_or(false),
             ast::Stmt::For { iter, body, .. } => self.scan_expr_gc(iter, seen) || self.scan_stmts_gc(body.stmts.as_slice(), body.tail.as_deref(), seen),
-            ast::Stmt::While { cond, body } => self.scan_expr_gc(cond, seen) || self.scan_stmts_gc(body.stmts.as_slice(), body.tail.as_deref(), seen),
+            ast::Stmt::While { cond, body, .. } => self.scan_expr_gc(cond, seen) || self.scan_stmts_gc(body.stmts.as_slice(), body.tail.as_deref(), seen),
             ast::Stmt::Assign { value, .. } => self.scan_expr_gc(value, seen),
-            ast::Stmt::Expr(e) => self.scan_expr_gc(e, seen),
+            ast::Stmt::Expr(e, _) => self.scan_expr_gc(e, seen),
         }
     }
 
     fn scan_expr_gc(&self, e: &ast::Expr, seen: &mut HashSet<String>) -> bool {
         use ast::Expr::*;
         match e {
-            Str { parts } => parts.iter().any(|p| matches!(p, ast::StrPart::Interp(_))),
+            Str { parts, .. } => parts.iter().any(|p| matches!(p, ast::StrPart::Interp(_))),
             StructLit { path, .. } => {
                 // 仅类(引用类型)构造是 GC 分配;值 struct 是栈/内联(§6.1)
                 path.last().map(|n| self.is_gc_class_name(n)).unwrap_or(false)
             }
-            Unary { expr, .. } | Try(expr) => self.scan_expr_gc(expr, seen),
+            Unary { expr, .. } | Try(expr, _) => self.scan_expr_gc(expr, seen),
             Binary { lhs, rhs, .. } | Range { from: lhs, to: rhs, .. } =>
                 self.scan_expr_gc(lhs, seen) || self.scan_expr_gc(rhs, seen),
-            Call { callee, args } => {
+            Call { callee, args, .. } => {
                 if self.scan_expr_gc(callee, seen) || args.iter().any(|a| self.scan_expr_gc(a, seen)) { return true; }
                 // 直接调用用户 fn → 传播
-                if let Ident(name) = &**callee {
+                if let Ident(name, _) = &**callee {
                     if let Some(Symbol::Fn(id)) = self.lookup_fn(name) {
                         if seen.contains(name) { return false; }
                         seen.insert(name.clone());
@@ -1419,23 +1419,23 @@ impl<'a> Checker<'a> {
                     if m == "to_string" { return true; }
                 }
                 if let Expr::TypeArgs { expr, .. } = &**callee {
-                    if let Expr::Ident(n) = &**expr {
+                    if let Expr::Ident(n, _) = &**expr {
                         if matches!(n.as_str(), "Box" | "String" | "StringBuilder" | "List" | "Map" | "Set") { return true; }
                     }
                 }
                 false
             }
-            Index { obj, index } => self.scan_expr_gc(obj, seen) || self.scan_expr_gc(index, seen),
+            Index { obj, index, .. } => self.scan_expr_gc(obj, seen) || self.scan_expr_gc(index, seen),
             Member { obj, .. } => self.scan_expr_gc(obj, seen),
             TypeArgs { expr, .. } => self.scan_expr_gc(expr, seen),
-            If { cond, then, els } => self.scan_expr_gc(cond, seen)
+            If { cond, then, els, .. } => self.scan_expr_gc(cond, seen)
                 || self.scan_block_gc(then.stmts.as_slice(), then.tail.as_deref(), seen)
                 || els.as_ref().map(|e| self.scan_expr_gc(e, seen)).unwrap_or(false),
-            Match { expr, arms } => self.scan_expr_gc(expr, seen)
+            Match { expr, arms, .. } => self.scan_expr_gc(expr, seen)
                 || arms.iter().any(|a| self.scan_expr_gc(&a.expr, seen)),
             Closure { body, .. } => self.scan_expr_gc(body, seen),
             Scope { body, .. } => self.scan_block_gc(body.stmts.as_slice(), body.tail.as_deref(), seen),
-            BlockExpr(b) => self.scan_block_gc(b.stmts.as_slice(), b.tail.as_deref(), seen),
+            BlockExpr(b, _) => self.scan_block_gc(b.stmts.as_slice(), b.tail.as_deref(), seen),
             _ => false,
         }
     }
@@ -1448,13 +1448,13 @@ impl<'a> Checker<'a> {
 
     fn scan_stmt_any(&self, s: &ast::Stmt, seen: &mut HashSet<String>) -> bool {
         match s {
-            ast::Stmt::Break | ast::Stmt::Continue => false,
+            ast::Stmt::Break(_) | ast::Stmt::Continue(_) => false,
             ast::Stmt::Let { expr, .. } => self.scan_expr_any(expr, seen),
-            ast::Stmt::Return(e) => e.as_ref().map(|e| self.scan_expr_any(e, seen)).unwrap_or(false),
+            ast::Stmt::Return(e, _) => e.as_ref().map(|e| self.scan_expr_any(e, seen)).unwrap_or(false),
             ast::Stmt::For { iter, body, .. } => self.scan_expr_any(iter, seen) || self.scan_stmts_any(body.stmts.as_slice(), body.tail.as_deref(), seen),
-            ast::Stmt::While { cond, body } => self.scan_expr_any(cond, seen) || self.scan_stmts_any(body.stmts.as_slice(), body.tail.as_deref(), seen),
+            ast::Stmt::While { cond, body, .. } => self.scan_expr_any(cond, seen) || self.scan_stmts_any(body.stmts.as_slice(), body.tail.as_deref(), seen),
             ast::Stmt::Assign { value, .. } => self.scan_expr_any(value, seen),
-            ast::Stmt::Expr(e) => self.scan_expr_any(e, seen),
+            ast::Stmt::Expr(e, _) => self.scan_expr_any(e, seen),
         }
     }
 
@@ -1462,7 +1462,7 @@ impl<'a> Checker<'a> {
         if self.scan_expr_gc(e, seen) { return true; }
         use ast::Expr::*;
         match e {
-            Call { callee, args } => {
+            Call { callee, args, .. } => {
                 if args.iter().any(|a| self.scan_expr_any(a, seen)) { return true; }
                 if let Expr::Member { obj, target: ast::MemberTarget::Name(m), .. } = &**callee {
                     // 拒绝表按接收者判定:ArenaList 是 arena 后备,不算分配(§6.6)
@@ -1470,11 +1470,11 @@ impl<'a> Checker<'a> {
                         // 接收者是 arena.xxx 成员链(ArenaList)→ 不算分配
                         let recv_is_arena = matches!(obj.as_ref(),
                             Expr::Member { obj: recv_obj, .. }
-                                if matches!(**recv_obj, Expr::Ident(ref n) if n == "arena"));
+                                if matches!(recv_obj.as_ref(), Expr::Ident(n, _) if n.as_str() == "arena"));
                         if !recv_is_arena { return true; }
                     }
                 }
-                if let Ident(name) = &**callee {
+                if let Ident(name, _) = &**callee {
                     if let Some(Symbol::Fn(id)) = self.lookup_fn(name) {
                         if seen.contains(name) { return false; }
                         seen.insert(name.clone());
@@ -1485,20 +1485,20 @@ impl<'a> Checker<'a> {
                 }
                 false
             }
-            Unary { expr, .. } | Try(expr) => self.scan_expr_any(expr, seen),
+            Unary { expr, .. } | Try(expr, _) => self.scan_expr_any(expr, seen),
             Binary { lhs, rhs, .. } | Range { from: lhs, to: rhs, .. } =>
                 self.scan_expr_any(lhs, seen) || self.scan_expr_any(rhs, seen),
-            Index { obj, index } => self.scan_expr_any(obj, seen) || self.scan_expr_any(index, seen),
+            Index { obj, index, .. } => self.scan_expr_any(obj, seen) || self.scan_expr_any(index, seen),
             Member { obj, .. } => self.scan_expr_any(obj, seen),
             TypeArgs { expr, .. } => self.scan_expr_any(expr, seen),
-            If { cond, then, els } => self.scan_expr_any(cond, seen)
+            If { cond, then, els, .. } => self.scan_expr_any(cond, seen)
                 || self.scan_block_any(then.stmts.as_slice(), then.tail.as_deref(), seen)
                 || els.as_ref().map(|x| self.scan_expr_any(x, seen)).unwrap_or(false),
-            Match { expr, arms } => self.scan_expr_any(expr, seen)
+            Match { expr, arms, .. } => self.scan_expr_any(expr, seen)
                 || arms.iter().any(|a| self.scan_expr_any(&a.expr, seen)),
             Closure { body, .. } => self.scan_expr_any(body, seen),
             Scope { body, .. } => self.scan_block_any(body.stmts.as_slice(), body.tail.as_deref(), seen),
-            BlockExpr(b) => self.scan_block_any(b.stmts.as_slice(), b.tail.as_deref(), seen),
+            BlockExpr(b, _) => self.scan_block_any(b.stmts.as_slice(), b.tail.as_deref(), seen),
             _ => false,
         }
     }
@@ -1628,8 +1628,8 @@ impl<'a> Checker<'a> {
 
     fn check_const(&mut self, c: &ast::ConstDecl) {
         // comptime 求值(预算)——自递归不终止 → E6010
-        if let Expr::Call { callee, args } = &c.expr {
-            if let Expr::Ident(name) = &**callee {
+        if let Expr::Call { callee, args, .. } = &c.expr {
+            if let Expr::Ident(name, _) = &**callee {
                 if let Some(Symbol::Fn(id)) = self.lookup_fn_global(name) {
                     if self.sema.fns[id].is_comptime {
                         let budget = self.sema.manifest.as_ref()
@@ -1742,19 +1742,19 @@ impl<'a> Checker<'a> {
                     let v = self.eval_expr_comptime(expr, locals, budget, steps, depth)?;
                     if let ast::Pattern::Ident(n) = pattern { locals.insert(n.clone(), v); }
                 }
-                ast::Stmt::Return(e) => {
+                ast::Stmt::Return(e, _) => {
                     let v = match e { Some(e) => self.eval_expr_comptime(e, locals, budget, steps, depth)?, None => return Err(()) };
                     return Ok(Some(v));   // 早返回
                 }
-                ast::Stmt::Expr(e) => {
+                ast::Stmt::Expr(e, _) => {
                     // 语句位置的 if:分支块的早返回(Some)必须传播
-                    if let Expr::If { cond, then, els } = e {
+                    if let Expr::If { cond, then, els, .. } = e {
                         let c = self.eval_expr_comptime(cond, locals, budget, steps, depth)?;
                         let branch: Option<&ast::Block> = if c != 0 {
                             Some(then)
                         } else {
                             match els.as_deref() {
-                                Some(Expr::BlockExpr(b)) => Some(b),
+                                Some(Expr::BlockExpr(b, _)) => Some(b),
                                 Some(Expr::If { .. }) => None,   // else-if 链在 comptime 语料中不出现
                                 _ => None,
                             }
@@ -1780,8 +1780,8 @@ impl<'a> Checker<'a> {
     fn eval_expr_comptime(&mut self, e: &ast::Expr, locals: &mut HashMap<String, i64>, budget: u64, steps: &mut u64, depth: &mut u32) -> Result<i64, ()> {
         match e {
             Expr::Int { text, .. } => text.parse().map_err(|_| ()),
-            Expr::Unary { op: ast::UnOp::Neg, expr } => Ok(-self.eval_expr_comptime(expr, locals, budget, steps, depth)?),
-            Expr::Binary { op, lhs, rhs } => {
+            Expr::Unary { op: ast::UnOp::Neg, expr, .. } => Ok(-self.eval_expr_comptime(expr, locals, budget, steps, depth)?),
+            Expr::Binary { op, lhs, rhs, .. } => {
                 let a = self.eval_expr_comptime(lhs, locals, budget, steps, depth)?;
                 let b = self.eval_expr_comptime(rhs, locals, budget, steps, depth)?;
                 Ok(match op {
@@ -1797,7 +1797,7 @@ impl<'a> Checker<'a> {
                     _ => return Err(()),
                 })
             }
-            Expr::If { cond, then, els } => {
+            Expr::If { cond, then, els, .. } => {
                 let c = self.eval_expr_comptime(cond, locals, budget, steps, depth)?;
                 if c != 0 {
                     self.eval_block_comptime(then, locals, budget, steps, depth)?.ok_or(())
@@ -1805,11 +1805,11 @@ impl<'a> Checker<'a> {
                     self.eval_expr_comptime(els, locals, budget, steps, depth)
                 } else { Err(()) }
             }
-            Expr::BlockExpr(b) => {
+            Expr::BlockExpr(b, _) => {
                 self.eval_block_comptime(b, locals, budget, steps, depth)?.ok_or(())
             }
-            Expr::Call { callee, args } => {
-                if let Expr::Ident(name) = &**callee {
+            Expr::Call { callee, args, .. } => {
+                if let Expr::Ident(name, _) = &**callee {
                     let mut vals = Vec::new();
                     for a in args.iter() {
                         vals.push(self.eval_expr_comptime(a, locals, budget, steps, depth)?);
@@ -1817,7 +1817,7 @@ impl<'a> Checker<'a> {
                     self.eval_comptime(name, &vals, budget, steps, depth)
                 } else { Err(()) }
             }
-            Expr::Ident(n) => locals.get(n).copied().ok_or(()),
+            Expr::Ident(n, _) => locals.get(n).copied().ok_or(()),
             _ => Err(()),
         }
     }
@@ -1842,7 +1842,7 @@ impl<'a> Checker<'a> {
 
     fn check_stmt(&mut self, s: &ast::Stmt) {
         match s {
-            ast::Stmt::Let { is_var, pattern, ty: ann, expr, .. } => {
+            ast::Stmt::Let { is_var, pattern, ty: ann, expr, id, .. } => {
                 let hinted = ann.as_ref().map(|t| self.lower_local_ty(t));
                 let ety = self.expr(expr, hinted.as_ref());
                 // E2010(保守子集):注解为数值/Bool 标量而初值字面量/字面类别明确冲突
@@ -1863,14 +1863,14 @@ impl<'a> Checker<'a> {
                         _ => false,
                     };
                     if conflict {
-                        self.err("E2010", format!("let 注解与初值字面量类别冲突"), Span::new(1, 1, 0, 0));
+                        self.err("E2010", format!("let 注解与初值字面量类别冲突"), span_of(*id));
                     }
                 }
                 // E3050(§6.4):own 块内 arena 句柄仅移动——拷贝绑定即 move 源
                 if self.in_own {
                     if self.expr_is_arena_handle_init(expr) {
                         if let ast::Pattern::Ident(n) = pattern { self.handles.insert(n.clone()); }
-                    } else if let ast::Expr::Ident(src) = expr {
+                    } else if let ast::Expr::Ident(src, _) = expr {
                         if self.handles.contains(src) && !self.moved.contains(src) {
                             self.moved.insert(src.clone());
                             if let ast::Pattern::Ident(n) = pattern { self.handles.insert(n.clone()); }
@@ -1881,14 +1881,14 @@ impl<'a> Checker<'a> {
                 let binds = self.check_pattern(pattern, Some(&bind_ty), *is_var);
                 self.scopes.last_mut().unwrap().extend(binds);
             }
-            ast::Stmt::Return(e) => {
+            ast::Stmt::Return(e, _) => {
                 let hint = if matches!(self.cur_ret, Ty::Err) { None } else { Some(self.cur_ret.clone()) };
                 match e {
                     Some(e) => { self.expr(e, hint.as_ref()); }
                     None => { let _ = hint; }
                 }
             }
-            ast::Stmt::For { pattern, iter, body } => {
+            ast::Stmt::For { pattern, iter, body, .. } => {
                 let ity = self.expr(iter, None);
                 let elem = match self.resolve(&ity) {
                     Ty::Range(e) | Ty::MutSlice(e) | Ty::RoSlice(e) | Ty::Array(e) => *e,
@@ -1909,10 +1909,10 @@ impl<'a> Checker<'a> {
                 self.loop_depth -= 1;
                 self.scopes.pop();
             }
-            ast::Stmt::While { cond, body } => {
+            ast::Stmt::While { cond, body, id } => {
                 let cty = self.expr(cond, None);
                 if !matches!(self.resolve(&cty), Ty::Bool | Ty::Err) {
-                    self.err("E2010", format!("while 条件应为 Bool,实际 {}", self.type_name(&cty)), Span::new(1, 1, 0, 0));
+                    self.err("E2010", format!("while 条件应为 Bool,实际 {}", self.type_name(&cty)), span_of(*id));
                 }
                 self.loop_depth += 1; // v0.7 修订二
                 self.loop_scope_base.push(self.scopes.len()); // 体作用域基线
@@ -1924,20 +1924,20 @@ impl<'a> Checker<'a> {
             // E2071 已解除(P1-A3):发射面补 cleanup 路径——Rust 镜像 break/continue
             // 前逆序发射越界 Drop 局部析构,自举线 drop 栈标记 unwind——RAII 合同
             // 由发射保证,检查面不再静态拒绝)
-            ast::Stmt::Break | ast::Stmt::Continue => {
-                let kw = if matches!(s, ast::Stmt::Break) { "break" } else { "continue" };
+            ast::Stmt::Break(id) | ast::Stmt::Continue(id) => {
+                let kw = if matches!(s, ast::Stmt::Break(_)) { "break" } else { "continue" };
                 if self.loop_depth == 0 {
                     if self.fn_loop_depths.iter().any(|&d| d > 0) {
-                        self.err("E2072", format!("{kw} 不得穿越闭包边界(闭包体是独立函数,不可 break/continue 外层循环)"), Span::new(1, 1, 0, 0));
+                        self.err("E2072", format!("{kw} 不得穿越闭包边界(闭包体是独立函数,不可 break/continue 外层循环)"), span_of(*id));
                     } else {
-                        self.err("E2070", format!("{kw} 出现在循环外"), Span::new(1, 1, 0, 0));
+                        self.err("E2070", format!("{kw} 出现在循环外"), span_of(*id));
                     }
                 }
             }
-            ast::Stmt::Assign { target, op: _, value } => {
+            ast::Stmt::Assign { target, op: _, value, id } => {
                 // E2080:let 局部不可重赋值(§4.1;var/形参/闭包形参/for·match 模式绑定 mutable=true 放行,
                 // 与自举线/C 宿主 v0.9 门同判据)
-                if let ast::Expr::Ident(n) = target {
+                if let ast::Expr::Ident(n, _) = target {
                     let mut hit: Option<(usize, bool)> = None;
                     for (idx, scope) in self.scopes.iter().enumerate().rev() {
                         if let Some(l) = scope.get(n) { hit = Some((idx, l.mutable)); break; }
@@ -1949,10 +1949,10 @@ impl<'a> Checker<'a> {
                         let captured = self.clo_bases.last().is_some_and(|&b| idx < b);
                         if mutable {
                             if captured {
-                                self.err("E3070", format!("闭包可变捕获未显式 Mutex[T] 包装:`{n}`(建议:改用 Mutex[T].with_mut)"), Span::new(1, 1, 0, 0));
+                                self.err("E3070", format!("闭包可变捕获未显式 Mutex[T] 包装:`{n}`(建议:改用 Mutex[T].with_mut)"), span_of(*id));
                             }
                         } else {
-                            self.err("E2080", format!("对不可变绑定赋值(let 声明):{n} — 需重新赋值请声明为 var"), Span::new(1, 1, 0, 0));
+                            self.err("E2080", format!("对不可变绑定赋值(let 声明):{n} — 需重新赋值请声明为 var"), span_of(*id));
                         }
                     }
                 }
@@ -1960,17 +1960,17 @@ impl<'a> Checker<'a> {
                 if self.in_own && self.root_is_gc_class(target, &tty) {
                     self.err("E3060",
                         "own 块内对 GC 值可变借用/赋值(mutable access to GC value in own block);改为 arena 值或移出块".into(),
-                        Span::new(1, 1, 0, 0));
+                        span_of(*id));
                 }
                 self.expr(value, Some(&tty));
             }
-            ast::Stmt::Expr(e) => {
+            ast::Stmt::Expr(e, id) => {
                 let ty = self.expr(e, None);
                 if std::env::var("CTRON_DEBUG").is_ok() { eprintln!("[dbg] stmt expr ty={:?} src={:?}", self.type_name(&ty), e); }
                 // W8020:Result/Option 结果被丢弃
                 if let Ty::Named { def, .. } = self.resolve(&ty) {
                     if matches!(self.sema.defs[def].name.as_str(), "Result" | "Option") {
-                        self.err("W8020", "must-use 结果被丢弃:Result/Option 应处理或 `let _ =` 显式丢弃".into(), Span::new(1, 1, 0, 0));
+                        self.err("W8020", "must-use 结果被丢弃:Result/Option 应处理或 `let _ =` 显式丢弃".into(), span_of(*id));
                     }
                 }
             }
@@ -1981,7 +1981,7 @@ impl<'a> Checker<'a> {
         // 找到成员/索引链的根标识符,再判定其绑定类型是否为 GC 类
         fn root_name(e: &ast::Expr) -> Option<String> {
             match e {
-                Expr::Ident(n) => Some(n.clone()),
+                Expr::Ident(n, _) => Some(n.clone()),
                 Expr::Member { obj, .. } | Expr::Index { obj, .. } => root_name(obj),
                 _ => None,
             }
@@ -2132,17 +2132,17 @@ impl<'a> Checker<'a> {
                 if let Some(h) = hint { if matches!(self.resolve(h), Ty::F32 | Ty::F64) { return self.resolve(h); } }
                 match suffix.as_str() { "f32" => Ty::F32, _ => Ty::F64 }
             }
-            Expr::Str { parts } => {
+            Expr::Str { parts, id } => {
                 if self.in_own && parts.iter().any(|p| matches!(p, ast::StrPart::Interp(_))) {
-                    self.err("E3040", "own 块内插值串构造 String(allocation in own block)".into(), Span::new(1, 1, 0, 0));
+                    self.err("E3040", "own 块内插值串构造 String(allocation in own block)".into(), span_of(*id));
                 }
                 Ty::Str
             }
-            Expr::Bool(_) => Ty::Bool,
-            Expr::Void => Ty::Void,
-            Expr::Ident(name) => self.check_ident(name, hint),
-            Expr::Tuple(items) => Ty::Tuple(items.iter().map(|i| self.expr(i, None)).collect()),
-            Expr::Array(items) => {
+            Expr::Bool(_, _) => Ty::Bool,
+            Expr::Void(_) => Ty::Void,
+            Expr::Ident(name, id) => self.check_ident(name, hint, *id),
+            Expr::Tuple(items, _) => Ty::Tuple(items.iter().map(|i| self.expr(i, None)).collect()),
+            Expr::Array(items, _) => {
                 let mut elem = Ty::Err;
                 for (i, item) in items.iter().enumerate() {
                     if i == 0 { elem = self.expr(item, None); }
@@ -2150,34 +2150,34 @@ impl<'a> Checker<'a> {
                 }
                 Ty::Array(Box::new(elem))
             }
-            Expr::StructLit { path, fields, .. } => self.check_struct_lit(path, fields),
-            Expr::Unary { op, expr } => {
+            Expr::StructLit { path, fields, id, .. } => self.check_struct_lit(path, fields, *id),
+            Expr::Unary { op, expr, id } => {
                 let t = self.expr(expr, hint);
                 match op {
                     ast::UnOp::Neg => match self.resolve(&t) {
                         Ty::Int(_) | Ty::UInt(_) | Ty::F32 | Ty::F64 | Ty::Err => t,
-                        other => { self.err("E2010", format!("一元 - 需要数值,实际 {}", self.type_name(&other)), Span::new(1, 1, 0, 0)); Ty::Err }
+                        other => { self.err("E2010", format!("一元 - 需要数值,实际 {}", self.type_name(&other)), span_of(*id)); Ty::Err }
                     },
                     ast::UnOp::Not => match self.resolve(&t) {
                         Ty::Bool | Ty::Err => Ty::Bool,
-                        other => { self.err("E2010", format!("一元 ! 需要 Bool,实际 {}", self.type_name(&other)), Span::new(1, 1, 0, 0)); Ty::Err }
+                        other => { self.err("E2010", format!("一元 ! 需要 Bool,实际 {}", self.type_name(&other)), span_of(*id)); Ty::Err }
                     },
                 }
             }
-            Expr::Binary { op, lhs, rhs } => self.check_binary(op, lhs, rhs, hint),
-            Expr::Range { inclusive: _, from, to } => {
+            Expr::Binary { op, lhs, rhs, id } => self.check_binary(op, lhs, rhs, hint, *id),
+            Expr::Range { inclusive: _, from, to, .. } => {
                 let f = self.expr(from, None);
                 self.expr(to, Some(&f));
                 Ty::Range(Box::new(f))
             }
-            Expr::Call { callee, args } => self.check_call(callee, args, hint),
+            Expr::Call { callee, args, id } => self.check_call(callee, args, hint, *id),
             // W5:repeat 字面量(镜像自举 sem_type.ct:1004-1008:elem/count 下钻)
-            Expr::Repeat { elem, count } => {
+            Expr::Repeat { elem, count, .. } => {
                 self.expr(elem, hint);
                 self.expr(count, None);
                 hint.cloned().unwrap_or(Ty::Err)
             }
-            Expr::Index { obj, index } => {
+            Expr::Index { obj, index, .. } => {
                 let ot = self.expr(obj, None);
                 self.expr(index, None);
                 match self.resolve(&ot) {
@@ -2189,11 +2189,11 @@ impl<'a> Checker<'a> {
                     _ => Ty::Err,
                 }
             }
-            Expr::Member { obj, target } => self.check_member(obj, target),
-            Expr::TypeArgs { expr, args } => {
+            Expr::Member { obj, target, id } => self.check_member(obj, target, *id),
+            Expr::TypeArgs { expr, args, .. } => {
                 // 类型实参挂在前缀上:泛型类型构造器(Simd[F32,4])或泛型方法(arena.array[I32])
                 match &**expr {
-                    Expr::Ident(name) => {
+                    Expr::Ident(name, _) => {
                         if name == "Simd" {
                             let elem = args.first().map(|t| self.lower_local_ty(t)).unwrap_or(Ty::Err);
                             Ty::Simd(Box::new(elem))
@@ -2213,7 +2213,7 @@ impl<'a> Checker<'a> {
                     }
                 }
             }
-            Expr::Try(e) => {
+            Expr::Try(e, id) => {
                 // §5.3 前置:所在函数必须返回 Result/Option
                 let ret_ok = match self.resolve(&self.cur_ret.clone()) {
                     Ty::Named { def, .. } => {
@@ -2222,7 +2222,7 @@ impl<'a> Checker<'a> {
                     _ => false,
                 };
                 if !ret_ok {
-                    self.err("E2010", "`?` 只能用于返回 Result/Option 的函数(§5.3)".into(), Span::new(1, 1, 0, 0));
+                    self.err("E2010", "`?` 只能用于返回 Result/Option 的函数(§5.3)".into(), span_of(*id));
                     let t = self.expr(e, None);
                     return match self.resolve(&t) {
                         Ty::Optional(inner) => *inner,
@@ -2243,7 +2243,7 @@ impl<'a> Checker<'a> {
                                     let allowed = args.get(1) == Some(&te) || e_name == "AnyError"
                                         || self.sema.impls.iter().any(|im| &im.trait_name == "Error" && &im.for_type == e_def_name_of(self.sema, *e_def).as_str());
                                     if !allowed {
-                                        self.err("E2010", format!("`?` 错误类型不匹配:{} vs {}", e_name, self.type_name(&te)), Span::new(1, 1, 0, 0));
+                                        self.err("E2010", format!("`?` 错误类型不匹配:{} vs {}", e_name, self.type_name(&te)), span_of(*id));
                                     }
                                 }
                             }
@@ -2251,14 +2251,14 @@ impl<'a> Checker<'a> {
                         } else if name == "Option" {
                             args.first().cloned().unwrap_or(Ty::Err)
                         } else {
-                            self.err("E2010", "`?` 只能用于 Result/Option".into(), Span::new(1, 1, 0, 0));
+                            self.err("E2010", "`?` 只能用于 Result/Option".into(), span_of(*id));
                             Ty::Err
                         }
                     }
-                    _ => { self.err("E2010", "`?` 只能用于 Result/Option".into(), Span::new(1, 1, 0, 0)); Ty::Err }
+                    _ => { self.err("E2010", "`?` 只能用于 Result/Option".into(), span_of(*id)); Ty::Err }
                 }
             }
-            Expr::Closure { params, ret: _, body } => {
+            Expr::Closure { params, ret: _, body, .. } => {
                 // 有期望 fn 类型 → 参数按其类型;否则参数 Err(体仍检查)
                 let mut binds = HashMap::new();
                 let mut param_tys = Vec::new();
@@ -2290,14 +2290,14 @@ impl<'a> Checker<'a> {
                 self.clo_bases.pop();
                 Ty::FnTy { params: param_tys, ret: Box::new(bt) }
             }
-            Expr::Scope { param, body } => {
+            Expr::Scope { param, body, .. } => {
                 let scope_ty = self.named("Scope", vec![]);
                 self.scopes.push(HashMap::from([(param.clone(), Local { ty: scope_ty, mutable: true })]));
                 let t = self.check_block(body);
                 self.scopes.pop();
                 t
             }
-            Expr::Own { arena, body } => {
+            Expr::Own { arena, body, .. } => {
                 let saved_own = self.in_own;
                 let saved_na = self.no_alloc_ctx;
                 let saved_moved = std::mem::take(&mut self.moved);
@@ -2313,10 +2313,10 @@ impl<'a> Checker<'a> {
                 self.handles = saved_handles;
                 Ty::Void
             }
-            Expr::If { cond, then, els } => {
+            Expr::If { cond, then, els, id } => {
                 let c = self.expr(cond, None);
                 if !matches!(self.resolve(&c), Ty::Bool | Ty::Err) {
-                    self.err("E2010", format!("if 条件应为 Bool,实际 {}", self.type_name(&c)), Span::new(1, 1, 0, 0));
+                    self.err("E2010", format!("if 条件应为 Bool,实际 {}", self.type_name(&c)), span_of(*id));
                 }
                 let t1 = self.check_block(then);
                 let t2 = els.as_ref().map(|e| self.expr(e, Some(&t1)));
@@ -2325,7 +2325,7 @@ impl<'a> Checker<'a> {
                     None => Ty::Void,
                 }
             }
-            Expr::Match { expr: scrut, arms } => {
+            Expr::Match { expr: scrut, arms, id } => {
                 let st = self.expr(scrut, None);
                 let mut arm_tys = Vec::new();
                 let mut covered: HashSet<String> = HashSet::new();
@@ -2358,13 +2358,13 @@ impl<'a> Checker<'a> {
                         if !missing.is_empty() && !has_wildcard {
                             self.err("E2030",
                                 format!("match 不穷尽(not exhaustive):缺少变体 {}", missing.join(", ")),
-                                Span::new(1, 1, 0, 0));
+                                span_of(*id));
                         }
                     }
                 }
                 arm_tys.first().cloned().unwrap_or(Ty::Void)
             }
-            Expr::BlockExpr(b) => self.check_block(b),
+            Expr::BlockExpr(b, _) => self.check_block(b),
         }
     }
 
@@ -2380,8 +2380,8 @@ impl<'a> Checker<'a> {
         match e {
             ast::Expr::Int { .. } => Some("Int"),
             ast::Expr::Float { .. } => Some("Float"),
-            ast::Expr::Bool(_) => Some("Bool"),
-            ast::Expr::Str { parts } if parts.iter().all(|p| matches!(p, ast::StrPart::Text(_))) => Some("Str"),
+            ast::Expr::Bool(_, _) => Some("Bool"),
+            ast::Expr::Str { parts, .. } if parts.iter().all(|p| matches!(p, ast::StrPart::Text(_))) => Some("Str"),
             _ => None,
         }
     }
@@ -2399,17 +2399,17 @@ impl<'a> Checker<'a> {
             _ => None,
         };
         match inner {
-            Some(ast::Expr::Member { obj, target: ast::MemberTarget::Name(m) }) => {
+            Some(ast::Expr::Member { obj, target: ast::MemberTarget::Name(m), .. }) => {
                 if !matches!(m.as_str(), "array" | "zeros" | "list" | "fixed") { return false; }
-                matches!(&**obj, ast::Expr::Ident(a) if a == "arena")
+                matches!(obj.as_ref(), ast::Expr::Ident(a, _) if a.as_str() == "arena")
             }
             _ => false,
         }
     }
 
-    fn check_ident(&mut self, name: &str, _hint: Option<&Ty>) -> Ty {
+    fn check_ident(&mut self, name: &str, _hint: Option<&Ty>, id: u32) -> Ty {
         if self.moved.contains(name) {
-            self.err("E3050", format!("arena 句柄 `{}` 已 move,不可再使用(use after move)", name), Span::new(1, 1, 0, 0));
+            self.err("E3050", format!("arena 句柄 `{}` 已 move,不可再使用(use after move)", name), span_of(id));
         }
         if let Some(t) = self.lookup_local(name) { return t; }
         match self.lookup_fn_global(name) {
@@ -2471,7 +2471,7 @@ impl<'a> Checker<'a> {
         if payload.is_empty() { Ty::Named { def, args } } else { Ty::Ctor { def, args } }
     }
 
-    fn check_binary(&mut self, op: &ast::BinOp, lhs: &ast::Expr, rhs: &ast::Expr, _hint: Option<&Ty>) -> Ty {
+    fn check_binary(&mut self, op: &ast::BinOp, lhs: &ast::Expr, rhs: &ast::Expr, _hint: Option<&Ty>, id: u32) -> Ty {
         use ast::BinOp::*;
         if *op == BinOp::Or {
             // Option/Result 取默认中缀;操作数类型不设限(对齐 C sem——宽松回退,非 Option 值回落默认)
@@ -2497,14 +2497,14 @@ impl<'a> Checker<'a> {
             AndAnd => {
                 if (self.prim_cat(&lt) != 0 && self.prim_cat(&lt) != 2)
                     || (self.prim_cat(&rt) != 0 && self.prim_cat(&rt) != 2) {
-                    self.err("E2010", "&& 需要 Bool".into(), Span::new(1, 1, 0, 0));
+                    self.err("E2010", "&& 需要 Bool".into(), span_of(id));
                 }
                 Ty::Bool
             }
             OrOr => {
                 if (self.prim_cat(&lt) != 0 && self.prim_cat(&lt) != 2)
                     || (self.prim_cat(&rt) != 0 && self.prim_cat(&rt) != 2) {
-                    self.err("E2010", "`||` 需要 Bool".into(), Span::new(1, 1, 0, 0));
+                    self.err("E2010", "`||` 需要 Bool".into(), span_of(id));
                 }
                 Ty::Bool
             }
@@ -2512,7 +2512,7 @@ impl<'a> Checker<'a> {
                 if !(Self::both_numeric(&lt, &rt) || matches!(lt, Ty::Bool | Ty::Err) || matches!(rt, Ty::Bool | Ty::Err)
                     || matches!(lt, Ty::Str | Ty::String | Ty::Err) || matches!(rt, Ty::Str | Ty::String | Ty::Err)
                     || self.unify(&lt, &rt)) {
-                    self.err("E2010", format!("比较类型不匹配({:?}):{} vs {}", op, self.type_name(&lt), self.type_name(&rt)), Span::new(1, 1, 0, 0));
+                    self.err("E2010", format!("比较类型不匹配({:?}):{} vs {}", op, self.type_name(&lt), self.type_name(&rt)), span_of(id));
                 }
                 Ty::Bool
             }
@@ -2523,7 +2523,7 @@ impl<'a> Checker<'a> {
                     && matches!(lt, Ty::Str | Ty::String) && matches!(rt, Ty::Str | Ty::String);
                 if simd_pair || str_cat || Self::both_numeric(&lt, &rt) || lt == Ty::Err || rt == Ty::Err { lt }
                 else {
-                    self.err("E2010", format!("算术需要数值,实际 {} 与 {}", self.type_name(&lt), self.type_name(&rt)), Span::new(1, 1, 0, 0));
+                    self.err("E2010", format!("算术需要数值,实际 {} 与 {}", self.type_name(&lt), self.type_name(&rt)), span_of(id));
                     Ty::Err
                 }
             }
@@ -2531,7 +2531,7 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn check_struct_lit(&mut self, path: &[String], fields: &[ast::StructField]) -> Ty {
+    fn check_struct_lit(&mut self, path: &[String], fields: &[ast::StructField], id: u32) -> Ty {
         let name = path.last().cloned().unwrap_or_default();
         let Some(def) = self.lookup_type(&name) else {
             let tsp = self.name_spans.get(name.as_str()).copied().unwrap_or_else(|| Span::new(1, 1, 0, 0));
@@ -2547,28 +2547,28 @@ impl<'a> Checker<'a> {
             match fty {
                 Some(fty) => {
                     let hint = resolve_vars(&fty, &self.subs);
-                    let got = self.expr(f.value.as_ref().unwrap_or(&ast::Expr::Void), Some(&hint));
+                    let got = self.expr(f.value.as_ref().unwrap_or(&ast::Expr::Void(0)), Some(&hint));
                     let _ = self.unify(&hint, &got);
                 }
                 None => {
-                    self.err("E2010", format!("`{}` 无字段 `{}`", name, f.name), Span::new(1, 1, 0, 0));
+                    self.err("E2010", format!("`{}` 无字段 `{}`", name, f.name), span_of(id));
                 }
             }
         }
         let args = param_vars.iter().map(|&v| self.resolve(&Ty::Var(v))).collect();
         if self.in_own && matches!(self.sema.defs[def].kind, DefKind::Class) {
-            self.err("E3040", "own 块内构造 GC 类实例(allocation in own block)".into(), Span::new(1, 1, 0, 0));
+            self.err("E3040", "own 块内构造 GC 类实例(allocation in own block)".into(), span_of(id));
         }
         Ty::Named { def, args }
     }
 
     // ---------- 调用 ----------
 
-    fn check_call(&mut self, callee: &ast::Expr, args: &[ast::Expr], hint: Option<&Ty>) -> Ty {
+    fn check_call(&mut self, callee: &ast::Expr, args: &[ast::Expr], hint: Option<&Ty>, id: u32) -> Ty {
         match callee {
-            Expr::TypeArgs { expr, args: type_args } => {
+            Expr::TypeArgs { expr, args: type_args, .. } => {
                 // 泛型方法(arena.array[I32](8))
-                if let Expr::Member { obj, target: ast::MemberTarget::Name(m) } = &**expr {
+                if let Expr::Member { obj, target: ast::MemberTarget::Name(m), .. } = &**expr {
                     let ot = self.expr(obj, None);
                     let targs: Vec<Ty> = type_args.iter().map(|t| self.lower_local_ty(t)).collect();
                     let oname = match self.resolve(&ot) { Ty::Named { def, .. } => self.sema.defs[def].name.clone(), _ => String::new() };
@@ -2577,7 +2577,7 @@ impl<'a> Checker<'a> {
                         return match m.as_str() {
                             "array" | "zeros" => Ty::MutSlice(Box::new(t)),
                             "list" => self.named("ArenaList", vec![t]),
-                            _ => { self.err("E2020", format!("Arena 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                            _ => { self.err("E2020", format!("Arena 无方法 `{}`", m), span_of(id)); Ty::Err }
                         };
                     }
                     // W5:T41 分配器族 zeros/fixed 关联面(Region/Pool/Static)
@@ -2586,12 +2586,12 @@ impl<'a> Checker<'a> {
                         return match m.as_str() {
                             "zeros" => Ty::MutSlice(Box::new(t)),
                             "fixed" => self.named(&oname, targs.clone()),
-                            _ => { self.err("E2020", format!("{} 无方法 `{}`", oname, m), Span::new(1, 1, 0, 0)); Ty::Err }
+                            _ => { self.err("E2020", format!("{} 无方法 `{}`", oname, m), span_of(id)); Ty::Err }
                         };
                     }
                 }
                 // 泛型类型构造器调用(Box[Point](p))
-                if let Expr::Ident(name) = &**expr {
+                if let Expr::Ident(name, _) = &**expr {
                     if name == "Arena" {
                         // Arena.fixed(n) 等关联构造
                         for a in args { self.expr(a, None); }
@@ -2620,7 +2620,7 @@ impl<'a> Checker<'a> {
                             "Channel" => {
                                 let elem = targs.first().cloned().unwrap_or(Ty::Err);
                                 if !self.is_send(&elem) {
-                                    self.err("E3020", format!("channel 元素类型必须 Send:`{}` 非 Send(§7.4)", self.type_name(&elem)), Span::new(1, 1, 0, 0));
+                                    self.err("E3020", format!("channel 元素类型必须 Send:`{}` 非 Send(§7.4)", self.type_name(&elem)), span_of(id));
                                 }
                                 let s = self.named("Sender", vec![elem.clone()]);
                                 let r = self.named("Receiver", vec![elem]);
@@ -2631,18 +2631,18 @@ impl<'a> Checker<'a> {
                     }
                 }
                 // v0.7 修订三:显式 TypeArgs 的泛型 fn 调用(原降级 Ty::Err;现按声明序对位替换后检查)
-                if let Expr::Ident(name) = &**expr {
-                    if let Some(Symbol::Fn(id)) = self.lookup_fn_global(name) {
-                        let has_tps = !self.sema.fns[id].type_params.is_empty();
+                if let Expr::Ident(name, _) = &**expr {
+                    if let Some(Symbol::Fn(fid)) = self.lookup_fn_global(name) {
+                        let has_tps = !self.sema.fns[fid].type_params.is_empty();
                         if has_tps {
                             let (fps, fret, tpvars) = (
-                                self.sema.fns[id].params.clone(),
-                                self.sema.fns[id].ret.clone(),
-                                self.sema.fns[id].tparam_vars.clone(),
+                                self.sema.fns[fid].params.clone(),
+                                self.sema.fns[fid].ret.clone(),
+                                self.sema.fns[fid].tparam_vars.clone(),
                             );
                             let targs: Vec<Ty> = type_args.iter().map(|t| self.lower_local_ty(t)).collect();
                             if targs.len() != tpvars.len() {
-                                self.err("E2020", format!("类型实参数量不符:期望 {},实际 {}", tpvars.len(), targs.len()), Span::new(1, 1, 0, 0));
+                                self.err("E2020", format!("类型实参数量不符:期望 {},实际 {}", tpvars.len(), targs.len()), span_of(id));
                             }
                             let m: HashMap<u32, Ty> = tpvars.iter().cloned().zip(targs).collect();
                             for (pf, a) in fps.iter().map(|(_, t)| t).zip(args) {
@@ -2656,10 +2656,10 @@ impl<'a> Checker<'a> {
                 }
                 Ty::Err
             }
-            Expr::Member { obj, target: ast::MemberTarget::Name(m) } => {
-                self.check_method_call(obj, m, args, hint)
+            Expr::Member { obj, target: ast::MemberTarget::Name(m), .. } => {
+                self.check_method_call(obj, m, args, hint, id)
             }
-            Expr::Ident(name) => self.check_ident_call(name, args, hint),
+            Expr::Ident(name, id) => self.check_ident_call(name, args, hint, *id),
             _ => {
                 let ct = self.expr(callee, None);
                 match self.resolve(&ct) {
@@ -2672,7 +2672,7 @@ impl<'a> Checker<'a> {
                         if self.sema.defs[def].name == "Channel" {
                             let elem = targs.first().cloned().unwrap_or(Ty::Err);
                             if !self.is_send(&elem) {
-                                self.err("E3020", format!("channel 元素类型必须 Send:`{}` 非 Send(§7.4)", self.type_name(&elem)), Span::new(1, 1, 0, 0));
+                                self.err("E3020", format!("channel 元素类型必须 Send:`{}` 非 Send(§7.4)", self.type_name(&elem)), span_of(id));
                             }
                             let s = self.named("Sender", vec![elem.clone()]);
                             let r = self.named("Receiver", vec![elem]);
@@ -2687,7 +2687,7 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn check_ident_call(&mut self, name: &str, args: &[ast::Expr], hint: Option<&Ty>) -> Ty {
+    fn check_ident_call(&mut self, name: &str, args: &[ast::Expr], hint: Option<&Ty>, id: u32) -> Ty {
         // 本地绑定的函数值(参数为 fn 类型 / let 绑定的闭包)
         if let Some(t) = self.lookup_local(name) {
             if let Ty::FnTy { params, ret } = self.resolve(&t) {
@@ -2695,10 +2695,10 @@ impl<'a> Checker<'a> {
                 return *ret;
             }
         }
-        self.check_ident_call_global(name, args, hint)
+        self.check_ident_call_global(name, args, hint, id)
     }
 
-    fn check_ident_call_global(&mut self, name: &str, args: &[ast::Expr], hint: Option<&Ty>) -> Ty {
+    fn check_ident_call_global(&mut self, name: &str, args: &[ast::Expr], hint: Option<&Ty>, id: u32) -> Ty {
         // prelude 枚举变体构造器(Some/None/Ok/Err)
         match name {
             "Some" => {
@@ -2732,7 +2732,7 @@ impl<'a> Checker<'a> {
                 let a = self.expr(&args[0], hint);
                 let mut b_hint = a.clone();
                 if !self.is_int(&b_hint) && !matches!(self.resolve(&b_hint), Ty::F32 | Ty::F64) { b_hint = Ty::Err; }
-                let b = self.expr(args.get(1).unwrap_or(&ast::Expr::Void), Some(&b_hint));
+                let b = self.expr(args.get(1).unwrap_or(&ast::Expr::Void(0)), Some(&b_hint));
                 let _ = self.unify(&a, &b);
                 Ty::Void
             }
@@ -2760,21 +2760,21 @@ impl<'a> Checker<'a> {
                         for a in args { self.expr(a, None); }
                         return Ty::Named { def: *def, args: vec![] };
                     }
-                    self.err("E2020", format!("未解析的名称 `{}`", name), Span::new(1, 1, 0, 0));
+                    self.err("E2020", format!("未解析的名称 `{}`", name), span_of(id));
                     for a in args { self.expr(a, None); }
                     return Ty::Err;
                 };
                 match sym {
-                    Symbol::Fn(id) => {
-                        if self.in_own && self.fn_gc_alloc(id) {
-                            self.err("E3040", format!("own 块内调用含 GC 分配的函数 `{}`(allocation in own block);改为 arena 或移出", name), Span::new(1, 1, 0, 0));
+                    Symbol::Fn(fid) => {
+                        if self.in_own && self.fn_gc_alloc(fid) {
+                            self.err("E3040", format!("own 块内调用含 GC 分配的函数 `{}`(allocation in own block);改为 arena 或移出", name), span_of(id));
                         }
                         // §8.3 跨函数纯度传播:#[pure] 调用(传递地)触能力 fn → E4020
                         // (r7b「pure 包装层不洗白能力调用」;摘要见 new() 纯度定点)
-                        if self.pure_ctx && self.pure_dirty.get(id).copied().unwrap_or(false) {
-                            self.err("E4020", "`#[pure]` 函数含副作用:能力(capability)调用即 I/O".into(), Span::new(1, 1, 0, 0));
+                        if self.pure_ctx && self.pure_dirty.get(fid).copied().unwrap_or(false) {
+                            self.err("E4020", "`#[pure]` 函数含副作用:能力(capability)调用即 I/O".into(), span_of(id));
                         }
-                        let f = &self.sema.fns[id];
+                        let f = &self.sema.fns[fid];
                         if f.is_comptime && self.is_comptime_call_self(name) { /* 自递归在预算期处理 */ }
                         // v0.7 修订三:省略 TypeArgs 的泛型调用——仅从实参推断(Go 式,
                         // 提案 §5 决策表)。局部替换表(不动全局 self.subs,跨调用点不串扰)。
@@ -2795,7 +2795,7 @@ impl<'a> Checker<'a> {
                                 self.infer_tpar_walk(pf, &at_res, &mut m, &mut amb);
                             }
                             if amb {
-                                self.err("E2061", "无法唯一推断类型实参(候选冲突);请显式标注 `名[类型](…)`".into(), Span::new(1, 1, 0, 0));
+                                self.err("E2061", "无法唯一推断类型实参(候选冲突);请显式标注 `名[类型](…)`".into(), span_of(id));
                             } else {
                                 let missing: Vec<&str> = tpvars.iter().zip(tpnames.iter())
                                     .filter(|(v, _)| !m.contains_key(*v))
@@ -2804,7 +2804,7 @@ impl<'a> Checker<'a> {
                                 // E2060 仅在「有具体实参信息但 TPar 仍无候选」时成立;
                                 // 实参类型整体不可得(Err)时保持宽松(保守子集检查器,Var 沿旧路传播)
                                 if !missing.is_empty() && saw_concrete {
-                                    self.err("E2060", format!("无法推断类型实参 `{}`(未出现于实参位);请显式标注,如 `{}[类型](…)`", missing.join("`, `"), name), Span::new(1, 1, 0, 0));
+                                    self.err("E2060", format!("无法推断类型实参 `{}`(未出现于实参位);请显式标注,如 `{}[类型](…)`", missing.join("`, `"), name), span_of(id));
                                 }
                             }
                             let ret2 = self.subst_tys(&fret, &m);
@@ -2940,9 +2940,9 @@ impl<'a> Checker<'a> {
 
     // ---------- 成员与方法 ----------
 
-    fn check_member(&mut self, obj: &ast::Expr, target: &ast::MemberTarget) -> Ty {
+    fn check_member(&mut self, obj: &ast::Expr, target: &ast::MemberTarget, id: u32) -> Ty {
         // 模块命名空间成员(dom.set_title)在 Call 中处理;此处仅当属性/未应用方法
-        if let Expr::Ident(name) = obj {
+        if let Expr::Ident(name, _) = obj {
             if let Some(Symbol::Module(_)) = self.lookup_fn_global(name) {
                 return Ty::Err;
             }
@@ -2983,32 +2983,32 @@ impl<'a> Checker<'a> {
             Ty::Str => match tn.as_str() {
                 "len" | "char_len" => Ty::UInt(IntW::WSize),
                 "contains" => self.named("Bool", vec![]), // §3.8.2;T09
-                _ => { self.err("E2020", format!("Str 无属性 `{}`", tn), Span::new(1, 1, 0, 0)); Ty::Err }
+                _ => { self.err("E2020", format!("Str 无属性 `{}`", tn), span_of(id)); Ty::Err }
             },
             Ty::String => match tn.as_str() {
                 "len" => Ty::UInt(IntW::WSize),
-                _ => { self.err("E2020", format!("String 无属性 `{}`", tn), Span::new(1, 1, 0, 0)); Ty::Err }
+                _ => { self.err("E2020", format!("String 无属性 `{}`", tn), span_of(id)); Ty::Err }
             },
             Ty::MutSlice(e) | Ty::RoSlice(e) | Ty::Array(e) => match tn.as_str() {
                 "len" => Ty::UInt(IntW::WSize),
-                _ => { let _ = e; self.err("E2020", format!("无属性 `{}`", tn), Span::new(1, 1, 0, 0)); Ty::Err }
+                _ => { let _ = e; self.err("E2020", format!("无属性 `{}`", tn), span_of(id)); Ty::Err }
             },
             Ty::Optional(_inner) => match tn.as_str() {
                 "is_some" | "is_none" => self.named("Bool", vec![]),
-                _ => { self.err("E2020", format!("Option 无属性 `{}`", tn), Span::new(1, 1, 0, 0)); Ty::Err }
+                _ => { self.err("E2020", format!("Option 无属性 `{}`", tn), span_of(id)); Ty::Err }
             },
             Ty::Tuple(items) => match target {
                 ast::MemberTarget::TupleIndex(i) => items.get(*i as usize).cloned().unwrap_or(Ty::Err),
-                _ => { self.err("E2020", "元组无该成员".into(), Span::new(1, 1, 0, 0)); Ty::Err }
+                _ => { self.err("E2020", "元组无该成员".into(), span_of(id)); Ty::Err }
             },
             Ty::Simd(_) => Ty::Err, // splat/lane/to_array 是方法,在 Call 中
-            Ty::Named { def, args } => self.check_named_member(*def, args, target),
+            Ty::Named { def, args } => self.check_named_member(*def, args, target, id),
             Ty::Err => Ty::Err,
-            other => { self.err("E2020", format!("{} 无成员 `{}`", self.type_name(other), tn), Span::new(1, 1, 0, 0)); Ty::Err }
+            other => { self.err("E2020", format!("{} 无成员 `{}`", self.type_name(other), tn), span_of(id)); Ty::Err }
         }
     }
 
-    fn check_named_member(&mut self, def: DefId, _args: &[Ty], target: &ast::MemberTarget) -> Ty {
+    fn check_named_member(&mut self, def: DefId, _args: &[Ty], target: &ast::MemberTarget, id: u32) -> Ty {
         let d = &self.sema.defs[def];
         let tn = target_name(target);
         // 属性
@@ -3019,11 +3019,11 @@ impl<'a> Checker<'a> {
             "StringBuilder" => match tn.as_str() {
                 // §3.8.2;T03:len = 当前字节长度
                 "len" => self.named("I32", vec![]),
-                _ => { self.err("E2020", format!("StringBuilder 无属性 `{}`", tn), Span::new(1, 1, 0, 0)); Ty::Err }
+                _ => { self.err("E2020", format!("StringBuilder 无属性 `{}`", tn), span_of(id)); Ty::Err }
             },
             "Option" | "Result" => match tn.as_str() {
                 "is_some" | "is_none" | "is_ok" | "is_err" => self.named("Bool", vec![]),
-                _ => { self.err("E2020", format!("{} 无属性 `{}`(方法请直接调用)", d.name, tn), Span::new(1, 1, 0, 0)); Ty::Err }
+                _ => { self.err("E2020", format!("{} 无属性 `{}`(方法请直接调用)", d.name, tn), span_of(id)); Ty::Err }
             },
             "AnyError" => match tn.as_str() {
                 "message" | "trace" => self.named("Str", vec![]),
@@ -3034,11 +3034,11 @@ impl<'a> Checker<'a> {
                     let opt = self.named("Option", vec![]);
                     match opt { Ty::Named { def, .. } => Ty::Named { def, args: vec![Ty::Ref(Box::new(err_t))] }, _ => Ty::Err }
                 }
-                _ => { self.err("E2020", format!("AnyError 无属性 `{}`", tn), Span::new(1, 1, 0, 0)); Ty::Err }
+                _ => { self.err("E2020", format!("AnyError 无属性 `{}`", tn), span_of(id)); Ty::Err }
             },
             "List" | "ArenaList" | "Map" | "Set" => match tn.as_str() {
                 "len" => Ty::UInt(IntW::WSize),
-                _ => { self.err("E2020", format!("{} 无属性 `{}`", d.name, tn), Span::new(1, 1, 0, 0)); Ty::Err }
+                _ => { self.err("E2020", format!("{} 无属性 `{}`", d.name, tn), span_of(id)); Ty::Err }
             },
             _ => {
                 // T26:Prelude 型 defs 亦查字段(前奏近似型 FsError.message,§8.1/07a)
@@ -3063,14 +3063,14 @@ impl<'a> Checker<'a> {
                         return pty.clone();
                     }
                 }
-                self.err("E2020", format!("`{}` 无属性 `{}`", d.name, tn), Span::new(1, 1, 0, 0));
+                self.err("E2020", format!("`{}` 无属性 `{}`", d.name, tn), span_of(id));
                 Ty::Err
             }
         }
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn check_method_call(&mut self, obj: &ast::Expr, m: &str, args: &[ast::Expr], hint: Option<&Ty>) -> Ty {
+    fn check_method_call(&mut self, obj: &ast::Expr, m: &str, args: &[ast::Expr], hint: Option<&Ty>, id: u32) -> Ty {
         // 纯度/comptime/spawn 检查钩子
         let ot_raw = self.expr(obj, None);
         let ot_raw = self.resolve(&ot_raw);
@@ -3092,7 +3092,7 @@ impl<'a> Checker<'a> {
             if scalar {
                 for a in args { self.expr(a, None); }
                 if self.in_own {
-                    self.err("E3040", "own 块内构造 String(GC allocation in own block)".into(), Span::new(1, 1, 0, 0));
+                    self.err("E3040", "own 块内构造 String(GC allocation in own block)".into(), span_of(id));
                 }
                 return self.named("String", vec![]);
             }
@@ -3104,17 +3104,17 @@ impl<'a> Checker<'a> {
             match &r { Ty::Named { def, .. } => c.sema.defs[*def].cap, _ => false }
         };
         if self.pure_ctx && cap_hit(self, &ot_raw) {
-            self.err("E4020", "`#[pure]` 函数含副作用:能力(capability)调用即 I/O".into(), Span::new(1, 1, 0, 0));
+            self.err("E4020", "`#[pure]` 函数含副作用:能力(capability)调用即 I/O".into(), span_of(id));
         }
         if self.comptime_ctx && cap_hit(self, &ot_raw) {
-            self.err("E6020", "comptime 函数为纯语义:不允许能力调用/副作用".into(), Span::new(1, 1, 0, 0));
+            self.err("E6020", "comptime 函数为纯语义:不允许能力调用/副作用".into(), span_of(id));
         }
         // spawn:Scope.spawn → 捕获分析
         if m == "spawn" {
             if let Ty::Named { def, .. } = &ot {
                 if self.sema.defs[*def].name == "Scope" {
                     if self.no_spawn_ctx {
-                        self.err("E4030", "#[no_spawn] 语境中出现 spawn(§8.3)".into(), Span::new(1, 1, 0, 0));
+                        self.err("E4030", "#[no_spawn] 语境中出现 spawn(§8.3)".into(), span_of(id));
                     }
                     let Some(ast::Expr::Closure { body, .. }) = args.first() else {
                         return self.named("Task", vec![Ty::Err]);
@@ -3130,7 +3130,7 @@ impl<'a> Checker<'a> {
                             if !self.is_send(&cty) {
                                 self.err("E3010",
                                     format!("闭包捕获非 Send 值 `{cname}`:类型 {} 不能跨任务(§7.4);加 Mutex 或改传值", self.type_name(&cty)),
-                                    Span::new(1, 1, 0, 0));
+                                    span_of(id));
                             }
                         }
                     }
@@ -3144,22 +3144,22 @@ impl<'a> Checker<'a> {
             if let Ty::Named { def, .. } = self.resolve(inner) {
                 if self.sema.defs[def].cap {
                     if self.pure_ctx {
-                        self.err("E4020", "`#[pure]` 函数含副作用:能力(capability)调用即 I/O".into(), Span::new(1, 1, 0, 0));
+                        self.err("E4020", "`#[pure]` 函数含副作用:能力(capability)调用即 I/O".into(), span_of(id));
                     }
                     if self.comptime_ctx {
-                        self.err("E6020", "comptime 函数为纯语义:不允许能力调用/副作用".into(), Span::new(1, 1, 0, 0));
+                        self.err("E6020", "comptime 函数为纯语义:不允许能力调用/副作用".into(), span_of(id));
                     }
                 }
             }
         }
         // 模块命名空间成员调用(stdweb.dom.title 等)
-        if let Expr::Ident(name) = obj {
+        if let Expr::Ident(name, _) = obj {
             if let Some(Symbol::Module(mp)) = self.lookup_fn_global(name) {
                 if mp == "stdweb.dom" {
                     return match m {
                         "set_title" => { if let Some(a) = args.first() { self.expr(a, Some(&Ty::Str)); } Ty::Void }
                         "title" => self.named("Str", vec![]),
-                        _ => { self.err("E2020", format!("stdweb.dom 无函数 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                        _ => { self.err("E2020", format!("stdweb.dom 无函数 `{}`", m), span_of(id)); Ty::Err }
                     };
                 }
             }
@@ -3175,37 +3175,37 @@ impl<'a> Checker<'a> {
                     let r = match self.resolve(&f) { Ty::FnTy { ret, .. } => *ret, _ => Ty::Err };
                     Ty::Optional(Box::new(r))
                 }
-                _ => { self.err("E2020", format!("Option 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                _ => { self.err("E2020", format!("Option 无方法 `{}`", m), span_of(id)); Ty::Err }
             },
             Ty::Str => match m {
                 "contains" => { self.expr(&args[0], Some(&Ty::Str)); self.named("Bool", vec![]) }
                 "to_string" => {
                     for a in args { self.expr(a, None); }
                     if self.in_own {
-                        self.err("E3040", "own 块内构造 String(GC allocation in own block)".into(), Span::new(1, 1, 0, 0));
+                        self.err("E3040", "own 块内构造 String(GC allocation in own block)".into(), span_of(id));
                     }
                     self.named("String", vec![])
                 }
                 "slice" => { if let Some(a) = args.first() { let at = self.expr(a, None); let _ = at; } self.named("Str", vec![]) }
                 "iter" => { self.named("Str", vec![]) }
-                _ => { self.err("E2020", format!("Str 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                _ => { self.err("E2020", format!("Str 无方法 `{}`", m), span_of(id)); Ty::Err }
             },
             Ty::String => match m {
                 "to_string" => { for a in args { self.expr(a, None); } self.named("String", vec![]) }
-                _ => { self.err("E2020", format!("String 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                _ => { self.err("E2020", format!("String 无方法 `{}`", m), span_of(id)); Ty::Err }
             },
             Ty::Simd(elem) => match m {
                 "splat" => { self.expr(&args[0], Some(elem)); Ty::Simd(elem.clone()) }
                 "lane" => { self.expr(&args[0], None); (**elem).clone() }
                 "to_array" => { Ty::Array(Box::new((**elem).clone())) }
-                _ => { self.err("E2020", format!("Simd 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                _ => { self.err("E2020", format!("Simd 无方法 `{}`", m), span_of(id)); Ty::Err }
             },
             Ty::Named { def, args: targs } => {
                 let dname = self.sema.defs[*def].name.clone();
                 if dname == "Arena" {
                     return match m {
                         "fixed" => { for a in args { self.expr(a, None); } self.named("Arena", vec![]) }
-                        _ => { self.err("E2020", format!("Arena 无关联函数 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                        _ => { self.err("E2020", format!("Arena 无关联函数 `{}`", m), span_of(id)); Ty::Err }
                     };
                 }
                 if std::env::var("CTRON_DEBUG").is_ok() { eprintln!("[dbg] method recv={} m={}", dname, m); }
@@ -3236,7 +3236,7 @@ impl<'a> Checker<'a> {
                                     self.named("Result", vec![r, e])
                                 }
                             }
-                            _ => { self.err("E2020", format!("{} 无方法 `{}`", dname, m), Span::new(1, 1, 0, 0)); Ty::Err }
+                            _ => { self.err("E2020", format!("{} 无方法 `{}`", dname, m), span_of(id)); Ty::Err }
                         }
                     }
                     "List" => match m {
@@ -3252,7 +3252,7 @@ impl<'a> Checker<'a> {
                             if let Some(a) = args.get(1) { self.expr(a, Some(&targs.first().cloned().unwrap_or(Ty::Err))); }
                             Ty::Void
                         }
-                        _ => { self.err("E2020", format!("List 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                        _ => { self.err("E2020", format!("List 无方法 `{}`", m), span_of(id)); Ty::Err }
                     },
                     // R-P2a:Map 方法面(insert 语句位弃值;get/remove → Option[V];keys/values → List)
                     "Map" => {
@@ -3274,7 +3274,7 @@ impl<'a> Checker<'a> {
                             }
                             "keys" => self.named("List", vec![kty]),
                             "values" => self.named("List", vec![vty]),
-                            _ => { self.err("E2020", format!("Map 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                            _ => { self.err("E2020", format!("Map 无方法 `{}`", m), span_of(id)); Ty::Err }
                         }
                     }
                     // R-P2a:Set 方法面(insert 返回「是否新增」;contains/remove → Bool)
@@ -3285,7 +3285,7 @@ impl<'a> Checker<'a> {
                                 if let Some(a) = args.first() { self.expr(a, Some(&ety)); }
                                 Ty::Bool
                             }
-                            _ => { self.err("E2020", format!("Set 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                            _ => { self.err("E2020", format!("Set 无方法 `{}`", m), span_of(id)); Ty::Err }
                         }
                     }
                     // W5:T41 分配器族方法面(Region mark/reset;Pool alloc/set/get/free)
@@ -3296,17 +3296,17 @@ impl<'a> Checker<'a> {
                             for a in args { self.expr(a, None); }
                             Ty::Int(crate::sem::IntW::W64)
                         }
-                        _ => { self.err("E2020", format!("Clock 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                        _ => { self.err("E2020", format!("Clock 无方法 `{}`", m), span_of(id)); Ty::Err }
                     },
                     "Arena" => match m {
                         "fixed" => { for a in args { self.expr(a, None); } self.named("Arena", vec![]) }
-                        _ => { self.err("E2020", format!("Arena 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                        _ => { self.err("E2020", format!("Arena 无方法 `{}`", m), span_of(id)); Ty::Err }
                     },
                     "Region" => match m {
                         "fixed" => { for a in args { self.expr(a, None); } self.named("Region", vec![]) }
                         "mark" => Ty::Int(crate::sem::IntW::W64),
                         "reset" | "zeros" => { for a in args { self.expr(a, None); } Ty::Void }
-                        _ => { self.err("E2020", format!("Region 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                        _ => { self.err("E2020", format!("Region 无方法 `{}`", m), span_of(id)); Ty::Err }
                     },
                     "Pool" => {
                         let vty = targs.get(1).cloned().unwrap_or(Ty::Err);
@@ -3315,12 +3315,12 @@ impl<'a> Checker<'a> {
                             "alloc" => Ty::Int(crate::sem::IntW::W64),
                             "get" => { if let Some(a) = args.first() { self.expr(a, None); } vty }
                             "set" | "free" => { for a in args { self.expr(a, None); } Ty::Void }
-                            _ => { self.err("E2020", format!("Pool 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                            _ => { self.err("E2020", format!("Pool 无方法 `{}`", m), span_of(id)); Ty::Err }
                         }
                     }
                     "Static" => match m {
                         "zeros" => { for a in args { self.expr(a, None); } Ty::MutSlice(Box::new(targs.first().cloned().unwrap_or(Ty::Err))) }
-                        _ => { self.err("E2020", format!("Static 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                        _ => { self.err("E2020", format!("Static 无方法 `{}`", m), span_of(id)); Ty::Err }
                     }
                     "StringBuilder" => match m {
                         // §3.8.2;T03:push_str 拼段 / to_string 产出 String(len 走属性);
@@ -3328,18 +3328,18 @@ impl<'a> Checker<'a> {
                         "push_str" => { if !args.is_empty() { self.expr(&args[0], None); } Ty::Void }
                         "reserve" | "clear" => { for a in args { self.expr(a, None); } Ty::Void }
                         "to_string" => { self.named("String", vec![]) }
-                        _ => { self.err("E2020", format!("StringBuilder 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                        _ => { self.err("E2020", format!("StringBuilder 无方法 `{}`", m), span_of(id)); Ty::Err }
                     },
                     "ArenaList" => match m {
                         "push" => { self.expr(&args[0], Some(&targs.first().cloned().unwrap_or(Ty::Err))); Ty::Void }
                         "into_gc" => self.named("List", vec![targs.first().cloned().unwrap_or(Ty::Err)]),
-                        _ => { self.err("E2020", format!("ArenaList 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                        _ => { self.err("E2020", format!("ArenaList 无方法 `{}`", m), span_of(id)); Ty::Err }
                     },
                     "Atomic" => match m {
                         "load" => targs.first().cloned().unwrap_or(Ty::Err),
                         "store" => { self.expr(&args[0], Some(&targs.first().cloned().unwrap_or(Ty::Err))); Ty::Void }
                         "fetch_add" => { self.expr(&args[0], None); targs.first().cloned().unwrap_or(Ty::Err) }
-                        _ => { self.err("E2020", format!("Atomic 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                        _ => { self.err("E2020", format!("Atomic 无方法 `{}`", m), span_of(id)); Ty::Err }
                     },
                     "Mutex" | "Global" => match m {
                         "with" | "with_mut" => {
@@ -3349,7 +3349,7 @@ impl<'a> Checker<'a> {
                                 _ => Ty::Err,
                             }
                         }
-                        _ => { self.err("E2020", format!("{} 无方法 `{}`", dname, m), Span::new(1, 1, 0, 0)); Ty::Err }
+                        _ => { self.err("E2020", format!("{} 无方法 `{}`", dname, m), span_of(id)); Ty::Err }
                     },
                     "Sender" => match m {
                         "send" => {
@@ -3358,14 +3358,14 @@ impl<'a> Checker<'a> {
                             let tp = self.named("TaskPanic", vec![]);
                             self.named("Result", vec![v, tp])
                         }
-                        _ => { self.err("E2020", format!("Sender 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                        _ => { self.err("E2020", format!("Sender 无方法 `{}`", m), span_of(id)); Ty::Err }
                     },
                     "Receiver" => match m {
                         "recv" => {
                             let tp = self.named("TaskPanic", vec![]);
                             self.named("Result", vec![targs.first().cloned().unwrap_or(Ty::Err), tp])
                         }
-                        _ => { self.err("E2020", format!("Receiver 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                        _ => { self.err("E2020", format!("Receiver 无方法 `{}`", m), span_of(id)); Ty::Err }
                     },
                     "Task" => match m {
                         "join" => targs.first().cloned().unwrap_or(Ty::Err),
@@ -3373,7 +3373,7 @@ impl<'a> Checker<'a> {
                             let tp = self.named("TaskPanic", vec![]);
                             self.named("Result", vec![targs.first().cloned().unwrap_or(Ty::Err), tp])
                         }
-                        _ => { self.err("E2020", format!("Task 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                        _ => { self.err("E2020", format!("Task 无方法 `{}`", m), span_of(id)); Ty::Err }
                     },
                     "Parallel" => match m {
                         "map" => {
@@ -3395,7 +3395,7 @@ impl<'a> Checker<'a> {
                             self.expr(&args[2], None);
                             init
                         }
-                        _ => { self.err("E2020", format!("Parallel 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                        _ => { self.err("E2020", format!("Parallel 无方法 `{}`", m), span_of(id)); Ty::Err }
                     },
                     "Bit" => {
                         // bit.and_i64(...) 等 24 入口;实参求值后按宽度返回(宽松同 parallel)
@@ -3404,7 +3404,7 @@ impl<'a> Checker<'a> {
                         let arity = if op == "not" { 1 } else { 2 };
                         let okop = matches!(op, "and" | "or" | "xor" | "not" | "shl" | "shr");
                         if !okw || !okop || args.len() != arity {
-                            self.err("E2020", format!("Bit 无方法 `{}`", m), Span::new(1, 1, 0, 0));
+                            self.err("E2020", format!("Bit 无方法 `{}`", m), span_of(id));
                             return Ty::Err;
                         }
                         for a in args { self.expr(a, None); }
@@ -3415,18 +3415,18 @@ impl<'a> Checker<'a> {
                             _ => Ty::UInt(IntW::W64),
                         }
                     }
-                    "AnyError" => { self.err("E2020", format!("AnyError 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                    "AnyError" => { self.err("E2020", format!("AnyError 无方法 `{}`", m), span_of(id)); Ty::Err }
                     // T26 Env 进程环境能力对象(§8.1;07b):system 构造句柄;
                     // get 缺失=None;args=进程参数表(与自举/C 宿主 eval 同面)
                     "Env" => match m {
                         "system" => self.named("Env", vec![]),
                         "get" => { if let Some(a) = args.first() { self.expr(a, Some(&Ty::Str)); } Ty::Optional(Box::new(Ty::Str)) }
                         "args" => self.named("List", vec![Ty::Str]),
-                        _ => { self.err("E2020", format!("Env 无方法 `{}`", m), Span::new(1, 1, 0, 0)); Ty::Err }
+                        _ => { self.err("E2020", format!("Env 无方法 `{}`", m), span_of(id)); Ty::Err }
                     },
                     _ => {
                         // 类固有方法 / trait 方法(含 &Trait 对象)
-                        self.check_user_method(*def, &targs.clone(), m, args, hint)
+                        self.check_user_method(*def, &targs.clone(), m, args, hint, id)
                     }
                 }
             }
@@ -3450,13 +3450,13 @@ impl<'a> Checker<'a> {
                         }
                     }
                 }
-                self.err("E2020", format!("{} 无方法 `{}`", self.type_name(&ot), m), Span::new(1, 1, 0, 0));
+                self.err("E2020", format!("{} 无方法 `{}`", self.type_name(&ot), m), span_of(id));
                 Ty::Err
             }
         }
     }
 
-    fn check_user_method(&mut self, def: DefId, targs: &[Ty], m: &str, args: &[ast::Expr], _hint: Option<&Ty>) -> Ty {
+    fn check_user_method(&mut self, def: DefId, targs: &[Ty], m: &str, args: &[ast::Expr], _hint: Option<&Ty>, id: u32) -> Ty {
         let d = &self.sema.defs[def];
         // trait 对象/具名 trait:方法签名在 def.methods
         if d.kind == DefKind::Trait || self.is_trait_name(def) {
@@ -3494,7 +3494,7 @@ impl<'a> Checker<'a> {
                 }
             }
         }
-        self.err("E2020", format!("`{}` 无方法 `{}`", d.name, m), Span::new(1, 1, 0, 0));
+        self.err("E2020", format!("`{}` 无方法 `{}`", d.name, m), span_of(id));
         for a in args { self.expr(a, None); }
         Ty::Err
     }
@@ -3565,32 +3565,32 @@ fn resolve_vars(t: &Ty, subs: &HashMap<u32, Ty>) -> Ty {
 fn collect_captures(e: &ast::Expr, local: &mut HashSet<String>, outer: &HashSet<String>, caps: &mut Vec<String>) {
     use ast::Expr::*;
     match e {
-        Ident(n) => {
+        Ident(n, _) => {
             if !local.contains(n) && outer.contains(n) && !caps.contains(n) {
                 caps.push(n.clone());
             }
         }
-        Unary { expr, .. } | Try(expr) => collect_captures(expr, local, outer, caps),
+        Unary { expr, .. } | Try(expr, _) => collect_captures(expr, local, outer, caps),
         Binary { lhs, rhs, .. } | Range { from: lhs, to: rhs, .. } => {
             collect_captures(lhs, local, outer, caps);
             collect_captures(rhs, local, outer, caps);
         }
-        Call { callee, args } => {
+        Call { callee, args, .. } => {
             collect_captures(callee, local, outer, caps);
             args.iter().for_each(|a| collect_captures(a, local, outer, caps));
         }
-        Index { obj, index } => { collect_captures(obj, local, outer, caps); collect_captures(index, local, outer, caps); }
+        Index { obj, index, .. } => { collect_captures(obj, local, outer, caps); collect_captures(index, local, outer, caps); }
         Member { obj, .. } => collect_captures(obj, local, outer, caps),
         TypeArgs { expr, .. } => collect_captures(expr, local, outer, caps),
-        Tuple(items) | Array(items) => items.iter().for_each(|i| collect_captures(i, local, outer, caps)),
+        Tuple(items, _) | Array(items, _) => items.iter().for_each(|i| collect_captures(i, local, outer, caps)),
         StructLit { fields, .. } => fields.iter().for_each(|f| if let Some(v) = &f.value { collect_captures(v, local, outer, caps) }),
-        If { cond, then, els } => {
+        If { cond, then, els, .. } => {
             collect_captures(cond, local, outer, caps);
             let mut l2 = local.clone();
             collect_captures_block(then, &mut l2, outer, caps);
             if let Some(e2) = els { collect_captures(e2, local, outer, caps); }
         }
-        Match { expr, arms } => {
+        Match { expr, arms, .. } => {
             collect_captures(expr, local, outer, caps);
             for a in arms {
                 let mut l2 = local.clone();
@@ -3603,13 +3603,13 @@ fn collect_captures(e: &ast::Expr, local: &mut HashSet<String>, outer: &HashSet<
             for p in params { l2.insert(p.name.clone()); }
             collect_captures(body, &mut l2, outer, caps);
         }
-        Scope { param, body } => {
+        Scope { param, body, .. } => {
             let mut l2 = local.clone();
             l2.insert(param.clone());
             collect_captures_block(body, &mut l2, outer, caps);
         }
         Own { body, .. } => collect_captures_block(body, local, outer, caps),
-        BlockExpr(b) => collect_captures_block(b, local, outer, caps),
+        BlockExpr(b, _) => collect_captures_block(b, local, outer, caps),
         _ => {}
     }
 }
@@ -3621,17 +3621,17 @@ fn collect_captures_block(b: &ast::Block, local: &mut HashSet<String>, outer: &H
                 collect_captures(expr, local, outer, caps);
                 bind_pattern(pattern, local);
             }
-            ast::Stmt::Return(e) => if let Some(e) = e { collect_captures(e, local, outer, caps); }
-            ast::Stmt::Break | ast::Stmt::Continue => {}
-            ast::Stmt::For { pattern, iter, body } => {
+            ast::Stmt::Return(e, _) => if let Some(e) = e { collect_captures(e, local, outer, caps); }
+            ast::Stmt::Break(_) | ast::Stmt::Continue(_) => {}
+            ast::Stmt::For { pattern, iter, body, .. } => {
                 collect_captures(iter, local, outer, caps);
                 let mut l2 = local.clone();
                 bind_pattern(pattern, &mut l2);
                 collect_captures_block(body, &mut l2, outer, caps);
             }
-            ast::Stmt::While { cond, body } => { collect_captures(cond, local, outer, caps); collect_captures_block(body, local, outer, caps); }
+            ast::Stmt::While { cond, body, .. } => { collect_captures(cond, local, outer, caps); collect_captures_block(body, local, outer, caps); }
             ast::Stmt::Assign { target, value, .. } => { collect_captures(target, local, outer, caps); collect_captures(value, local, outer, caps); }
-            ast::Stmt::Expr(e) => collect_captures(e, local, outer, caps),
+            ast::Stmt::Expr(e, _) => collect_captures(e, local, outer, caps),
         }
     }
     if let Some(t) = &b.tail { collect_captures(t, local, outer, caps); }

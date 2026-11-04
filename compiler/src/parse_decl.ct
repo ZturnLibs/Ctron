@@ -4,7 +4,7 @@
 // p_class/p_impl/p_trait/p_use/p_const/p_static/p_extern;p_file(toks, cur, lns)
 // → 文件节点树(解析器总入口)。
 // =====================================================================
-fn p_fn2(toks: List[Str], cur: Atomic[I32], lns: List[Str], tag: Str) -> List[Str] {
+fn p_fn2(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], tag: Str) -> List[Str] {
     adv(cur)
     var nm = tok(toks, cur)
     adv(cur)
@@ -47,7 +47,7 @@ fn p_fn2(toks: List[Str], cur: Atomic[I32], lns: List[Str], tag: Str) -> List[St
                 var pty = mk("None")
                 if tok(toks, cur) == ":" {
                     adv(cur)
-                    pty = p_typ(toks, cur, lns)
+                    pty = p_typ(toks, cur, lns, cols)
                 }
                 var par = mk("Param")
                 par.push(isv)
@@ -56,7 +56,7 @@ fn p_fn2(toks: List[Str], cur: Atomic[I32], lns: List[Str], tag: Str) -> List[St
                 ps.push(par)
             } else {
                 adv(cur)
-                var pty = p_typ(toks, cur, lns)
+                var pty = p_typ(toks, cur, lns, cols)
                 var par = mk("Param")
                 par.push(isv)
                 par.push(pn)
@@ -70,12 +70,12 @@ fn p_fn2(toks: List[Str], cur: Atomic[I32], lns: List[Str], tag: Str) -> List[St
     var ret = mk("None")
     if tok(toks, cur) == "->" {
         adv(cur)
-        ret = p_typ(toks, cur, lns)
+        ret = p_typ(toks, cur, lns, cols)
     }
     var body = mk("None")
     if tok(toks, cur) == "\{" {
         adv(cur)
-        body = p_block(toks, cur, lns)
+        body = p_block(toks, cur, lns, cols)
     }
     nf.push(tp)
     nf.push(ps)
@@ -84,25 +84,26 @@ fn p_fn2(toks: List[Str], cur: Atomic[I32], lns: List[Str], tag: Str) -> List[St
     return nf
 }
 
-fn p_fn(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
-    return p_fn2(toks, cur, lns, "Fn")
+fn p_fn(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str]) -> List[Str] {
+    return p_fn2(toks, cur, lns, cols, "Fn")
 }
 
-fn p_test(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
+fn p_test(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str]) -> List[Str] {
     adv(cur)
     var t = tok(toks, cur)
     adv(cur)
     var nt = mk("Test")
     nt.push(qtext(byte_slice(t, 1, t.len - 1)))
     adv(cur)
-    nt.push(p_block(toks, cur, lns))
+    nt.push(p_block(toks, cur, lns, cols))
     return nt
 }
 
-fn p_field(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
+fn p_field(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str]) -> List[Str] {
     var isv = "false"
     var t = tok(toks, cur)
     var ln0 = lns[cur.load()]
+    var ln0c = cols[cur.load()]
     if t == "var" { isv = "true" }
     if or2(t == "let", t == "var") { adv(cur) }
     var nm = tok(toks, cur)
@@ -111,13 +112,14 @@ fn p_field(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
     var f = mk("Field")
     f.push(isv)
     f.push(nm)
-    f.push(p_typ(toks, cur, lns))
-    nstamp(f, ln0)
+    f.push(p_typ(toks, cur, lns, cols))
+    nstamp(f, ln0, ln0c)
     return f
 }
 
-fn p_struct2(toks: List[Str], cur: Atomic[I32], lns: List[Str], dr: List[Str], anm: Str) -> List[Str] {
+fn p_struct2(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], dr: List[Str], anm: Str) -> List[Str] {
     var ln0 = lns[cur.load()]
+    var ln0c = cols[cur.load()]
     adv(cur)
     var nm = tok(toks, cur)
     adv(cur)
@@ -137,7 +139,7 @@ fn p_struct2(toks: List[Str], cur: Atomic[I32], lns: List[Str], dr: List[Str], a
             adv(cur)
         }
         if tok(toks, cur) == "}" { go = false } else if tok(toks, cur) == "#EOF" { go = false } else {
-            fs.push(p_field(toks, cur, lns))
+            fs.push(p_field(toks, cur, lns, cols))
             // 单行字段:可选逗号分隔(宿主同形;换行面不受影响)
             if tok(toks, cur) == "," {
                 adv(cur)
@@ -150,16 +152,16 @@ fn p_struct2(toks: List[Str], cur: Atomic[I32], lns: List[Str], dr: List[Str], a
     if anm != "" {
         ns.push(anm)
     }
-    nstamp(ns, ln0)
+    nstamp(ns, ln0, ln0c)
     return ns
 }
 
-fn p_struct(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
+fn p_struct(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str]) -> List[Str] {
     var dr0 = mk("Drvs")
-    return p_struct2(toks, cur, lns, dr0, "")
+    return p_struct2(toks, cur, lns, cols, dr0, "")
 }
 
-fn p_enum2(toks: List[Str], cur: Atomic[I32], lns: List[Str], dr: List[Str], anm: Str) -> List[Str] {
+fn p_enum2(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], dr: List[Str], anm: Str) -> List[Str] {
     adv(cur)
     var nm = tok(toks, cur)
     adv(cur)
@@ -185,7 +187,7 @@ fn p_enum2(toks: List[Str], cur: Atomic[I32], lns: List[Str], dr: List[Str], anm
                 var more = true
                 while more {
                     if tok(toks, cur) == ")" { more = false } else {
-                        kind.push(p_typ(toks, cur, lns))
+                        kind.push(p_typ(toks, cur, lns, cols))
                         if tok(toks, cur) == "," { adv(cur) } else { more = false }
                     }
                 }
@@ -199,7 +201,7 @@ fn p_enum2(toks: List[Str], cur: Atomic[I32], lns: List[Str], dr: List[Str], anm
                         adv(cur)
                     }
                     if tok(toks, cur) == "}" { more2 = false } else if tok(toks, cur) == "#EOF" { more2 = false } else {
-                        kind.push(p_field(toks, cur, lns))
+                        kind.push(p_field(toks, cur, lns, cols))
                         while tok(toks, cur) == "NL" {
                             adv(cur)
                         }
@@ -227,17 +229,17 @@ fn p_enum2(toks: List[Str], cur: Atomic[I32], lns: List[Str], dr: List[Str], anm
     return ne
 }
 
-fn p_prop_item2(toks: List[Str], cur: Atomic[I32], lns: List[Str], kind: Str) -> List[Str] {
+fn p_prop_item2(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], kind: Str) -> List[Str] {
     adv(cur)
     var nm = tok(toks, cur)
     adv(cur)
     adv(cur)
-    var ty = p_typ(toks, cur, lns)
+    var ty = p_typ(toks, cur, lns, cols)
     var body = mk("None")
     var tag = "PropSig"
     if tok(toks, cur) == "\{" {
         adv(cur)
-        body = p_block(toks, cur, lns)
+        body = p_block(toks, cur, lns, cols)
         tag = "PropImpl"
     }
     if kind == "imp" {
@@ -250,7 +252,7 @@ fn p_prop_item2(toks: List[Str], cur: Atomic[I32], lns: List[Str], kind: Str) ->
     return pn
 }
 
-fn p_items(toks: List[Str], cur: Atomic[I32], lns: List[Str], kind: Str) -> List[Str] {
+fn p_items(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], kind: Str) -> List[Str] {
     var it = mk("Items")
     var go = true
     while go {
@@ -275,28 +277,28 @@ fn p_items(toks: List[Str], cur: Atomic[I32], lns: List[Str], kind: Str) -> List
             while tok(toks, cur) == "NL" {
                 adv(cur)
             }
-            var md = p_fn2(toks, cur, lns, "Method")
+            var md = p_fn2(toks, cur, lns, cols, "Method")
             md.push(anm)
             it.push(md)
         } else if t == "fn" {
-            it.push(p_fn2(toks, cur, lns, "Method"))
+            it.push(p_fn2(toks, cur, lns, cols, "Method"))
         } else if t == "prop" {
             var pk = "sig"
             if or2(kind == "impl", kind == "class") {
                 pk = "imp"
             }
-            it.push(p_prop_item2(toks, cur, lns, pk))
+            it.push(p_prop_item2(toks, cur, lns, cols, pk))
         } else if kind == "trait" {
             go = false
         } else {
-            it.push(p_field(toks, cur, lns))
+            it.push(p_field(toks, cur, lns, cols))
         }
     }
     adv(cur)
     return it
 }
 
-fn p_class(toks: List[Str], cur: Atomic[I32], lns: List[Str], dr: List[Str]) -> List[Str] {
+fn p_class(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], dr: List[Str]) -> List[Str] {
     adv(cur)
     var nm = tok(toks, cur)
     adv(cur)
@@ -308,7 +310,7 @@ fn p_class(toks: List[Str], cur: Atomic[I32], lns: List[Str], dr: List[Str]) -> 
     }
     adv(cur)
     nc.push(tp)
-    nc.push(p_items(toks, cur, lns, "class"))
+    nc.push(p_items(toks, cur, lns, cols, "class"))
     // @derive 派生名尾槽(@+class 路由,T26;消费方按 [0] 标签扫 items,尾追不加位)
     if dr.len > 1 {
         nc.push(dr)
@@ -324,7 +326,7 @@ fn p_impl(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], pd
         tp = p_tpars(toks, cur)
     }
     ni.push(tp)
-    ni.push(p_typ(toks, cur, lns))
+    ni.push(p_typ(toks, cur, lns, cols))
     // §2 镜像 seed eat_k(TOK_FOR) 守卫:缺 for 报 E1001(不消费);
     // 类型位遇非类型起始 token 报"预期类型,实际 X"并消费一枚(parse_type 恢复语义)
     while tok(toks, cur) == "NL" {
@@ -333,7 +335,7 @@ fn p_impl(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], pd
     if tok(toks, cur) != "for" {
         pdiag(pdiags, lns, cols, cur, "E1001", diag_text0("E1001.impl.for"))
         if type_start(tok(toks, cur)) {
-            ni.push(p_typ(toks, cur, lns))
+            ni.push(p_typ(toks, cur, lns, cols))
         } else {
             pdiag(pdiags, lns, cols, cur, "E1001", diag_text1("E1001.exptype", tok(toks, cur)))
             adv(cur)
@@ -341,7 +343,7 @@ fn p_impl(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], pd
         }
     } else {
         adv(cur)
-        ni.push(p_typ(toks, cur, lns))
+        ni.push(p_typ(toks, cur, lns, cols))
     }
     // 镜像 seed eat_k(TOK_LBRACE):体缺左花括号报 E1001(不消费,p_items 容错续走)
     while tok(toks, cur) == "NL" {
@@ -352,7 +354,7 @@ fn p_impl(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], pd
     } else {
         adv(cur)
     }
-    ni.push(p_items(toks, cur, lns, "impl"))
+    ni.push(p_items(toks, cur, lns, cols, "impl"))
     return ni
 }
 
@@ -368,7 +370,7 @@ fn type_start(t: Str) -> Bool {
     return or2(or3(t == "(", t == "&", t == "fn"), t == "[")
 }
 
-fn p_trait(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
+fn p_trait(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str]) -> List[Str] {
     adv(cur)
     var nm = tok(toks, cur)
     adv(cur)
@@ -391,13 +393,13 @@ fn p_trait(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
     }
     nt.push(sup)
     adv(cur)
-    nt.push(p_items(toks, cur, lns, "trait"))
+    nt.push(p_items(toks, cur, lns, cols, "trait"))
     return nt
 }
 
-fn p_enum(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
+fn p_enum(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str]) -> List[Str] {
     var dr0 = mk("Drvs")
-    return p_enum2(toks, cur, lns, dr0, "")
+    return p_enum2(toks, cur, lns, cols, dr0, "")
 }
 
 // use 别名关键字面(镜像 fmt.ct fmt_kw;fmt.ct 仅入 cc_fmt 拼接,parse 侧自持一份)
@@ -556,22 +558,23 @@ fn p_use(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], pdi
     return nu
 }
 
-fn p_const(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
+fn p_const(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str]) -> List[Str] {
     adv(cur)
     var nm = tok(toks, cur)
     adv(cur)
     adv(cur)
-    var ty = p_typ(toks, cur, lns)
+    var ty = p_typ(toks, cur, lns, cols)
     adv(cur)
     var nc = mk("Const")
     nc.push(nm)
     nc.push(ty)
-    nc.push(p_stmt_expr(toks, cur, lns, "1"))
+    nc.push(p_stmt_expr(toks, cur, lns, cols, "1"))
     return nc
 }
 
-fn p_static(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
+fn p_static(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str]) -> List[Str] {
     var ln0 = lns[cur.load()]
+    var ln0c = cols[cur.load()]
     adv(cur)
     var wv = "false"
     var t = tok(toks, cur)
@@ -580,14 +583,14 @@ fn p_static(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
     var nm = tok(toks, cur)
     adv(cur)
     adv(cur)
-    var ty = p_typ(toks, cur, lns)
+    var ty = p_typ(toks, cur, lns, cols)
     adv(cur)
     var ns = mk("Static")
     ns.push(nm)
     ns.push(wv)
     ns.push(ty)
-    ns.push(p_stmt_expr(toks, cur, lns, "1"))
-    nstamp(ns, ln0)
+    ns.push(p_stmt_expr(toks, cur, lns, cols, "1"))
+    nstamp(ns, ln0, ln0c)
     return ns
 }
 
@@ -595,6 +598,7 @@ fn p_static(toks: List[Str], cur: Atomic[I32], lns: List[Str]) -> List[Str] {
 // 镜像宿主 ast.h abi 可 NULL);anm = 前置 #[attr] 名(可空)
 fn p_extern(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], pdiags: List[Str], anm: Str) -> List[Str] {
     var ln0 = lns[cur.load()]
+    var ln0c = cols[cur.load()]
     adv(cur)
     if byte_at(tok(toks, cur), 0) == 34 {
         // ABI 字符串字面量:仅 "c"(§9.6);其余 E1001(镜像宿主 parser_decl "extern ABI 应为字符串")
@@ -607,11 +611,11 @@ fn p_extern(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], 
     while tok(toks, cur) == "NL" {
         adv(cur)
     }
-    var fd = p_fn2(toks, cur, lns, "FnExt")
+    var fd = p_fn2(toks, cur, lns, cols, "FnExt")
     if anm != "" {
         fd.push(anm)
     }
-    nstamp(fd, ln0)
+    nstamp(fd, ln0, ln0c)
     return fd
 }
 
@@ -695,13 +699,13 @@ fn p_file(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], pd
                 nf.push(p_extern(toks, cur, lns, cols, pdiags, anm))
             } else if tok(toks, cur) == "struct" {
                 // #[attr] struct:属性名入尾槽(v0.6 #[repr(c)] §9.6)
-                nf.push(p_struct2(toks, cur, lns, mk("Drvs"), anm))
+                nf.push(p_struct2(toks, cur, lns, cols, mk("Drvs"), anm))
             } else if tok(toks, cur) == "enum" {
-                nf.push(p_enum2(toks, cur, lns, mk("Drvs"), anm))
+                nf.push(p_enum2(toks, cur, lns, cols, mk("Drvs"), anm))
             } else {
-                var fd = p_fn2(toks, cur, lns, "Fn")
+                var fd = p_fn2(toks, cur, lns, cols, "Fn")
                 fd.push(anm)
-                nstamp(fd, lns[cur.load()])
+                nstamp(fd, lns[cur.load()], cols[cur.load()])
                 nf.push(fd)
             }
         } else if t == "view" {
@@ -723,19 +727,19 @@ fn p_file(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], pd
             }
             var t3 = tok(toks, cur)
             if t3 == "fn" {
-                nf.push(p_fn2(toks, cur, lns, "FnPub"))
+                nf.push(p_fn2(toks, cur, lns, cols, "FnPub"))
             } else {
                 if t3 == "struct" {
                     // pub struct:此前无路由掉进 p_fn 吞掉后续声明流(SL-0.7 探针:
                     // E2020.use.miss / List 幽灵 decl / 段错误三态)。尾槽追加 "pub"
                     // 标记(镜像 fn 的 anm/stamp 尾槽;位置索引消费者不受影响),
                     // loader 按尾标记判定可见性
-                    var ns3 = p_struct2(toks, cur, lns, mk("Drvs"), "")
+                    var ns3 = p_struct2(toks, cur, lns, cols, mk("Drvs"), "")
                     ns3.push("pub")
                     nf.push(ns3)
                 } else {
                     if t3 == "enum" {
-                        var ne3 = p_enum2(toks, cur, lns, mk("Drvs"), "")
+                        var ne3 = p_enum2(toks, cur, lns, cols, mk("Drvs"), "")
                         ne3.push("pub")
                         nf.push(ne3)
                     } else {
@@ -744,14 +748,14 @@ fn p_file(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], pd
                             nx3.push("pub")
                             nf.push(nx3)
                         } else {
-                            nf.push(p_fn(toks, cur, lns))
+                            nf.push(p_fn(toks, cur, lns, cols))
                         }
                     }
                 }
             }
         } else if t == "comptime" {
             adv(cur)
-            nf.push(p_fn2(toks, cur, lns, "FnC"))
+            nf.push(p_fn2(toks, cur, lns, cols, "FnC"))
         } else if t == "@" {
             adv(cur)
             adv(cur)
@@ -773,37 +777,37 @@ fn p_file(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], pd
             }
             var t2 = tok(toks, cur)
             if t2 == "struct" {
-                nf.push(p_struct2(toks, cur, lns, dr2, ""))
+                nf.push(p_struct2(toks, cur, lns, cols, dr2, ""))
             } else if t2 == "enum" {
-                nf.push(p_enum2(toks, cur, lns, dr2, ""))
+                nf.push(p_enum2(toks, cur, lns, cols, dr2, ""))
             } else if t2 == "trait" {
-                nf.push(p_trait(toks, cur, lns))
+                nf.push(p_trait(toks, cur, lns, cols))
             } else if t2 == "class" {
                 // @+class 路由(T26:@derive(Error) class 错误形先例曾坠 p_fn 段错误)
-                nf.push(p_class(toks, cur, lns, dr2))
+                nf.push(p_class(toks, cur, lns, cols, dr2))
             } else {
-                nf.push(p_fn(toks, cur, lns))
+                nf.push(p_fn(toks, cur, lns, cols))
             }
         } else if t == "test" {
-            nf.push(p_test(toks, cur, lns))
+            nf.push(p_test(toks, cur, lns, cols))
         } else if t == "extern" {
             nf.push(p_extern(toks, cur, lns, cols, pdiags, ""))
         } else if t == "enum" {
-            nf.push(p_enum(toks, cur, lns))
+            nf.push(p_enum(toks, cur, lns, cols))
         } else if t == "struct" {
-            nf.push(p_struct(toks, cur, lns))
+            nf.push(p_struct(toks, cur, lns, cols))
         } else if t == "class" {
-            nf.push(p_class(toks, cur, lns, mk("Drvs")))
+            nf.push(p_class(toks, cur, lns, cols, mk("Drvs")))
         } else if t == "impl" {
             nf.push(p_impl(toks, cur, lns, cols, pdiags))
         } else if t == "trait" {
-            nf.push(p_trait(toks, cur, lns))
+            nf.push(p_trait(toks, cur, lns, cols))
         } else if t == "use" {
             nf.push(p_use(toks, cur, lns, cols, pdiags))
         } else if t == "const" {
-            nf.push(p_const(toks, cur, lns))
+            nf.push(p_const(toks, cur, lns, cols))
         } else if t == "static" {
-            nf.push(p_static(toks, cur, lns))
+            nf.push(p_static(toks, cur, lns, cols))
         } else if or2(t == "let", t == "var") {
             // E1002:模块级绑定不是受支持的声明面——此前坠下方 p_fn 兜底被硬套成
             // Fn 声明(名字吃绑定名/类型进参数位/初始化式进体),下游走查器读畸形
@@ -816,7 +820,7 @@ fn p_file(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], pd
                 adv(cur)
             }
         } else {
-            nf.push(p_fn(toks, cur, lns))
+            nf.push(p_fn(toks, cur, lns, cols))
         }
         if cur.load() == p0 {
             adv(cur)

@@ -435,9 +435,23 @@ fn nline(n: List[Str]) -> Str {
         return "0"
     }
     var last = n[n.len - 1]
+    // P2-D 批②:尾槽复合形 "行:列" —— 冒号前取行部;无冒号 = 旧纯数字透传。
+    var ci: I32 = -1
     var i: I32 = 0
     while i < last.len {
-        var c = byte_at(last, i)
+        if byte_at(last, i) == 58 {
+            ci = i
+            i = last.len
+        } else {
+            i += 1
+        }
+    }
+    if ci > 0 {
+        last = byte_slice(last, 0, ci)
+    }
+    var j: I32 = 0
+    while j < last.len {
+        var c = byte_at(last, j)
         var dig = true
         if c < 48 {
             dig = false
@@ -448,12 +462,53 @@ fn nline(n: List[Str]) -> Str {
         if !dig {
             return "0"
         }
-        i += 1
+        j += 1
     }
     if last.len == 0 {
         return "0"
     }
     return last
+}
+
+// 尾槽列部(P2-D 批②新增消费方):冒号后取列;无冒号(旧纯数字槽/非法)= "0"。
+fn ncol(n: List[Str]) -> Str {
+    if n.len == 0 {
+        return "0"
+    }
+    var last = n[n.len - 1]
+    var ci: I32 = -1
+    var i: I32 = 0
+    while i < last.len {
+        if byte_at(last, i) == 58 {
+            ci = i
+            i = last.len
+        } else {
+            i += 1
+        }
+    }
+    if ci < 0 {
+        return "0"
+    }
+    var col = byte_slice(last, ci + 1, last.len)
+    var j: I32 = 0
+    while j < col.len {
+        var c = byte_at(col, j)
+        var dig = true
+        if c < 48 {
+            dig = false
+        }
+        if c > 57 {
+            dig = false
+        }
+        if !dig {
+            return "0"
+        }
+        j += 1
+    }
+    if col.len == 0 {
+        return "0"
+    }
+    return col
 }
 
 // "已知局部、类型未知"哨兵:阻断 Ident 解析穿透到 fn 名集(同名遮蔽语义)

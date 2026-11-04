@@ -10,9 +10,10 @@ fn mk(t: Str) -> List[Str] {
     return n
 }
 
-// 行号戳(lns 与 toks 平行,scan 产出):把行号串追加为节点末槽
-fn nstamp(n: List[Str], line: Str) {
-    n.push(line)
+// 行号戳(lns 与 toks 平行,scan 产出):尾槽复合形 "行:列"(P2-D 批②;
+// 消费面经 nline 拆分零改,ncol 供新消费方)
+fn nstamp(n: List[Str], line: Str, col: Str) {
+    n.push(line + ":" + col)
 }
 
 // ---------------- 形态表(S1a:tag → 槽位形状串;S=串槽 N=节点槽,末位 * = 变长) ----------------

@@ -214,9 +214,10 @@ fn s4(fl: Str, env: List[Str], out: Str, vv: Val) -> Flow {
 fn expr_of_text(s: Str) -> List[Str] {
     var toks = List[Str]()
     var lns = List[Str]()
-    scan(s, toks, lns)
+    var cols = List[Str]()
+    scan4(s, toks, lns, cols, List[Str]())
     var cur = Atomic[I32](0)
-    return p_stmt_expr(toks, cur, lns, "1")
+    return p_stmt_expr(toks, cur, lns, cols, "1")
 }
 fn find_decl(file: List[Str], nm: Str) -> List[Str] {
     var i: I32 = 1
