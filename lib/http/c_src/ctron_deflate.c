@@ -1,4 +1,4 @@
-/* ctron_deflate.c - Ctron http 压缩垫片:miniz 3.1.2 包装(raw deflate + crc32)
+/* ctron_deflate.c - Ctron http 压缩垫片:miniz 3.1.2 包装(raw deflate;crc32 已消解)
  * P4-B:压缩门面的唯一 C 依赖面。体例同 ctron_tls.c(无状态,无停车点——纯 CPU
  * 函数,不引用任何 ctron_rt_* 符号;多 worker 并发安全:miniz 三件 API 均无共享
  * 状态,且本垫片不用任何 static)。
@@ -11,7 +11,6 @@
  *     64KB / 单帧 ≤4KB"预算口径(ctron_tls.c 文件头同源纪律)。本垫片自管:
  *     解压状态 MZ_MALLOC 上堆,逐字复刻 mem_to_mem 语义(NON_WRAPPING_OUTPUT_BUF
  *     + 全量输入一次给足;DONE → 字节数,HAS_MORE_OUTPUT → 容量不足,余 → 损坏);
- *   - mz_crc32 —— gzip CRC-32(miniz 16 项 nibble 表实现,无状态)。
  *
  * lane 暂存(ctron_tls.c 同款纪律,登记):&I64[] 字节道 = 每字节一条 int64
  * lane(布局 { int64_t* d; int64_t n; }),与 C 连续字节缓冲不同构 —— 三件入参
@@ -132,19 +131,4 @@ int64_t ctron_deflate_decompress(ct_view6 in, int64_t in_n, int64_t in_off,
         return -2;  /* 输出容量不足(炸弹护栏生效,fixtures 断言此码) */
     return -3;      /* 损坏/欠输入(NEEDS_MORE_INPUT 亦归损坏:单成员整流口径) */
 }
-
-/* CRC-32(Continuation 语义):crc 传入上次值(MZ_CRC32_INIT = 0 起),返回新值。
- * gzip 尾/校验面用;in_off 起取 in_n 字节。 */
-int64_t ctron_deflate_crc32(ct_view6 in, int64_t in_n, int64_t in_off, int64_t crc)
-{
-    if (in_n < 0 || in_off < 0 || in_off > in.n || in_n > in.n - in_off)
-        return -1;
-    if (in_n == 0)
-        return crc;
-    uint8_t* p = ct_lanes_to_bytes(&in, in_off, in_n);
-    if (!p)
-        return -3;
-    int64_t r = (int64_t)mz_crc32((mz_ulong)crc, p, (size_t)in_n);
-    MZ_FREE(p);
-    return r;
-}
+/* CRC-32 已纯 Ctron 消解(S4 2026-11-04,enc.ct 位级臂)——mz_crc32 转发件摘除 */
