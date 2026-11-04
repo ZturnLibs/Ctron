@@ -485,7 +485,7 @@ val eval_expr(rt* R, cexpr* e) {
     case EX_UNARY: {
         val x = eval_expr(R, e->ux);
         if (e->uop == UN_NOT) return v_bool(!truthy(x));
-        if (x.k == V_INT) return ck_int(R, -x.i, x.bits, x.us, "neg");
+        if (x.k == V_INT) return ck_int(R, -x.i, x.bits, x.us, "-");
         if (x.k == V_FLOAT) return v_flt(-x.f);
         return x;
     }

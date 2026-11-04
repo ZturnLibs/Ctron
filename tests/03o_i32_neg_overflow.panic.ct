@@ -3,7 +3,7 @@
 //  自宿 interp+emit ctron_w_neg;溢出面随 emit_checks 烛台,off = 裸回绕;
 //  显式回绕形 = 0 -% a 二元回绕减;@panic 宽子串口径同 03m——跨径尾缀差异
 //  (seed "neg" vs 其余 "-")容忍)
-//@ panic: overflow
+//@ panic: integer overflow (-)
 
 test "i32 neg overflow panics" {
     let a: I32 = 0 - 2147483647 - 1
