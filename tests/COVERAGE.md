@@ -4559,3 +4559,46 @@ lane 手工 cc 是唯一通路。
 本就断链,新路径等价不回退)。
 **门**:cbox 经 ctc.sh build 链接成功 + 运行 rc=0(box_audit 收支自平衡);
 smoke 249/0;suite 122/124 rc=0;drv_parity 136/0(build 双臂零输出变化)。
+
+## 2026-11-04 续:C 垫片消解批(S1-S5 实施轮;specs/2026-11-04-c-shim-dissolution-design.md)
+
+**落地并提交(44ff9fb9 + 5d123f44)**:
+- S4 CRC-32 纯 Ctron 化:enc.ct 位级臂(IEEE 0xEDB88320,gz64 宽域播种,C10)替
+  miniz 转发;binddeflate 摘 extern;组框两调用点换臂;deflate 垫片死代码摘除
+  (−16)。首版多项式常量错(2989574331≠0xEDB88320=3988292384)——e_crc32
+  双臂红实测咬出,修后 "123456789"→3421780262/空段→0/单 0x00→3523407757 三向量
+  双臂绿;http 门 106→111。
+- e_crc32.ct(http 语料)+ 09c_repeat_dyn.ct(顶层语料)双臂钉。
+- S2/S3/S5 处置=留地板:三垫片补「地板声明」头(cbox 指针表语言面缺/快臂+绑定
+  分层/CA 探测 fs 传感面);hand-C 基线 5857 → 5858(净 ±0,声明头 +33/摘 −16;
+  S1 数字随重放批兑现)。
+
+**编译器两修复(S1 路径咬出;被对端 git 操作回滚,待重放)**:
+1. trans_stmt.ct G5-W1:切片 Repeat 非字面量 count 恒折 "1"(长度错=静默越界;
+   interp 臂正确)——else 分支补 ct_expr;09c 钉在库。
+2. parse_pkg.ct done-skip 放行:同地板多包消费(http.client+db 各自 use net.bind,
+   keep 集不同)→ 中层声明缺失 E2020/emit 缺 extern——done 一律重载走选择性合并
+   (dup 首胜静默跳过原语义;组合探针 http+db rc=0 实证;db 探针 decls=258)。
+   ⚠️ 两修复本体已随对端 22:27 git 操作回滚(下条),当前 bin 含修复(src 不含),
+   09c 现绿;下次 native 重建前必须按设计文档 §S1 实施增量重放,否则 09c/组合
+   探针翻红。
+
+**对端在飞冲突实录(22:27 git 操作)**:本批 S1 lib 面(redis.ct/pg.ct extern 换
+net 地板+包装器、bind.ct/net.c 两增量、熵别名迁居、dbpg/dbredis 删除)与七消费方
+文件换名——未提交,被回滚;dbpg/dbredis 两垫片被复位重现。S1 车道门当时实测:
+tests/db 49/50(唯一红 rm_json_link emit,HEAD 基线工作树复现=携带红,非本批)、
+ffi 38/0、组合/db 探针绿。重放按设计文档「S1 实施增量」五条全谱执行。
+
+**对端在飞批(P2-D 批② span 行:列)半截阻断面(非本批,申报)**:
+- native.sh 驱动步:seed 调 nstamp 期望 2 实得 3(parse_node 3 参数化,调用方半迁)
+  → bin/ctron(driver)发射失败。
+- smoke 净环境 234/3:①decls 锁 539 实得 540(+1 归因在飞批,非本批——本批
+  cc_run 面零新增 decl);②T42 isr E1001「参数表缺少 (」;③T37 wasm 诊断文案
+  build 失败——②③均 parse 半截族。
+- suite 123/125 rc=0(+09c 入册;10_trace/07a 在册分歧维持);db 49/50(红=携带);
+  ffi 38/0;http 111/118(http/run: pass=111 fail=7:i_multipart/x_gzip_round/
+  sse_ws_a_wsproto/serve_e2e×2/frm_auth×2——HEAD 基线归因随基线工作树构建收口);
+  net 13/6(coro_hybrid/tcp_echo/udp_roundtrip/unix_sock 族——同上待归因)。
+
+**登记**:①S1 重放批(全谱含两编译修复);②smoke decls 锁 540 归因申报随对端;
+③net/http 残红归因(基线工作树构建收口后补账)。
