@@ -4511,3 +4511,15 @@ tests/ffi/run.sh 38 过 / 0 败;suite 合计 121/123 rc=0(余缺 = 03m_binary_nu
 L4 判定与 07a E4010 两在册);smoke 249/0、drv_parity 136/0 维持。
 **登记后续**:驱动器级(ctc.sh build/emit)use 图扫描自动链接 = 构建面特性,
 当前口径为 lane 自治(与 net/proc/crypto lane 同惯例),不入本批。
+
+## 2026-11-04 终:loom gate-all 端到端全绿——OOM 回归闭环实证
+
+复验配置:CTRON_BIN = 全新 bin/ctron-cc(11-04 11:31,emit_checks off 烙定
++ GC 默认 on + 全部修复);loom build.sh = **ALL GREEN**([6/6] native
+selftest full 全绿 ✓);gate-all = **六 e2e 全 PASS**(human-out/fsck/
+travel-prune/human-v22/human-v16/sync-v018)。
+**OOM 回归闭环**:fa966b98(W2 默认 on 烙定)OOM → 本批(默认 off + GC on
++ 全修)端到端全绿。根因链终局 = emit_checks 默认 on 烙定 bin(检查算术
+逐操作化 = 下游大闭包码增重/运行期超限),非 GC/非哨兵。
+**处置维持**:emit_checks = 选入式(CTRON_CFG_EMIT_CHECKS=on / build 块
+"on");GC 默认 on。loom 侧 CTRON_BIN 可复用主线 bin(回归解除)。
