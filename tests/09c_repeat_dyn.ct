@@ -1,0 +1,26 @@
+// 09c_repeat_dyn.ct —— Repeat 切片位运行时计数(S1 前置修复钉;G5-W1 补面)
+// 语义:`[v] ** expr` 切片形(§3.6)count 取运行时表达式,双臂(interp/emit)
+// 长度与逐元素一致;定长数组注解位仍限整数字面量(E2010.runcount,09_repeat_run.neg 钉)。
+// 背景:首版 emit 臂非字面量 count 恒折 "1"(长度错 = 静默越界;S1 db 地板归一
+// 需要 U8[] 动态刮疤缓冲,实测咬出)——本件即双臂回归哨。
+
+test "repeat slice runtime count" {
+    var n: I64 = 7
+    var a: I64[] = [0] ** n
+    assert_eq(a.len, 7)
+    a[3] = 65
+    assert_eq(a[3], 65)
+    var u: U8[] = [0] ** n
+    assert_eq(u.len, 7)
+    u[6] = 72
+    assert_eq(u[6], 72u8)
+    var z: I64[] = [0] ** 0
+    assert_eq(z.len, 0)
+    var b: I64[] = [65, 66] ** n
+    assert_eq(b.len, 14)
+    assert_eq(b[0], 65)
+    assert_eq(b[13], 66)
+    var m: I64 = 0
+    var c: I64[] = [0] ** m
+    assert_eq(c.len, 0)
+}

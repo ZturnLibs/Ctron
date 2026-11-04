@@ -15,6 +15,12 @@
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 
+/* ══ 地板声明(S3 处置 2026-11-04)══
+ * 分层留置:①sha256/hmac = native 快臂(规范臂 = std/crypto.ct 纯 Ctron,FIPS
+ * 向量锚;解释口径无快速宽整型,快臂 native-only 标注见 crypto.ct 头注);
+ * ②ed25519 = OpenSSL EVP 绑定(外部库,非逻辑);③hex 助手 = EVP hex 契约
+ * 内联件(loom_sig 消费面签名契约,迁移成本 > 行数收益)。*/
+
 typedef struct { uint8_t* d; int64_t n; } ctron_view_w8u;
 
 // ---- SHA-256 / HMAC-SHA-256(libcrypto;G1 杠杆,纯 Ctron 实现受位运算/宽整型语义债卡) ----

@@ -1,0 +1,33 @@
+// tests/http/corpus/e_crc32.ct —— CRC-32 纯 Ctron 臂(S4 消解钉;双臂 interp/emit)
+// 向量:zlib 标准形("123456789" → 0xCBF43926)+ continuation 分片一致 + 空段恒等
+// 背景:前实现取 miniz 垫片(S4 2026-11-04 消解,enc.ct 位级实现)——本件即
+// 双臂回归哨,向量锚不随实现漂移。
+use http.enc.{ crc32, crc32_update }
+
+fn feed_ascii(buf: &I64[], s: Str) -> I64 {
+    var i: I64 = 0
+    while i < s.len {
+        buf[i] = byte_at(s, i).as[I64]()
+        i += 1
+    }
+    return s.len.as[I64]()
+}
+
+test "crc32 vectors and continuation" {
+    var buf: I64[] = [0] ** 16
+    let n = feed_ascii(buf, "123456789")
+    assert_eq(crc32(buf, n), 3421780262)
+    // 空段:crc32(0) = 0;continuation 空段恒等
+    assert_eq(crc32(buf, 0), 0)
+    assert_eq(crc32_update(3421780262, buf, 0, 0), 3421780262)
+    // 分片 continuation = 整段("1234" + "56789")
+    let n1 = feed_ascii(buf, "1234")
+    let c1 = crc32_update(0, buf, 0, n1)
+    let n2 = feed_ascii(buf, "56789")
+    let c2 = crc32_update(c1, buf, 0, n2)
+    assert_eq(c2, 3421780262)
+    // 已知gzip 钉:单字节 0x00 → 0xD202EF8D
+    var one: I64[] = [0] ** 1
+    one[0] = 0
+    assert_eq(crc32(one, 1), 3523407757)
+}

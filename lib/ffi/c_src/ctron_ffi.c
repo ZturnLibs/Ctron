@@ -13,6 +13,12 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+/* ══ 地板声明(S2 处置 2026-11-04,specs/2026-11-04-c-shim-dissolution-design.md)══
+ * 留为地板,不消解:cbox 登记表需 &T 指针身份存储(Ctron 无指针→整型转换/引用
+ * 数组表达面,§9.6 泛型 extern 声明态码即现口径);strerror 垫 = Str 映射 const
+ * char* 与 libc char* 返回的限定符冲突(语言面条目,直声明暂缓)。
+ * 消解复评触发 = 语言加指针整型化/intrinsic 面(spec 提案位,S6 同族)。 */
+
 const char* ctron_ffi_strerror(int32_t e) {
     return strerror((int)e);
 }

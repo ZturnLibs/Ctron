@@ -15,4 +15,3 @@
 // 不可用为【结构性】约束,非临时态(登记于 tests/http/run.sh enc 块头注)。
 pub extern "c" fn ctron_deflate_compress(in: &I64[], in_n: I64, out: &I64[], out_off: I64, out_cap: I64, level: I64) -> I64
 pub extern "c" fn ctron_deflate_decompress(in: &I64[], in_n: I64, in_off: I64, out: &I64[], out_cap: I64) -> I64
-pub extern "c" fn ctron_deflate_crc32(in: &I64[], in_n: I64, in_off: I64, crc: I64) -> I64

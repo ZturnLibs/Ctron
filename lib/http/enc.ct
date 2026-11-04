@@ -5,9 +5,9 @@
 //      本目录 binddeflate.ct(extern 白名单表,tls.ct→tls/bind 同款
 //      子模块形;同包加载器不判环,tests/http corpus 双模块实证)。
 //   ② 分工(登记,任务书 DECISION 面):C 垫片 ctron_deflate.c 只出三件无状态
-//      原语 —— raw deflate 压缩 / raw inflate(出参 cap 必填 = 炸弹护栏)/
-//      CRC-32(miniz mz_crc32)。gzip 容器组框(RFC 1952:10 字节头 + FLG 遍历
-//      + crc32/isize 尾)在本文件纯 Ctron —— 组框逻辑纯层可测;crc32 取垫片
+//      原语 —— raw deflate 压缩 / raw inflate(出参 cap 必填 = 炸弹护栏)。
+//      CRC-32 已纯 Ctron 位级实现(S4 2026-11-04 消解,见下)。gzip 容器组框
+//      (RFC 1952:10 字节头 + FLG 遍历 + crc32/isize 尾)在本文件纯 Ctron ——
 //      (miniz 16 项 nibble 表)而非纯层重写:单实现防漂移(任务书两案取
 //      「垫片组框」的折中:组框逻辑仍在纯层,唯 crc32 一原语复用 miniz)。
 //      deflate 无容器(raw);zlib 容器(RFC 1950)本波不实现 —— RFC 9110
@@ -22,7 +22,7 @@
 //   ⑤ level 语义(zlib 档,登记):0 = 存储块(zlib 语义);1..9 = 探针档递进
 //      (miniz s_tdefl_num_probes);缺省档常量 = 6(库默认面)。越域 rc -1。
 //   ⑥ 协商面(纯 Str,无 lane):规则登记见 negotiate 头注。
-use http.binddeflate.{ ctron_deflate_compress, ctron_deflate_decompress, ctron_deflate_crc32 }
+use http.binddeflate.{ ctron_deflate_compress, ctron_deflate_decompress }
 
 // ---- level 缺省档(库默认;zlib 常规取 6)----
 pub fn enc_level_default() -> I64 {
@@ -45,16 +45,45 @@ pub fn deflate_decompress(in: &I64[], in_n: I64, out: &I64[], cap: I64) -> I64 {
     return ctron_deflate_decompress(in, in_n, 0, out, cap)
 }
 
-// ---- CRC-32(Continuation;miniz mz_crc32 表实现)----
+// ---- CRC-32(S4 2026-11-04 消解:位级纯 Ctron,IEEE 反射 0xEDB88320——
+// miniz mz_crc32/zlib crc32 同构;continuation 契约不变)----
+
+// 宽域播种(crypto.z64 同款;32 位字恒 I64 承载,C10 纪律)
+fn gz64() -> I64 {
+    var w: I64 = 4294967296
+    return w - w
+}
+
+// 单字节步进:8 轮 LSB 反馈(bit.* 内建;发射臂原生 C 位运算,解释臂文本域组合)
+fn crc32_step(crc: I64, b: I64) -> I64 {
+    var c = bit.xor_i64(crc, b)
+    var k: I64 = 0
+    while k < 8 {
+        var lsb = bit.and_i64(c, gz64() + 1)
+        if lsb == 1 {
+            c = bit.xor_i64(bit.shr_i64(c, 1), gz64() + 3988292384)
+        } else {
+            c = bit.shr_i64(c, 1)
+        }
+        k += 1
+    }
+    return c
+}
 
 // 续算:crc 传上次返回值(首调 0),对 in[off..off+n) 求新值。
 pub fn crc32_update(crc: I64, in: &I64[], off: I64, n: I64) -> I64 {
-    return ctron_deflate_crc32(in, n, off, crc)
+    var internal = bit.xor_i64(crc, gz64() + 4294967295)
+    var i: I64 = 0
+    while i < n {
+        internal = crc32_step(internal, in[off + i])
+        i += 1
+    }
+    return bit.xor_i64(internal, gz64() + 4294967295)
 }
 
 // 整段便捷形。
 pub fn crc32(in: &I64[], n: I64) -> I64 {
-    return ctron_deflate_crc32(in, n, 0, 0)
+    return crc32_update(0, in, 0, n)
 }
 
 // ---- gzip 容器(RFC 1952;组框纯 Ctron,原语经垫片)----
@@ -97,7 +126,7 @@ pub fn gzip_compress(in: &I64[], in_n: I64, out: &I64[], cap: I64, level: I64) -
     if dl < 0 {
         return dl
     }
-    let crc = ctron_deflate_crc32(in, in_n, 0, 0)
+    let crc = crc32(in, in_n)
     gzip_write_u32le(out, 10 + dl, crc)
     gzip_write_u32le(out, 14 + dl, in_n % 4294967296) // ISIZE = len mod 2^32
     return 18 + dl
@@ -160,7 +189,7 @@ pub fn gzip_decompress(in: &I64[], in_n: I64, out: &I64[], cap: I64) -> I64 {
         return dl
     }
     let crc_want = gzip_read_u32le(in, in_n - 8)
-    let crc_got = ctron_deflate_crc32(out, dl, 0, 0)
+    let crc_got = crc32(out, dl)
     if crc_want != crc_got {
         return -4
     }

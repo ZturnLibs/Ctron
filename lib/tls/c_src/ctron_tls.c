@@ -64,6 +64,11 @@
 #include <stdio.h>
 #include <errno.h>
 
+/* ══ 地板声明(S5 处置 2026-11-04)══
+ * CA 探测(ct_ca_probe,14 行)留为地板:fopen 存在性探测 = fs 传感面,Ctron 侧
+ * 重写需引 fio 地板交叉依赖(负内聚)+ use_ca_bundle 契约迁移(loom/https 消费面)。
+ * v2 候选:候选表外置为消费方可注入面(登记,specs 同文件 §S5)。*/
+
 #ifdef _WIN32
 #define CT_TLS __declspec(thread)
 #else
