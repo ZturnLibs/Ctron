@@ -616,8 +616,24 @@ case $mode in
             elif [ "${CDLIB:-0}" = "1" ]; then
                 FORM_FLAGS="-shared -fPIC"
             fi
+            # use 根 → lib/<根>/c_src/*.c 自动链接(2026-11-04 链接契约:use 声明即
+            # 链接义务;J19-④ gui 清单特例的一般化——库包垫片随 use 进链接,
+            # 消费方零手工 cc;入口 + 同目录兄弟模块双扫,覆盖多文件包)
+            LIBSHIMS=""
+            _scan="$IN"
+            for _sib in "$(dirname "$IN")"/*.ct; do
+                [ -f "$_sib" ] && _scan="$_scan $_sib"
+            done
+            for _r in $(cat $_scan 2>/dev/null | sed -E -n 's/^[[:space:]]*use[[:space:]]+([a-z][a-z0-9_]*).*/\1/p' | sort -u); do
+                [ -d "$ROOT/lib/$_r/c_src" ] && LIBSHIMS="$LIBSHIMS $ROOT/lib/$_r/c_src/"*.c
+            done
+            # 包自身 c_src(夹具/应用本地 C 垫片;包根 = Ctron.ctcl 所在目录)
+            if [ -n "$CFG_FILE" ]; then
+                _pcsrc="$(dirname "$CFG_FILE")/c_src"
+                [ -d "$_pcsrc" ] && LIBSHIMS="$LIBSHIMS $_pcsrc/"*.c
+            fi
             # shellcheck disable=SC2086
-            $TGT_CC -w $FORM_FLAGS "$TMPC" -o "$OUTBIN" $GUILDFLAGS $LDFLAGS_COLLECTED || { echo "ctc.sh: build 链接失败($TGT_CC)" >&2; exit 1; }
+            $TGT_CC -w $FORM_FLAGS "$TMPC" -o "$OUTBIN" $GUILDFLAGS $LIBSHIMS $LDFLAGS_COLLECTED || { echo "ctc.sh: build 链接失败($TGT_CC)" >&2; exit 1; }
             echo "ctc.sh: 已构建 $OUTBIN(target: ${TARGET:-native};运行: ./$OUTBIN run $IN)"
         fi
         rc=0

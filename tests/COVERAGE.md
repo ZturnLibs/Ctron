@@ -4545,3 +4545,17 @@ rc=0 静默回绕(spec release 面)/自宿 interp rc=1/seed test rc=1 `integer
 overflow (neg)`;非 MIN 取负 `-5` 双面透传(01d 语义保持);smoke 249/0;
 suite **panic 15/15**(钉入面即绿)合计 122/124 rc=0;drv_parity 136/0;
 native_suite 2/2(03o 差分全径);check_suite 6 基线红(方法缺臂,在册)。
+
+## 2026-11-04 续:驱动器级库垫片自动链接(ctc.sh build)——use 图契约落地
+
+cbox 反哺的登记后续兑现:`ctc.sh build` 链接行前置 use 根扫描——entry +
+同目录兄弟模块双扫 `use <根>`,`lib/<根>/c_src/*.c` 自动入链接(契约同
+suite lib_shim_srcs);包级 c_src 补齐(包根 = Ctron.ctcl 所在目录)。
+此前正规驱动器对 lib 包消费方恒断链(ld symbol(s) not found,cbox 实证),
+lane 手工 cc 是唯一通路。
+
+**边界**:C 垫片 = native 靶(BARE/wasm 分支先行退出,不触);crypto/db 消
+费方的系统库 flag(-lcrypto 等)仍属 #[link] 标记/lane 面(此二包经旧路径
+本就断链,新路径等价不回退)。
+**门**:cbox 经 ctc.sh build 链接成功 + 运行 rc=0(box_audit 收支自平衡);
+smoke 249/0;suite 122/124 rc=0;drv_parity 136/0(build 双臂零输出变化)。
