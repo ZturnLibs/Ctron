@@ -4523,3 +4523,25 @@ travel-prune/human-v22/human-v16/sync-v018)。
 逐操作化 = 下游大闭包码增重/运行期超限),非 GC/非哨兵。
 **处置维持**:emit_checks = 选入式(CTRON_CFG_EMIT_CHECKS=on / build 块
 "on");GC 默认 on。loom 侧 CTRON_BIN 可复用主线 bin(回归解除)。
+
+## 2026-11-04:I32 取负溢出恒守(§4.5 补全面)——03o 钉四径入面
+
+**审计移交项 #5 定谳与修复**:`-INT_MIN` 四径矩阵——seed `ck_int("neg")` 与
+Rust trans `ct_sub` 宽度界门**本已检查**;自宿 interp(裸回绕)、自宿 emit
+(裸 `-`,I64 臂 `ctron_i64_neg` 有检查 I32 臂无)、Rust interp(`wrapping_neg`
+静默)三径缺失。`-a` 无显式回绕 unary 形,回绕语义走 `0 -% a` 二元回绕减
+(逃逸面存在,检查默认无歧义)。
+
+**修复四编辑**:`eval_expr.ct` interp I32 face MIN 恒守(`integer overflow
+(-)`);`trans_expr.ct` Neg 臂 I32 分支入烛台(off = 裸回绕,溢出族口径同
+Add/Sub/Mul;I64 臂恒检查不动);`driver_emit.ct` 新帮手 `ctron_w_neg`;
+`interp.rs` Int/IntW `checked_neg` + IntW 宽度枚举显式匹配(IntW 为枚举,
+`as i64` 得判别值非宽度——首版守卫恒假即此因,编译通过行为假绿,ctronr
+直跑定谳修正)。
+**钉**:`tests/03o_i32_neg_overflow.panic.ct`(@panic 宽子串 `overflow`,
+跨径尾缀差异 seed "neg"/其余 "-" 容忍,03m 先例)。
+**门**:03o 四径逐字——native-default rc=1 `integer overflow (-)`/native-off
+rc=0 静默回绕(spec release 面)/自宿 interp rc=1/seed test rc=1 `integer
+overflow (neg)`;非 MIN 取负 `-5` 双面透传(01d 语义保持);smoke 249/0;
+suite **panic 15/15**(钉入面即绿)合计 122/124 rc=0;drv_parity 136/0;
+native_suite 2/2(03o 差分全径);check_suite 6 基线红(方法缺臂,在册)。

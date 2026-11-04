@@ -380,6 +380,7 @@ println("static ctron_list* ctron_list_new(void) \{ ctron_list* l = (ctron_list*
             println("static int32_t ctron_w_mul(int32_t a, int32_t b, int32_t lo, int32_t hi) \{ int64_t r = (int64_t)a * (int64_t)b; if (r < (int64_t)lo || r > (int64_t)hi) \{ ctron_panic(\"integer overflow (*)\"); } return (int32_t)r; }")
             println("static int32_t ctron_w_div(int32_t a, int32_t b) \{ if (b == 0) \{ ctron_panic(\"division by zero\"); } if (b == -1 && a == (-2147483647 - 1)) \{ ctron_panic(\"integer overflow (/)\"); } return a / b; }")
             println("static int32_t ctron_w_mod(int32_t a, int32_t b) \{ if (b == 0) \{ ctron_panic(\"division by zero\"); } if (b == -1 && a == (-2147483647 - 1)) \{ ctron_panic(\"integer overflow (%)\"); } return a % b; }")
+            println("static int32_t ctron_w_neg(int32_t a) \{ if (a == (-2147483647 - 1)) \{ ctron_panic(\"integer overflow (-)\"); } return -a; }")
             println("static uint64_t ctron_u64_add(uint64_t a, uint64_t b) \{ uint64_t r; if (__builtin_add_overflow(a, b, &r)) \{ ctron_panic(\"integer overflow (+)\"); } return r; }")
             println("static uint64_t ctron_u64_sub(uint64_t a, uint64_t b) \{ uint64_t r; if (__builtin_sub_overflow(a, b, &r)) \{ ctron_panic(\"integer overflow (-)\"); } return r; }")
             println("static uint64_t ctron_u64_mul(uint64_t a, uint64_t b) \{ uint64_t r; if (__builtin_mul_overflow(a, b, &r)) \{ ctron_panic(\"integer overflow (*)\"); } return r; }")

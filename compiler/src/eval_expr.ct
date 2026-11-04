@@ -132,6 +132,12 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> Flow {
                 }
                 return e4("k", ur.env, v6(nt6), ur.out)
             }
+            // I32 取负溢出恒守(§4.5 检查算术;MIN 取负无显式回绕 unary 形,回绕
+            // = 0 -% a;2026-11-04 语言批四径对齐:seed ck_int/Rust trans ct_sub
+            // 本已检查,Rust interp checked_neg 同批)
+            if ur.v.iv == 0 - 2147483647 - 1 {
+                panic("integer overflow (-)")
+            }
             return e4("k", ur.env, vI(0 - ur.v.iv.as[I32]()), ur.out)
         }
         return e4("k", ur.env, vB(!truth(ur.v)), ur.out)

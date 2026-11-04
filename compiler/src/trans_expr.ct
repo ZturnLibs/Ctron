@@ -224,6 +224,14 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if ct_typeof(nd, env, file) == "6" {
                 return "ctron_i64_neg((int64_t)(" + ct_expr(nd, env, file) + "))"
             }
+            // I32 取负溢出检查(§4.5 检查算术;溢出面随烛台,off = 裸回绕;
+            // 2026-11-04 语言批:seed ck_int/Rust trans ct_sub 本已检查,补自宿两径)
+            if ct_typeof(nd, env, file) == "i" {
+                var ckc = "ANCHORCFG"
+                if ckc != "off" {
+                    return "ctron_w_neg((int32_t)(" + ct_expr(nd, env, file) + "))"
+                }
+            }
             return "(-" + ct_expr(nd, env, file) + ")"
         }
         return "(!" + ct_expr(e[2], env, file) + ")"

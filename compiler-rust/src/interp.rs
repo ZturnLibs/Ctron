@@ -574,9 +574,24 @@ impl<'a> Interp<'a> {
                 let v = self.expr(expr, env)?;
                 match op {
                     ast::UnOp::Neg => Ok(match v {
-                        Value::Int(i) => Value::Int(-i),
+                        // MIN 取负 = 溢出 panic(§4.5 检查算术;2026-11-04 四径对齐:
+                        // seed ck_int/trans ct_sub 本已检查;显式回绕形 = 0 -% a)
+                        Value::Int(i) => Value::Int(i.checked_neg().ok_or(Flow::Panic("integer overflow (-)".into()))?),
                         // W5:宽度标记整数取负(01d:-5i8 曾因漏分支原样透传)
-                        Value::IntW(w, i) => Value::IntW(w, i.wrapping_neg()),
+                        Value::IntW(w, i) => {
+                            // MIN 取负 = 溢出 panic(§4.5 检查算术;显式回绕形 = 0 -% a)
+                            let bits: i64 = match w {
+                                sem::IntW::W8 => 8,
+                                sem::IntW::W16 => 16,
+                                sem::IntW::W32 => 32,
+                                sem::IntW::W64 => 64,
+                                sem::IntW::WSize => 64,
+                            };
+                            if i == -(1i64 << (bits - 1)) {
+                                return Err(Flow::Panic("integer overflow (-)".into()));
+                            }
+                            Value::IntW(w, i.wrapping_neg())
+                        }
                         Value::UInt(u) => Value::UInt(u.wrapping_neg()),
                         Value::UIntW(w, u) => Value::UIntW(w, u.wrapping_neg()),
                         Value::F64(f) => Value::F64(-f),
