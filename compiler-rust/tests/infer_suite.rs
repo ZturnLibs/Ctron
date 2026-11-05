@@ -10,7 +10,7 @@ fn fixture_dir() -> std::path::PathBuf {
 fn positive_fixture_all_tests_pass() {
     let src = std::fs::read_to_string(fixture_dir().join("04f_infer.ct")).unwrap();
     assert!(ctron::parse_src(&src).1.is_empty(), "解析须零诊断");
-    let results = ctron::interp::run_test_file(&src, Profile::Full);
+    let results = ctron::interp::run_test_file(&src, "04f_infer.ct", Profile::Full);
     assert!(!results.is_empty());
     for (name, r) in &results {
         assert!(matches!(r, Ok(())), "test `{name}` 失败: {r:?}");

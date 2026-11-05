@@ -48,7 +48,7 @@ fn all_behavior_files_run_and_pass() {
         let src = std::fs::read_to_string(f).unwrap();
         eprintln!("[run] {}", rel);
         let profile = profile_for(f);
-        let results = ctron::interp::run_test_file(&src, profile);
+        let results = ctron::interp::run_test_file(&src, &name, profile);
         ran += 1;
 
         if name.ends_with(".panic.ct") {

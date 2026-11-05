@@ -1336,7 +1336,8 @@ impl Parser {
 }
 
 /// Expr node id (span side-table slot); used to read the first child's id.
-fn eid(e: &Expr) -> u32 {
+/// pub(crate):P2-D 批③ trans 侧 panic 位点同名提取(interp expr_id 同族,免三抄)。
+pub(crate) fn eid(e: &Expr) -> u32 {
     match e {
         Expr::Int { id, .. } | Expr::Float { id, .. } | Expr::Str { id, .. } => *id,
         Expr::Bool(_, id) | Expr::Void(id) | Expr::Ident(_, id) => *id,

@@ -69,14 +69,14 @@ fn section_corpus(root: &PathBuf) {
         let (ast, pdiags) = ctron::parse_src(src);
         let trans = if pdiags.is_empty() {
             median_ms(15, || {
-                let _ = ctron::trans::Trans::new().trans_file(&ast);
+                let _ = ctron::trans::Trans::new().trans_file(&ast, &name);
             })
         } else { f64::NAN };
         let interp = if name.ends_with(".neg.ct") || name.ends_with(".lint.ct") {
             None
         } else {
             Some(median_ms(9, || {
-                let _ = ctron::interp::run_test_file(src, ctron::sem::Profile::Full);
+                let _ = ctron::interp::run_test_file(src, &name, ctron::sem::Profile::Full);
             }))
         };
         let fmt = |v: f64| if v.is_nan() { "—".to_string() } else { format!("{v:.2}") };
@@ -159,7 +159,7 @@ fn section_scale(quick: bool) {
         let (ast, pd) = ctron::parse_src(&src);
         assert!(pd.is_empty());
         let trans = median_ms(iters, || {
-            let _ = ctron::trans::Trans::new().trans_file(&ast).expect("trans ok");
+            let _ = ctron::trans::Trans::new().trans_file(&ast, &format!("ctron_synth_{lines}.ct")).expect("trans ok");
         });
         let kb = src.len() as f64 / 1024.0;
         println!(
@@ -204,7 +204,7 @@ fn section_interp(root: &PathBuf) {
     let loop1m = "test \"loop1m\" {\n    var acc: I64 = 0\n    var i: I32 = 0\n    while i < 1_000_000 {\n        acc += i\n        i += 1\n    }\n    assert_eq(acc, 499999500000)\n}\n";
     for (name, src) in [("递归 fib(25)(~24 万次调用)", fib), ("100 万次 while 循环(每次 2 语句)", loop1m)] {
         let ms = median_ms(3, || {
-            let r = ctron::interp::run_test_file(src, ctron::sem::Profile::Full);
+            let r = ctron::interp::run_test_file(src, &name, ctron::sem::Profile::Full);
             assert!(r.iter().all(|(_, x)| x.is_ok()), "{name} 运行失败");
         });
         println!("{name}:{ms:.0} ms");
@@ -216,7 +216,7 @@ fn section_interp(root: &PathBuf) {
     for (name, src) in &files {
         if name.ends_with(".neg.ct") || name.ends_with(".lint.ct") { continue }
         let ms = median_ms(5, || {
-            let _ = ctron::interp::run_test_file(src, ctron::sem::Profile::Full);
+            let _ = ctron::interp::run_test_file(src, &name, ctron::sem::Profile::Full);
         });
         total += ms;
         n += 1;

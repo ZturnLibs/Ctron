@@ -99,7 +99,8 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> Flow {
             nsv.push("Env")
             return e4("k", env, Val { tag: 8, iv: 0, b: false, s: "", cx: cx_wrap(nsv) }, out)
         }
-        panic("unbound:" + e[1])
+        // P2-D 批③:语义 panic 位点(镜像发射面 ploc 后缀)
+        panic("unbound:" + e[1] + eploc(e))
         return e4("a", env, vV2(), out)
     }
     if t == "Unary" {
@@ -359,11 +360,11 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> Flow {
                             return e4(prr.kind, ob.env, prr.v, prr.out)
                         }
                     }
-                    panic("field:" + m)
+                    panic("field:" + m + eploc(e))
                     return e4("a", env, vV2(), out)
                 }
             }
-            panic("member:" + m)
+            panic("member:" + m + eploc(e))
             return e4("a", env, vV2(), out)
         }
         panic("tindex")
@@ -429,7 +430,7 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> Flow {
         }
         var nr9 = crp.v.iv
         if nr9 < 0 {
-            panic("repeat 负计数")
+            panic("repeat 负计数" + eploc(e))
         }
         var arr9 = List[Str]()
         arr9.push("A")
@@ -505,11 +506,11 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> Flow {
             return e4("a", env, vV2(), out)
         }
         if idx < 0 {
-            panic("index out of bounds")
+            panic("index out of bounds" + eploc(e))
             return e4("a", env, vV2(), out)
         }
         if idx >= cx_of(arrv).len - 1 {
-            panic("index out of bounds")
+            panic("index out of bounds" + eploc(e))
             return e4("a", env, vV2(), out)
         }
         return e4("k", ix.env, v_unbox(cx_of(arrv)[idx + 1]), ix.out)
@@ -545,7 +546,7 @@ fn eval_expr(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> Flow {
         if found {
             return res
         }
-        panic("match no arm")
+        panic("match no arm" + eploc(e))
         return e4("a", env, vV2(), out)
     }
     if t == "TypeArgs" {

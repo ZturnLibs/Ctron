@@ -22,7 +22,13 @@ fn ploc_bname() -> Str {
 }
 
 fn ploc(e: List[Str]) -> Str {
-    return " (" + ploc_bname() + ":" + nline(e) + ":" + ncol(e) + ")"
+    var bn = ploc_bname()
+    if e.len == 0 {
+        return " (" + bn + ":0:0)"
+    }
+    // P2-D 批③补:Index/TypeArgs 已在 parse_expr 补 nstamp(批② 漏项回填),
+    // 尾槽真实行:列可达;此处旧 0:0 回退守卫撤除。
+    return " (" + bn + ":" + nline(e) + ":" + ncol(e) + ")"
 }
 
 fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {

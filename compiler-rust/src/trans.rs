@@ -17,6 +17,7 @@
 //!   scope/tuple/const/static/use/Member/Index/TypeArgs。
 
 use crate::ast;
+use crate::parser::eid;
 use crate::sem::IntW;
 
 // ---------------- 值类型格(镜像 interp 的宽度标记模型) ----------------
@@ -173,6 +174,8 @@ pub struct Trans {
     type_by_name: std::collections::HashMap<String, u32>,
     enums: Vec<EnumInfo>,
     enum_by_name: std::collections::HashMap<String, u32>,
+    /// P2-D 批③:panic 位点尾缀用夹具 basename(带扩展名,无目录;interp file_name 同源)
+    file_name: String,
 }
 
 impl Trans {
@@ -194,7 +197,17 @@ impl Trans {
             type_by_name: std::collections::HashMap::new(),
             enums: Vec::new(),
             enum_by_name: std::collections::HashMap::new(),
+            file_name: String::new(),
         }
+    }
+
+    /// P2-D 批③:panic 位点位置尾缀 ` (file:line:col)`;file = 夹具 basename,
+    /// line:col = 节点主记号(span 侧表,1 基,rust 词法原生)。口径对齐
+    /// interp ppanic_msg;溢出/除零族裸消息不经过此帮手(decorate 排除同源)。
+    fn loc_suffix(&self, id: u32) -> String {
+        let sp = ast::span_of(id);
+        let esc = self.file_name.replace('\\', "\\\\").replace('"', "\\\"");
+        format!(" ({}:{}:{})", esc, sp.line, sp.col)
     }
 
 
@@ -241,12 +254,14 @@ impl Trans {
 
     // ---------------- 文件 ----------------
 
-    pub fn trans_file(self, file: &ast::File) -> Result<String, String> {
-        self.trans_files(std::slice::from_ref(file))
+    pub fn trans_file(self, file: &ast::File, file_name: &str) -> Result<String, String> {
+        self.trans_files(std::slice::from_ref(file), file_name)
     }
 
     /// 多文件包转译:合并全部 decls(同一 C 产物)
-    pub fn trans_files(self, files: &[ast::File]) -> Result<String, String> {
+    pub fn trans_files(mut self, files: &[ast::File], file_name: &str) -> Result<String, String> {
+        // P2-D 批③:panic 位点尾缀用夹具 basename(调用方传;interp file_name 同源)
+        self.file_name = file_name.to_string();
         let decls: Vec<ast::Decl> = files.iter().flat_map(|f| f.decls.clone()).collect();
         let merged = ast::File { decls };
         self.trans_one(&merged)
@@ -1436,15 +1451,18 @@ impl Trans {
                     let (ic, ity) = self.expr(index)?;
                     if !matches!(ity, VTy::Int(_)) { return Err("trans:索引需整数".into()); }
                     let (v, _) = self.expr(value)?;
+                    // P2-D 批③:位点 = 下标实参主记号(interp assign_target Index 臂:
+                    // obj/index 求值后判定,cur_id = index 节点;读写同点)
+                    let iloc = self.loc_suffix(eid(index));
                     return match op {
                         ast::AssignOp::Eq => {
-                            self.w(1, &format!("ct_elem_store({}, {}, {});", oc, ic, v));
+                            self.w(1, &format!("ct_elem_store({}, {}, {}, \"{}\");", oc, ic, v, iloc));
                             Ok(())
                         }
                         other => {
                             let bin = assign_binop(other);
-                            let (cc, _) = self.binop(&bin, &format!("ct_elem({}, {})", oc, ic), VTy::Int(None), &v, VTy::Int(None))?;
-                            self.w(1, &format!("ct_elem_store({}, {}, {});", oc, ic, cc));
+                            let (cc, _) = self.binop(&bin, &format!("ct_elem({}, {}, \"{}\")", oc, ic, iloc), VTy::Int(None), &v, VTy::Int(None))?;
+                            self.w(1, &format!("ct_elem_store({}, {}, {}, \"{}\");", oc, ic, cc, iloc));
                             Ok(())
                         }
                     };
@@ -1929,7 +1947,8 @@ impl Trans {
                 let (ic, it) = self.expr(index)?;
                 if !matches!(it, VTy::Int(_)) { return Err("trans:索引需整数".into()); }
                 match ty {
-                    VTy::Array => Ok((format!("ct_elem({}, {})", oc, ic), VTy::Int(None))),
+                    // P2-D 批③:位点 = 下标实参主记号(interp runtime_index:实参求值后判定,cur_id = index 节点)
+                    VTy::Array => Ok((format!("ct_elem({}, {}, \"{}\")", oc, ic, self.loc_suffix(eid(index))), VTy::Int(None))),
                     VTy::FArr => Ok((format!("(float)(ct_felem({}, {}))", oc, ic), VTy::F32)),
                     _ => Err("trans:索引仅支持数组".into()),
                 }
@@ -2027,7 +2046,7 @@ impl Trans {
                         self.w(2, &format!("{} = 1;", dv));
                     }
                     self.w(1, "} else {");
-                    self.w(2, "ct_panic(\"match 无匹配臂\");");
+                    self.w(2, &format!("ct_panic(\"match 无匹配臂{}\");", self.loc_suffix(eid(expr))));
                     self.w(1, "}");
                     return Ok((vv, merged.unwrap()));
                 }
@@ -2041,7 +2060,7 @@ impl Trans {
                     self.w(2, &format!("{} = 1;", dv));
                 }
                 self.w(1, "} else {");
-                self.w(2, "ct_panic(\"match 无匹配臂\");");
+                self.w(2, &format!("ct_panic(\"match 无匹配臂{}\");", self.loc_suffix(eid(expr))));
                 self.w(1, "}");
                 Ok(("0".to_string(), VTy::Void))
             }
@@ -2416,10 +2435,11 @@ impl Trans {
                     return Ok((format!("({}({}){})", h, c, tail), VTy::Void));
                 }
                 "panic" => {
-                    if let Some(ast::Expr::Str { parts, .. }) = args.first() {
+                    if let Some(ast::Expr::Str { parts, id }) = args.first() {
                         if let [ast::StrPart::Text(t)] = parts.as_slice() {
                             let esc = t.replace('\\', "\\\\").replace('"', "\\\"");
-                            return Ok((format!("(ct_panic(\"{}\"), 0)", esc), VTy::Void));
+                            // P2-D 批③:位点 = 消息字面量主记号(interp:实参求值后 ppanic,cur_id = Str 节点)
+                            return Ok((format!("(ct_panic(\"{}{}\"), 0)", esc, self.loc_suffix(*id)), VTy::Void));
                         }
                     }
                     return Err("trans v1 拒绝域:非字面量 panic 消息".into());
@@ -2491,11 +2511,13 @@ impl Trans {
                         return Ok((format!("({})((({})({})) {} (({})({})))", ct, uct, ac, opc, uct, bc), if bits == 32 { VTy::Int(Some((IntW::W32, !us))) } else { VTy::Int(Some((IntW::W64, !us))) }));
                     }
                     // shl/shr:语句表达式范围门(有符号 shr 走有符号型 = 算术移)
+                    // P2-D 批③:位点 = 移位量实参主记号(interp call_bit:实参求值后判定,cur_id = args[1])
+                    let shloc = self.loc_suffix(eid(&args[1]));
                     let st = if op == "shr" && !us { ct } else { uct };
                     let shc = if op == "shl" { "<<" } else { ">>" };
                     return Ok((format!(
-                        "({{ {} _bta = ({})({}); int32_t _btn = (int32_t)({}); if (_btn < 0 || _btn >= {}) ct_panic(\"bit shift range\"); ({})((({})_bta) {} _btn); }})",
-                        ct, ct, ac, bc, bits, ct, st, shc
+                        "({{ {} _bta = ({})({}); int32_t _btn = (int32_t)({}); if (_btn < 0 || _btn >= {}) ct_panic(\"bit shift range{}\"); ({})((({})_bta) {} _btn); }})",
+                        ct, ct, ac, bc, bits, shloc, ct, st, shc
                     ), if bits == 32 { VTy::Int(Some((IntW::W32, !us))) } else { VTy::Int(Some((IntW::W64, !us))) }));
                 }
             }
@@ -2544,7 +2566,10 @@ impl Trans {
                         };
                         let (fc, _) = self.expr(from)?;
                         let (tcc, _) = self.expr(to)?;
-                        Some((format!("ct_slice({}, (long)({}), (long)({}))", rc, fc, tcc), VTy::Str))
+                        // P2-D 批③:位点 = range 上界实参主记号(interp Str.slice:range 自
+                        // from→to 求值,panic 时 cur_id = to 节点;消息整串传入,rt 侧逐字)
+                        let slice_msg = format!("invalid utf8 boundary{}", self.loc_suffix(eid(to)));
+                        Some((format!("ct_slice({}, (long)({}), (long)({}), \"{}\")", rc, fc, tcc, slice_msg), VTy::Str))
                     }
                     "to_string" => Some((format!("ct_dup({})", rc), VTy::Str)),
                     _ => None,
@@ -2613,9 +2638,11 @@ impl Trans {
                         let Some(b) = args.get(1) else { return Err("trans:set 需值".into()) };
                         let (ic, _) = self.expr(a)?;
                         let (vc, _) = self.expr(b)?;
+                        // P2-D 批③:位点 = 值实参主记号(interp Array.set:实参求值后判定,cur_id = args[1])
+                        let sloc = self.loc_suffix(eid(b));
                         Some((format!(
-                            "({{ ct_arr* _sa = ({}); ct_i _si = (ct_i)({}); if (_si < 0 || (size_t)_si >= _sa->n) ct_panic(\"index out of bounds\"); _sa->d[_si] = (ct_i)({}); }})",
-                            rc, ic, vc), VTy::Void))
+                            "({{ ct_arr* _sa = ({}); ct_i _si = (ct_i)({}); if (_si < 0 || (size_t)_si >= _sa->n) ct_panic(\"index out of bounds{}\"); _sa->d[_si] = (ct_i)({}); }})",
+                            rc, ic, sloc, vc), VTy::Void))
                     }
                     "pop" => {
                         let oid = self.enum_by_name.get("Option").copied().unwrap_or(0);
@@ -2826,16 +2853,19 @@ impl Trans {
                     }
                     "expect" => {
                         let Some(a) = args.first() else { return Err("trans:expect 需消息".into()) };
-                        let ast::Expr::Str { parts, .. } = a else {
+                        let ast::Expr::Str { parts, id } = a else {
                             return Err("trans v1 拒绝域:非字面量 expect 消息".into());
                         };
                         let msg = match parts.as_slice() {
                             [ast::StrPart::Text(t)] => t.replace('"', "\\\""),
                             _ => "expect failed".to_string(),
                         };
+                        // P2-D 批③:位点 = 消息实参主记号(interp expect:实参求值后裸 Panic
+                        // 经 decorate,cur_id = 消息 Str 节点)
+                        let eloc = self.loc_suffix(*id);
                         if matches!(rt, VTy::SumErr(..)) {
                             (format!(
-                                "({{ ct_sum t = ({}); if (t.variant == 1) ct_panic(\"{}\"); t.p[0].i; }})", rc, msg),
+                                "({{ ct_sum t = ({}); if (t.variant == 1) ct_panic(\"{}{}\"); t.p[0].i; }})", rc, msg, eloc),
                              VTy::ErrPtr)
                         } else {
                             // t53 F64 载荷位型忠实(02_option_result):F 载荷走 f 槽,
@@ -2843,11 +2873,11 @@ impl Trans {
                             match rt {
                                 VTy::Sum(_, Pay::F) => (
                                     format!(
-                                        "({{ ct_sum t = ({}); if (t.variant == 1) ct_panic(\"{}\"); t.p[0].f; }})", rc, msg),
+                                        "({{ ct_sum t = ({}); if (t.variant == 1) ct_panic(\"{}{}\"); t.p[0].f; }})", rc, msg, eloc),
                                     VTy::F64),
                                 _ => (
                                     format!(
-                                        "({{ ct_sum t = ({}); if (t.variant == 1) ct_panic(\"{}\"); t.p[0].i; }})", rc, msg),
+                                        "({{ ct_sum t = ({}); if (t.variant == 1) ct_panic(\"{}{}\"); t.p[0].i; }})", rc, msg, eloc),
                                     VTy::Int(None)),
                             }
                         }
@@ -3345,8 +3375,8 @@ static ct_arr* ct_arr_new(size_t n, ct_i* init) {
     if (init) { for (size_t i = 0; i < n; i++) a->d[i] = init[i]; }
     return a;
 }
-static ct_i ct_elem(ct_arr* a, ct_i i) {
-    if (i < 0 || (size_t)i >= a->n) { fprintf(stderr, "index out of bounds\n"); exit(1); }
+static ct_i ct_elem(ct_arr* a, ct_i i, const char* loc) {
+    if (i < 0 || (size_t)i >= a->n) { fprintf(stderr, "index out of bounds%s\n", loc); exit(1); }
     return a->d[(size_t)i];
 }
 static void ct_arr_push(ct_arr* a, ct_i v) {
@@ -3357,8 +3387,8 @@ static void ct_arr_push(ct_arr* a, ct_i v) {
 static ct_arr* ct_arr_clone(ct_arr* a) {
     return ct_arr_new(a->n, a->d);
 }
-static void ct_elem_store(ct_arr* a, ct_i i, ct_i v) {
-    if (i < 0 || (size_t)i >= a->n) { fprintf(stderr, "index out of bounds\n"); exit(1); }
+static void ct_elem_store(ct_arr* a, ct_i i, ct_i v, const char* loc) {
+    if (i < 0 || (size_t)i >= a->n) { fprintf(stderr, "index out of bounds%s\n", loc); exit(1); }
     a->d[(size_t)i] = v;
 }
 
@@ -3414,9 +3444,9 @@ static int ct_is_boundary(const char* s, long i) {
     unsigned char c = (unsigned char)s[i];
     return c == 0 || (c & 0xC0) != 0x80;
 }
-static char* ct_slice(const char* s, long f, long t) {
-    if (t < f) ct_panic("invalid utf8 boundary");
-    if (!ct_is_boundary(s, f) || !ct_is_boundary(s, t)) ct_panic("invalid utf8 boundary");
+static char* ct_slice(const char* s, long f, long t, const char* msg) {
+    if (t < f) ct_panic(msg);
+    if (!ct_is_boundary(s, f) || !ct_is_boundary(s, t)) ct_panic(msg);
     char* r = (char*)malloc((size_t)(t - f) + 1);
     if (!r) abort();
     memcpy(r, s + f, (size_t)(t - f));

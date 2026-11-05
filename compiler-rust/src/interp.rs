@@ -141,10 +141,14 @@ pub struct Interp<'a> {
     pub in_own: bool,
     pub interp_cache: RefCell<HashMap<String, ast::Expr>>,
     pub cur_ret_e_name: RefCell<Option<String>>,
+    /// P2-D 批③:panic 消息源位置后缀用的夹具 basename(带扩展名,无目录)
+    pub file_name: String,
+    /// P2-D 批③:当前求值节点 id(expr/exec_stmt 入口写;ppanic 取 span_of(cur_id))
+    pub cur_id: Cell<u32>,
 }
 
 impl<'a> Interp<'a> {
-    pub fn new(sema: &'a Sema, module: String, file: Rc<ast::File>) -> Self {
+    pub fn new(sema: &'a Sema, module: String, file: Rc<ast::File>, file_name: String) -> Self {
         Interp {
             sema, module, file, globals: Env::new(),
             consts: RefCell::new(HashMap::new()), statics: RefCell::new(HashMap::new()),
@@ -155,6 +159,63 @@ impl<'a> Interp<'a> {
             expr_depth: Cell::new(0), steps: Cell::new(0), in_own: false,
             interp_cache: RefCell::new(HashMap::new()),
             cur_ret_e_name: RefCell::new(None),
+            file_name,
+            cur_id: Cell::new(0),
+        }
+    }
+
+    /// P2-D 批③:语义 panic 帮手——消息尾缀 ` (basename:line:col)`,
+    /// 位点取 cur_id(span 侧表)对应节点主记号起始。
+    fn ppanic(&self, msg: impl std::fmt::Display) -> Flow {
+        Flow::Panic(self.ppanic_msg(msg))
+    }
+
+    fn ppanic_msg(&self, msg: impl std::fmt::Display) -> String {
+        let sp = ast::span_of(self.cur_id.get());
+        format!("{} ({}:{}:{})", msg, self.file_name, sp.line, sp.col)
+    }
+
+    /// 消息是否已带本文件位置尾缀(幂等防双缀)。
+    fn has_loc_suffix(&self, m: &str) -> bool {
+        let marker = format!(" ({}:", self.file_name);
+        match m.rfind(&marker) {
+            Some(i) => {
+                let mut it = m[i + marker.len()..].split(':');
+                match (it.next(), it.next()) {
+                    (Some(l), Some(c)) => {
+                        l.chars().all(|d| d.is_ascii_digit())
+                            && c.strip_suffix(')').map_or(false, |c| !c.is_empty() && c.chars().all(|d| d.is_ascii_digit()))
+                    }
+                    _ => false,
+                }
+            }
+            None => false,
+        }
+    }
+
+    /// P2-D 批③:expr/exec_stmt 出口兜底——未带位置尾缀的语义 panic 补缀
+    /// (自由函数助手 arith/index 等无 self 位点由此就近覆盖;限流位点不经过此路)。
+    /// 溢出/除零族保持裸消息:发射面为 RT 帮手内固定串(无调用点位置),三引擎
+    /// 差分逐字以裸对齐(03m/03n/03o 口径)。
+    fn decorate(&self, r: EvalResult) -> EvalResult {
+        match r {
+            Err(Flow::Panic(m))
+                if !self.has_loc_suffix(&m) && !m.starts_with("integer overflow") && m != "division by zero" =>
+            {
+                Err(self.ppanic(m))
+            }
+            other => other,
+        }
+    }
+
+    fn decorate_unit(&self, r: Result<(), Flow>) -> Result<(), Flow> {
+        match r {
+            Err(Flow::Panic(m))
+                if !self.has_loc_suffix(&m) && !m.starts_with("integer overflow") && m != "division by zero" =>
+            {
+                Err(self.ppanic(m))
+            }
+            other => other,
         }
     }
 
@@ -266,6 +327,13 @@ impl<'a> Interp<'a> {
     }
 
     fn exec_stmt(&mut self, s: &ast::Stmt, env: &Rc<Env>, drops: &mut Vec<(Value, DefId)>) -> Result<(), Flow> {
+        // P2-D 批③:语句入口写 cur_id;出口为自由助手产生的 panic 补位置尾缀
+        self.cur_id.set(stmt_id(s));
+        let r = self.exec_stmt_inner(s, env, drops);
+        self.decorate_unit(r)
+    }
+
+    fn exec_stmt_inner(&mut self, s: &ast::Stmt, env: &Rc<Env>, drops: &mut Vec<(Value, DefId)>) -> Result<(), Flow> {
         match s {
             ast::Stmt::Let { pattern, ty: ann, expr, .. } => {
                 let v = self.expr(expr, env)?;
@@ -463,7 +531,7 @@ impl<'a> Interp<'a> {
                 let idx = runtime_index_usize(&o, &i);
                 if let Value::Array(arr) = &o {
                     let mut b = arr.borrow_mut();
-                    if idx >= b.len() { return Err(Flow::Panic("index out of bounds".into())); }
+                    if idx >= b.len() { return Err(self.ppanic("index out of bounds")); }
                     match op {
                         ast::AssignOp::Eq => b[idx] = v,
                         other => {
@@ -481,6 +549,8 @@ impl<'a> Interp<'a> {
     // ---------- 表达式 ----------
 
     fn expr(&mut self, e: &ast::Expr, env: &Rc<Env>) -> EvalResult {
+        // P2-D 批③:节点入口写 cur_id(panic 位点 = 最近求值节点主记号)
+        self.cur_id.set(expr_id(e));
         // 步数上限:防无限循环(默认 2_000_000;CTRON_MAX_STEPS 覆盖,0 = 无限;D2)
         static MAX_STEPS: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
         let max_steps = *MAX_STEPS.get_or_init(|| {
@@ -497,7 +567,8 @@ impl<'a> Interp<'a> {
         }
         let r = self.expr_inner(e, env);
         self.expr_depth.set(self.expr_depth.get() - 1);
-        r
+        // 限流位点(limit/嵌套)已在上方提前返回,不经过 decorate——无位置尾缀
+        self.decorate(r)
     }
 
     fn expr_inner(&mut self, e: &ast::Expr, env: &Rc<Env>) -> EvalResult {
@@ -575,8 +646,9 @@ impl<'a> Interp<'a> {
                 match op {
                     ast::UnOp::Neg => Ok(match v {
                         // MIN 取负 = 溢出 panic(§4.5 检查算术;2026-11-04 四径对齐:
-                        // seed ck_int/trans ct_sub 本已检查;显式回绕形 = 0 -% a)
-                        Value::Int(i) => Value::Int(i.checked_neg().ok_or(Flow::Panic("integer overflow (-)".into()))?),
+                        // seed ck_int/trans ct_sub 本已检查;显式回绕形 = 0 -% a;
+                        // 溢出族裸消息 = RT 帮手 w_neg 裸对齐,03o 差分口径)
+                        Value::Int(i) => Value::Int(i.checked_neg().ok_or_else(|| Flow::Panic("integer overflow (-)".into()))?),
                         // W5:宽度标记整数取负(01d:-5i8 曾因漏分支原样透传)
                         Value::IntW(w, i) => {
                             // MIN 取负 = 溢出 panic(§4.5 检查算术;显式回绕形 = 0 -% a)
@@ -617,7 +689,7 @@ impl<'a> Interp<'a> {
                 let ev = self.expr(elem, env)?;
                 let cv = self.expr(count, env)?;
                 let n = match cv { Value::Int(i) | Value::IntW(_, i) => i, Value::UInt(u) | Value::UIntW(_, u) => u as i64, _ => 0 };
-                if n < 0 { return Err(Flow::Panic("repeat 负计数".into())); }
+                if n < 0 { return Err(self.ppanic("repeat 负计数")); }
                 let mut items = match ev {
                     Value::Array(arr) => arr.borrow().clone(),
                     other => vec![other],
@@ -719,14 +791,14 @@ impl<'a> Interp<'a> {
                             let gv = self.expr(g, &arm_env)?;
                             let pass = match gv {
                                 Value::Bool(b) => b,
-                                _other => return Err(Flow::Panic("守卫须为 Bool".into())),
+                                _other => return Err(self.ppanic("守卫须为 Bool")),
                             };
                             if !pass { continue; }
                         }
                         return self.expr(&arm.expr, &arm_env);
                     }
                 }
-                Err(Flow::Panic("match 无匹配臂".into()))
+                Err(self.ppanic("match 无匹配臂"))
             }
             Expr::BlockExpr(b, _) => self.check_block(b, env),
         }
@@ -771,21 +843,21 @@ impl<'a> Interp<'a> {
             "u32" => (32, true),
             "i64" => (64, false),
             "u64" => (64, true),
-            _ => return Err(Flow::Panic(format!("bit 宽度:{w}"))),
+            _ => return Err(self.ppanic(format!("bit 宽度:{w}"))),
         };
         let unary = op == "not";
         let want = if unary { 1 } else { 2 };
         if !matches!(op, "and" | "or" | "xor" | "not" | "shl" | "shr") || args.len() != want {
-            return Err(Flow::Panic(format!("bit 实参:{m}")));
+            return Err(self.ppanic(format!("bit 实参:{m}")));
         }
         let av = self.expr(&args[0], env)?;
-        let Some(a) = Self::bit_umag(&av) else { return Err(Flow::Panic("bit 数值".into())) };
+        let Some(a) = Self::bit_umag(&av) else { return Err(self.ppanic("bit 数值")) };
         let mask = if bits == 32 { u32::MAX as u64 } else { u64::MAX };
         let ua = a & mask;
         match op {
             "and" | "or" | "xor" => {
                 let bv = self.expr(&args[1], env)?;
-                let Some(b) = Self::bit_umag(&bv) else { return Err(Flow::Panic("bit 数值".into())) };
+                let Some(b) = Self::bit_umag(&bv) else { return Err(self.ppanic("bit 数值")) };
                 let ub = b & mask;
                 let r = match op {
                     "and" => ua & ub,
@@ -800,7 +872,7 @@ impl<'a> Interp<'a> {
                 let Some(nb) = Self::bit_umag(&bv) else { return Err(Flow::Panic("bit 数值".into())) };
                 let n = nb as i64;
                 if n < 0 || n >= bits as i64 {
-                    return Err(Flow::Panic("bit shift range".into()));
+                    return Err(self.ppanic("bit shift range"));
                 }
                 let n = n as u32;
                 let r = if op == "shl" {
@@ -994,7 +1066,7 @@ impl<'a> Interp<'a> {
         match name {
             "assert" => {
                 let c = self.expr(&args[0], env)?;
-                if !truthy(&c) { return Err(Flow::Panic("assertion failed".into())); }
+                if !truthy(&c) { return Err(self.ppanic("assertion failed")); }
                 return Ok(Value::Void);
             }
             "assert_eq" | "assert_ne" => {
@@ -1002,13 +1074,13 @@ impl<'a> Interp<'a> {
                 let b = self.expr(&args[1], env)?;
                 let same = values_equal(&a, &b);
                 if (name == "assert_eq") != same {
-                    return Err(Flow::Panic(format!("assert failed: {} vs {}", to_display(&a), to_display(&b))));
+                    return Err(self.ppanic(format!("assert failed: {} vs {}", to_display(&a), to_display(&b))));
                 }
                 return Ok(Value::Void);
             }
             "panic" => {
                 let msg = if let Some(a) = args.first() { to_display(&self.expr(a, env)?) } else { "panic".into() };
-                return Err(Flow::Panic(msg));
+                return Err(self.ppanic(msg));
             }
             _ => {}
         }
@@ -1500,7 +1572,7 @@ impl<'a> Interp<'a> {
                     }
                 }
                 "get" => {
-                    if args.len() != 1 { return Err(Flow::Panic("List.get 实参".into())); }
+                    if args.len() != 1 { return Err(self.ppanic("List.get 实参")); }
                     let iv = self.expr(&args[0], env)?;
                     let d = self.sema.def_by_name.get("Option").copied().unwrap_or(0);
                     let Some(idx) = int_i64(&iv).map(|n| n as usize) else {
@@ -1514,14 +1586,14 @@ impl<'a> Interp<'a> {
                     }
                 }
                 "set" => {
-                    if args.len() != 2 { return Err(Flow::Panic("List.set 实参".into())); }
+                    if args.len() != 2 { return Err(self.ppanic("List.set 实参")); }
                     let iv = self.expr(&args[0], env)?;
                     let v = self.expr(&args[1], env)?;
                     let Some(idx) = int_i64(&iv).map(|n| n as usize) else {
-                        return Err(Flow::Panic("index out of bounds".into()));
+                        return Err(self.ppanic("index out of bounds"));
                     };
                     let mut b = arr.borrow_mut();
-                    if idx >= b.len() { return Err(Flow::Panic("index out of bounds".into())); }
+                    if idx >= b.len() { return Err(self.ppanic("index out of bounds")); }
                     b[idx] = v;
                     Ok(Value::Void)
                 }
@@ -2117,7 +2189,7 @@ impl<'a> Interp<'a> {
                 // break/continue 不得穿越任务边界(检查面 E2072 把关;防御性按 panic 收敛)
                 Err(Flow::Break | Flow::Continue) => {
                     tb.status = TaskStatus::Panicked;
-                    tb.panic_msg = Some("控制流越界: break/continue 穿越任务边界".into());
+                    tb.panic_msg = Some(self.ppanic_msg("控制流越界: break/continue 穿越任务边界"));
                 }
             }
         } else if status == TaskStatus::Pending {
@@ -2592,6 +2664,27 @@ fn runtime_index_usize(_o: &Value, i: &Value) -> usize {
     }
 }
 
+/// P2-D 批③:节点 id 提取(Expr/Stmt 各变体末位 u32)。
+fn expr_id(e: &ast::Expr) -> u32 {
+    use ast::Expr::*;
+    match e {
+        Int { id, .. } | Float { id, .. } | Str { id, .. } | Bool(_, id) | Void(id)
+        | Ident(_, id) | Tuple(_, id) | Array(_, id) | StructLit { id, .. }
+        | Unary { id, .. } | Binary { id, .. } | Range { id, .. } | Call { id, .. }
+        | Repeat { id, .. } | Index { id, .. } | Member { id, .. } | TypeArgs { id, .. }
+        | Try(_, id) | Closure { id, .. } | Scope { id, .. } | Own { id, .. }
+        | If { id, .. } | Match { id, .. } | BlockExpr(_, id) => *id,
+    }
+}
+
+fn stmt_id(s: &ast::Stmt) -> u32 {
+    use ast::Stmt::*;
+    match s {
+        Let { id, .. } | Return(_, id) | For { id, .. } | While { id, .. }
+        | Assign { id, .. } | Expr(_, id) | Break(id) | Continue(id) => *id,
+    }
+}
+
 fn parse_int_mag(cleaned: &str) -> Option<(bool, u64)> {
     let (radix, digits) = if let Some(r) = cleaned.strip_prefix("0x") { (16, r) }
         else if let Some(r) = cleaned.strip_prefix("0o") { (8, r) }
@@ -2737,7 +2830,7 @@ impl<'a> Interp<'a> {
         if let Some(&_def) = self.sema.def_by_name.get(name) {
             return Ok(Value::TypeHandle(Rc::from(name)));
         }
-        Err(Flow::Panic(format!("未解析的名称 `{}`", name)))
+        Err(self.ppanic(format!("未解析的名称 `{}`", name)))
     }
 
     fn eval_binop(&mut self, op: &ast::BinOp, a: &Value, rhs: &ast::Expr, env: &Rc<Env>) -> EvalResult {
@@ -3043,19 +3136,19 @@ fn compare_values(a: &Value, b: &Value) -> Option<i8> {
 }
 
 
-/// 便捷入口:解析 + 构建 + 运行单文件的全部 test 块
-pub fn run_test_file(src: &str, profile: crate::sem::Profile) -> Vec<(String, Result<(), String>)> {
+/// 便捷入口:解析 + 构建 + 运行单文件的全部 test 块(file_name:夹具 basename,panic 消息尾缀用)
+pub fn run_test_file(src: &str, file_name: &str, profile: crate::sem::Profile) -> Vec<(String, Result<(), String>)> {
     let files = vec![("".to_string(), src.to_string())];
     let (sema, _) = sem::build_package(&files, None, profile);
     let (tokens, _) = crate::lex(src);
     let ast_file = crate::parser::Parser::new(tokens).parse_file_public();
     let file = Rc::new(ast_file);
-    let mut interp = Interp::new(&sema, String::new(), file.clone());
+    let mut interp = Interp::new(&sema, String::new(), file.clone(), file_name.to_string());
     interp.run_tests(&file)
 }
 
 /// 运行 fn main(D1):解析诊断非空 → Err(诊断文本);panic → Err(消息)。
-pub fn run_main_file(src: &str, profile: crate::sem::Profile) -> Result<i32, String> {
+pub fn run_main_file(src: &str, file_name: &str, profile: crate::sem::Profile) -> Result<i32, String> {
     let (file, diags) = crate::parse_src(src);
     if !diags.is_empty() {
         let mut msg = String::new();
@@ -3068,7 +3161,7 @@ pub fn run_main_file(src: &str, profile: crate::sem::Profile) -> Result<i32, Str
     if !has_main { return Err("缺少 fn main".into()); }
     let (sema, _) = sem::build_package(&vec![("".to_string(), src.to_string())], None, profile);
     let ast_file = Rc::new(file);
-    let mut interp = Interp::new(&sema, String::new(), ast_file.clone());
+    let mut interp = Interp::new(&sema, String::new(), ast_file.clone(), file_name.to_string());
     interp.eval_globals(&ast_file);
     interp.run_main()
 }

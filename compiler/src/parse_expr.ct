@@ -73,6 +73,8 @@ fn p_cmp(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], al:
 }
 
 fn p_rng(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], al: Str) -> List[Str] {
+    var ln0 = lns[cur.load()]
+    var ln0c = cols[cur.load()]
     var f = p_add(toks, cur, lns, cols, al)
     var t = tok(toks, cur)
     if or2(t == "..", t == "..=") {
@@ -86,6 +88,7 @@ fn p_rng(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], al:
         }
         nb.push(f)
         nb.push(to)
+        nstamp(nb, ln0, ln0c)
         return nb
     }
     return f
@@ -154,6 +157,8 @@ fn p_mul(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], al:
 }
 
 fn p_una(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], al: Str) -> List[Str] {
+    var ln0 = lns[cur.load()]
+    var ln0c = cols[cur.load()]
     var t = tok(toks, cur)
     if t == "-" {
         adv(cur)
@@ -161,6 +166,7 @@ fn p_una(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], al:
         var nu = mk("Unary")
         nu.push("Neg")
         nu.push(e)
+        nstamp(nu, ln0, ln0c)
         return nu
     }
     if t == "!" {
@@ -169,6 +175,7 @@ fn p_una(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], al:
         var nu = mk("Unary")
         nu.push("Not")
         nu.push(e)
+        nstamp(nu, ln0, ln0c)
         return nu
     }
     return p_post(toks, cur, lns, cols, al)
@@ -277,6 +284,7 @@ fn p_post(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], al
                 var tg = mk("TypeArgs")
                 tg.push(e)
                 tg.push(ag)
+                nstamp(tg, ln0, ln0c)
                 e = tg
             } else {
                 adv(cur)
@@ -285,6 +293,7 @@ fn p_post(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], al
                 var inode = mk("Index")
                 inode.push(e)
                 inode.push(ix)
+                nstamp(inode, ln0, ln0c)
                 e = inode
             }
         } else if t == "?" {
@@ -301,6 +310,8 @@ fn p_post(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], al
 }
 
 fn p_pri(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], al: Str) -> List[Str] {
+    var ln0 = lns[cur.load()]
+    var ln0c = cols[cur.load()]
     var t = tok(toks, cur)
     var b0 = byte_at(t, 0)
     if is_digit(b0) {
@@ -333,6 +344,7 @@ fn p_pri(toks: List[Str], cur: Atomic[I32], lns: List[Str], cols: List[Str], al:
         if isf { nb = mk("Float") }
         nb.push(num_text(t))
         nb.push(num_sfx(t))
+        nstamp(nb, ln0, ln0c)
         return nb
     }
     if t == "if" {

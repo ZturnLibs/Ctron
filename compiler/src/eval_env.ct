@@ -109,6 +109,60 @@ fn eq_val(a: Val, b: Val) -> Bool {
 }
 
 
+// P2-D 批③:解释面 panic 位点后缀帮手(eploc;发射面同名逻辑在 trans_expr.ploc,
+// cc_run 拼接不含 trans_*,故此独立同构副本;格式逐字一致 " (basename:line:col)")。
+// bname = 入口源文件 basename(无目录;ctron_entry 空 = 锚 ANCHORINPUT)。
+fn ebname() -> Str {
+    var p = ctron_entry()
+    if seq2(p, "") {
+        return "ANCHORINPUT"
+    }
+    var i: I32 = p.len
+    while i > 0 {
+        if byte_at(p, i - 1) == 47 {
+            return byte_slice(p, i, p.len)
+        }
+        i -= 1
+    }
+    return p
+}
+
+// P2-D 批③:消息已携带 "(bn:行:列" 尾缀判定——panic 内建防双层叠加
+// (eval_expr 等语义位点已 eploc,内建仅对裸消息补缀)
+fn hassuf(m: Str) -> Bool {
+    var pat = " (" + ebname() + ":"
+    if m.len < pat.len {
+        return false
+    }
+    var i: I32 = 0
+    while i <= m.len - pat.len {
+        var hit = true
+        var j: I32 = 0
+        while j < pat.len {
+            if byte_at(m, i + j) != byte_at(pat, j) {
+                hit = false
+                j = pat.len
+            }
+            j += 1
+        }
+        if hit {
+            return true
+        }
+        i += 1
+    }
+    return false
+}
+
+fn eploc(n: List[Str]) -> Str {
+    var bn = ebname()
+    if n.len == 0 {
+        return " (" + bn + ":0:0)"
+    }
+    // P2-D 批③补:Index/TypeArgs 已在 parse_expr 补 nstamp(批② 漏项回填),
+    // 尾槽真实行:列可达;此处旧 0:0 回退守卫撤除。
+    return " (" + bn + ":" + nline(n) + ":" + ncol(n) + ")"
+}
+
 fn env_at(env: List[Str], nm: Str) -> List[Str] {
     var i: I32 = 0
     while i < env.len {

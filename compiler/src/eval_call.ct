@@ -127,7 +127,7 @@ fn call_cv(file: List[Str], env: List[Str], out: Str, v: Val, vals: List[Str]) -
     panic("call value")
     return e4("a", env, vV2(), out)
 }
-fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) -> Flow {
+fn call_id(file: List[Str], env: List[Str], out: Str, cal: List[Str], nm: Str, vals: List[Str]) -> Flow {
     // G3-W4:TaskPool interp=顺序化域标记值(spawn 内联执行,文档化)
     if seq2(nm, "TaskPool") {
         var pv = List[Str]()
@@ -177,8 +177,8 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
             // ctron_panic 的 fflush(stdout) 后写 stderr),消息即时 stderr;
             // val 置空防 driver 末尾重印(join-P 再展开经 TASK 存活值二次输出)
             print(out)
-            eprint("assert failed\n")
-            return e4("a", env, vS("assert failed\n"), "")
+            eprint("assert failed" + eploc(cal) + "\n")
+            return e4("a", env, vS("assert failed" + eploc(cal) + "\n"), "")
         }
         panic("assert arity")
         return e4("a", env, vV2(), out)
@@ -190,8 +190,8 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
             }
             // §6.4 对齐:同上(文案与 native 模板逐字一致,裸文案不带值)
             print(out)
-            eprint("assert_eq failed\n")
-            return e4("a", env, vS("assert_eq failed\n"), "")
+            eprint("assert_eq failed" + eploc(cal) + "\n")
+            return e4("a", env, vS("assert_eq failed" + eploc(cal) + "\n"), "")
         }
         panic("assert_eq arity")
         return e4("a", env, vV2(), out)
@@ -202,8 +202,8 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
                 return e4("k", env, vV2(), out)
             }
             print(out)
-            eprint("assert_ne failed\n")
-            return e4("a", env, vS("assert_ne failed\n"), "")
+            eprint("assert_ne failed" + eploc(cal) + "\n")
+            return e4("a", env, vS("assert_ne failed" + eploc(cal) + "\n"), "")
         }
         panic("assert_ne arity")
         return e4("a", env, vV2(), out)
@@ -723,8 +723,15 @@ fn call_id(file: List[Str], env: List[Str], out: Str, nm: Str, vals: List[Str]) 
             // out 清空(已冲);消息仍随 val 携带——仅供 spawn 存入 TASK(join-P
             // 再展开二次输出),driver 不重印 val
             print(out)
-            eprint(fmt(v_unbox(vals[0])) + "\n")
-            return e4("a", env, vS(fmt(v_unbox(vals[0])) + "\n"), "")
+            // P2-D 批③:消息携带源位置(镜像发射面 ctron_panic(str_concat(msg, ploc)));
+            // 语义位点(eval_expr 索引/溢出族等)已自带 eploc 尾缀 → hassuf 防双层叠加
+            var pm = fmt(v_unbox(vals[0]))
+            if !hassuf(pm) {
+                pm = pm + eploc(cal)
+            }
+            pm = pm + "\n"
+            eprint(pm)
+            return e4("a", env, vS(pm), "")
         }
         panic("panic arity")
         return e4("a", env, vV2(), out)
@@ -1168,7 +1175,7 @@ fn str_contains(s: Str, sub: Str) -> Bool {
     return false
 }
 // Option/Result 组合子(recv = T 复合值;cx 位面 ["T", 变体, 载荷?])
-fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: List[Str]) -> Flow {
+fn call_mem(file: List[Str], env: List[Str], out: Str, cn: List[Str], cal: List[Str], vals: List[Str]) -> Flow {
     var ob = eval_expr(file, env, out, cal[1])
     if ob.kind != "k" {
         return ob
@@ -1788,7 +1795,7 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
                 var ivv = v_unbox(vals[0])
                 var idx = ivv.iv.as[I32]()
                 if idx < 0 || idx >= lst.len - 1 {
-                    panic("index out of bounds")
+                    panic("index out of bounds" + eploc(cal))
                 }
                 lst[idx + 1] = v_box(v_unbox(vals[1]))
                 return e4("k", ob.env, vV2(), ob.out)
@@ -1810,7 +1817,7 @@ fn call_mem(file: List[Str], env: List[Str], out: Str, cal: List[Str], vals: Lis
                 var ivv = v_unbox(vals[0])
                 var idx = ivv.iv.as[I32]()
                 if idx < 0 || idx >= lst.len - 1 {
-                    panic("index out of bounds")
+                    panic("index out of bounds" + eploc(cal))
                 }
                 lst.remove(idx + 1)
                 return e4("k", ob.env, vV2(), ob.out)
@@ -2038,10 +2045,10 @@ fn eval_call(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> Flow {
     }
     var cal = e[1]
     if cal[0] == "Ident" {
-        return call_id(file, env2, out2, cal[1], vals)
+        return call_id(file, env2, out2, e, cal[1], vals)
     }
     if cal[0] == "Member" {
-        return call_mem(file, env2, out2, cal, vals)
+        return call_mem(file, env2, out2, e, cal, vals)
     }
     // C9f①:List 构造 List[T]()(rt.c:同参忽略,恒空表;arena.list[T]() 同)
     if cal[0] == "TypeArgs" {
@@ -2205,7 +2212,7 @@ fn eval_call(file: List[Str], env: List[Str], out: Str, e: List[Str]) -> Flow {
         }
         // 泛型 fn 调用(显式 TypeArgs):擦除型参,按名动态派发
         if base[0] == "Ident" {
-            return call_id(file, env, out, base[1], vals)
+            return call_id(file, env, out, cal, base[1], vals)
         }
     }
     panic("call target")

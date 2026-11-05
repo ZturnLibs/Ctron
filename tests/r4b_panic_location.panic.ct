@@ -1,4 +1,4 @@
-//@ panic: r4b_panic_location.ct
+//@ panic: r4b_panic_location.panic.ct
 // r4b_panic_location.panic.ct —— panic 消息携带 Ctron 源位置(R-P4b,#line 源码映射)
 // 语义承诺:panic 消息含 "文件名:行号" 形式的源位置(至少含文件名,如本文件名);
 //          解释器与原生一致。这是 R-P4b 的翻转判据

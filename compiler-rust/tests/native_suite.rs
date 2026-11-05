@@ -69,7 +69,7 @@ fn native_matches_interpreter() {
 
         // 期望 = 解释器裁决
         let profile = ctron::sem::Profile::Full;
-        let interp = ctron::interp::run_test_file(&src, profile);
+        let interp = ctron::interp::run_test_file(&src, &name, profile);
         let expect_ok = if name.ends_with(".panic.ct") {
             let panicked = matches!(interp.iter().find(|(_, r)| r.is_err()), Some((_, Err(_))));
             if !panicked {
@@ -85,7 +85,7 @@ fn native_matches_interpreter() {
         // 转译(域外 → skip;全量覆盖后不应再有域外)
         let (file_ast, diags) = ctron::parse_src(&src);
         if !diags.is_empty() { skipped += 1; continue; }
-        let c_code = match ctron::trans::Trans::new().trans_file(&file_ast) {
+        let c_code = match ctron::trans::Trans::new().trans_file(&file_ast, &name) {
             Ok(c) => c,
             Err(_) => { skipped += 1; continue; }
         };
@@ -179,12 +179,12 @@ fn modules_native_run() {
         let (sema, _) = ctron::sem::build_package(&files, None, ctron::sem::Profile::Full);
         let _ = &files;
         let merged_rc = std::rc::Rc::new(merged);
-        let mut interp = ctron::interp::Interp::new(&sema, String::new(), merged_rc.clone());
+        let mut interp = ctron::interp::Interp::new(&sema, String::new(), merged_rc.clone(), "merged.ct".to_string());
         let results = interp.run_tests(&merged_rc);
         let interp_ok = !results.is_empty() && results.iter().all(|(_, r)| r.is_ok());
 
         // 转译(域外 → skip)
-        let c_code = match ctron::trans::Trans::new().trans_files(std::slice::from_ref(&merged_rc)) {
+        let c_code = match ctron::trans::Trans::new().trans_files(std::slice::from_ref(&merged_rc), "merged.ct") {
             Ok(c) => c,
             Err(_) => { continue; }
         };

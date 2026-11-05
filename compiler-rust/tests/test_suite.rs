@@ -18,7 +18,7 @@ test "beta" {
 
 #[test]
 fn test_blocks_are_discovered_and_pass() {
-    let report = test_report(SIMPLE, Profile::Full, None);
+    let report = test_report(SIMPLE, "test_suite.ct", Profile::Full, None);
     assert!(report.diags.is_empty(), "不应有解析诊断: {:?}", report.diags);
     assert_eq!(report.results.len(), 2);
     assert_eq!(report.results[0].name, "alpha");
@@ -46,7 +46,7 @@ test "block case" {
     assert_eq(true, true)
 }
 "#;
-    let report = test_report(src, Profile::Full, None);
+    let report = test_report(src, "test_suite.ct", Profile::Full, None);
     assert!(report.diags.is_empty(), "不应有解析诊断: {:?}", report.diags);
     let names: Vec<&str> = report.results.iter().map(|r| r.name.as_str()).collect();
     assert_eq!(names, vec!["block case", "test_helper"], "零参 fn test_* 入发现,普通 fn 与带参 fn 不入");
@@ -54,7 +54,7 @@ test "block case" {
 
 #[test]
 fn filter_keeps_substring_matches_only() {
-    let report = test_report(SIMPLE, Profile::Full, Some("alp"));
+    let report = test_report(SIMPLE, "test_suite.ct", Profile::Full, Some("alp"));
     assert_eq!(report.results.len(), 1);
     assert_eq!(report.results[0].name, "alpha");
 }
@@ -68,7 +68,7 @@ test "boom" {
     assert_eq(1, 2)
 }
 "#;
-    let report = test_report(src, Profile::Full, None);
+    let report = test_report(src, "test_suite.ct", Profile::Full, None);
     assert_eq!(report.results.len(), 1);
     assert_eq!(report.results[0].status, TestStatus::Fail);
     assert!(report.results[0].message.is_some(), "失败必须带消息");
@@ -77,7 +77,7 @@ test "boom" {
 #[test]
 fn panic_marker_turns_matching_panic_into_panic_ok() {
     let src = "//@ panic: overflow\n\ntest \"explodes\" {\n    let m: U8 = 255\n    let _ = m + 1u8\n}\n";
-    let report = test_report(src, Profile::Full, None);
+    let report = test_report(src, "test_suite.ct", Profile::Full, None);
     assert_eq!(report.results.len(), 1);
     assert_eq!(report.results[0].status, TestStatus::PanicOk);
 }
@@ -85,7 +85,7 @@ fn panic_marker_turns_matching_panic_into_panic_ok() {
 #[test]
 fn without_marker_a_panic_is_a_failure() {
     let src = "test \"explodes\" {\n    let m: U8 = 255\n    let _ = m + 1u8\n}\n";
-    let report = test_report(src, Profile::Full, None);
+    let report = test_report(src, "test_suite.ct", Profile::Full, None);
     assert_eq!(report.results[0].status, TestStatus::Fail);
 }
 

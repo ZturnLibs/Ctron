@@ -82,7 +82,7 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> Flow {
             if seq2(pmr[0], "1") {
                 return s4("k", pmr[1], er2.out, vV2())
             }
-            panic("let pat mismatch")
+            panic("let pat mismatch" + eploc(st))
             return s4("a", env, out, vV2())
         }
         panic("let pat:" + pat[0])
@@ -99,7 +99,7 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> Flow {
             var fname = tg[3]
             var en = env_at(env, oname)
             if en.len == 0 {
-                panic("unbound:" + oname)
+                panic("unbound:" + oname + eploc(st))
                 return s4("a", env, out, vV2())
             }
             var ov = v_unbox(en[1])
@@ -134,7 +134,7 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> Flow {
             var nm = tg[1]
             var en = env_at(env, nm)
             if en.len == 0 {
-                panic("unbound:" + nm)
+                panic("unbound:" + nm + eploc(st))
                 return s4("a", env, out, vV2())
             }
             var vr = eval_expr(file, env, out, st[3])
@@ -161,7 +161,7 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> Flow {
             var nm3 = tg[1][1]
             var en3 = env_at(env, nm3)
             if en3.len == 0 {
-                panic("unbound:" + nm3)
+                panic("unbound:" + nm3 + eploc(st))
                 return s4("a", env, out, vV2())
             }
             var cont = v_unbox(en3[1])
@@ -179,7 +179,7 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> Flow {
                 if tg[1].len > 1 {
                     bnm = tg[1][1]
                 }
-                panic("index out of bounds idx=" + idx.to_string() + " base=" + bnm + " contlen=" + (cx_of(cont).len - 1).to_string())
+                panic("index out of bounds idx=" + idx.to_string() + " base=" + bnm + " contlen=" + (cx_of(cont).len - 1).to_string() + eploc(tg))
                 return s4("a", env, out, vV2())
             }
             var vr = eval_expr(file, env, out, st[3])
@@ -219,7 +219,7 @@ fn run_stmt(file: List[Str], env: List[Str], out: Str, st: List[Str]) -> Flow {
                 if tg[1][1][0] == "Ident" {
                     b4 = tg[1][1][1] + "." + tg[1][3]
                 }
-                panic("index out of bounds idx=" + id4.to_string() + " base=" + b4 + " contlen=" + (cx_of(cont4).len - 1).to_string())
+                panic("index out of bounds idx=" + id4.to_string() + " base=" + b4 + " contlen=" + (cx_of(cont4).len - 1).to_string() + eploc(tg))
                 return s4("a", env, out, vV2())
             }
             var vr4 = eval_expr(file, env, out, st[3])

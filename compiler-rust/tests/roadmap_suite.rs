@@ -21,8 +21,6 @@ enum Status {
     NegPending(&'static str),
     /// neg 已生效:目标码必须产出(检查层先行落地;里程碑完成时迁入 check_suite 期望表)
     NegGreen(&'static str),
-    /// panic 锚:今天运行 panic,但消息不含 marker(R-P4b 翻转判据)
-    PanicMsgRed(&'static str),
 }
 
 fn anchors() -> Vec<(&'static str, &'static str, Status)> {
@@ -50,7 +48,6 @@ fn anchors() -> Vec<(&'static str, &'static str, Status)> {
         ("r2d_fmt_fixture.ct", "R-P2d", Status::Green),
         ("r2d_fmt_chain.ct", "R-P2d", Status::Green),
         // ---- R-P4 ----
-        ("r4b_panic_location.panic.ct", "R-P4b", Status::PanicMsgRed("r4b_panic_location.ct")),
         // ---- R-P5 comptime ----
         ("r5a_const_size.ct", "R-P5a", Status::Green),
         ("r5a_semantics.ct", "R-P5a", Status::Green),
@@ -87,7 +84,7 @@ fn roadmap_anchors_match_design() {
         };
         match status {
             Status::Green => {
-                let results = ctron::interp::run_test_file(&src, ctron::sem::Profile::Full);
+                let results = ctron::interp::run_test_file(&src, name, ctron::sem::Profile::Full);
                 if results.is_empty() {
                     failures.push(format!("{name}: Green 锚未产出任何 test 结果(check 未过?)"));
                 }
@@ -99,7 +96,7 @@ fn roadmap_anchors_match_design() {
                 green += 1;
             }
             Status::RunRed => {
-                let results = ctron::interp::run_test_file(&src, ctron::sem::Profile::Full);
+                let results = ctron::interp::run_test_file(&src, name, ctron::sem::Profile::Full);
                 if results.iter().all(|(_, r)| r.is_ok()) && !results.is_empty() {
                     failures.push(format!(
                         "{name}: RunRed 锚今天运行全过了 —— 实现已落地?请按翻转协议迁移到主套件"
@@ -131,20 +128,6 @@ fn roadmap_anchors_match_design() {
                 let codes: Vec<&str> = diags.iter().map(|d| d.code).collect();
                 if !codes.contains(&target) {
                     failures.push(format!("{name}: NegGreen 锚期望 {target},实际 {codes:?}"));
-                }
-                anchored += 1;
-            }
-            Status::PanicMsgRed(marker) => {
-                let results = ctron::interp::run_test_file(&src, ctron::sem::Profile::Full);
-                match results.iter().find(|(_, r)| r.is_err()) {
-                    Some((_, Err(msg))) => {
-                        if msg.contains(marker) {
-                            failures.push(format!(
-                                "{name}: panic 消息已含源位置(\"{marker}\") —— R-P4b 已落地?请迁移到主套件"
-                            ));
-                        }
-                    }
-                    _ => failures.push(format!("{name}: PanicMsgRed 锚未按预期 panic")),
                 }
                 anchored += 1;
             }

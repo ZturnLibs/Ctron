@@ -62,11 +62,15 @@ fn ast_cache_load(path: Str) -> List[Str] {
     let src = read_file(path)
     match src {
         Some(sr) => {
-            if sr.len > 2 {
-                if or2(byte_at(sr, 0) != 78, byte_at(sr, 1) != 32) {
+            // V2 版本门:无头 = 旧格式缓存(尾槽协议演进前)→ 拒收回退 parse
+            if sr.len > 5 {
+                if or2(byte_at(sr, 0) != 86, byte_at(sr, 1) != 50) {
                     return empty
                 }
-                var cur = Atomic[I32](0)
+                if byte_at(sr, 2) != 10 {
+                    return empty
+                }
+                var cur = Atomic[I32](3)
                 return ast_load_node(sr, cur)
             }
         }
@@ -92,7 +96,9 @@ fn ast_ser_file(file: List[Str]) -> Str {
         ser = ser + out[sj]
         sj += 1
     }
-    return ser
+    // P2-D 批③:格式版本头——尾槽协议演进(批② 复合尾槽/批③ 新戳 tag)后,
+    // 旧格式缓存整体失效(无 V2 头 = 载入拒收 → 回退 parse),不误伤编译
+    return "V2\n" + ser
 }
 
 // 以下序列化面自 driver_ast.ct 迁入(W5b 2026-10-28;格式 v1,S1a 底座同款)

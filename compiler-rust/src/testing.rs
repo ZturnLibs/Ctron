@@ -37,7 +37,7 @@ impl TestReport {
 
 /// 文件级 `//@ panic: 标记`:结果 panic 且消息含标记 → PanicOk;
 /// 声明了标记却无任何匹配 panic → 追加一条 Fail(对齐 run 子命令口径)。
-pub fn test_report(src: &str, profile: Profile, filter: Option<&str>) -> TestReport {
+pub fn test_report(src: &str, file_name: &str, profile: Profile, filter: Option<&str>) -> TestReport {
     let panic_marker = src.lines()
         .find(|l| l.trim_start().starts_with("//@ panic:"))
         .map(|l| l.trim_start_matches("//@ panic:").trim().to_string());
@@ -45,7 +45,7 @@ pub fn test_report(src: &str, profile: Profile, filter: Option<&str>) -> TestRep
     if !diags.is_empty() {
         return TestReport { results: Vec::new(), diags };
     }
-    let raw = crate::interp::run_test_file(src, profile);
+    let raw = crate::interp::run_test_file(src, file_name, profile);
     let mut results = Vec::new();
     let mut any_panic_ok = false;
     for (name, r) in raw {

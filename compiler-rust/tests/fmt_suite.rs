@@ -291,8 +291,8 @@ fn full_corpus_behavior_matrix_unchanged() {
             else { ctron::sem::Profile::Full };
         let src = std::fs::read_to_string(f).unwrap();
         let formatted = fmt_ok(&src);
-        let before = ctron::interp::run_test_file(&src, profile);
-        let after = ctron::interp::run_test_file(&formatted, profile);
+        let before = ctron::interp::run_test_file(&src, &name, profile);
+        let after = ctron::interp::run_test_file(&formatted, &name, profile);
         // 结果对齐(测试名, Ok/Err 消息)逐项相等
         let norm = |rs: &[(String, Result<(), String>)]| -> Vec<(String, String)> {
             rs.iter().map(|(n, r)| (n.clone(), match r {

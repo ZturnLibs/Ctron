@@ -13,7 +13,7 @@ fn positive_fixture_all_tests_pass() {
     let path = fixture_dir().join("04d_bool_or.ct");
     let src = std::fs::read_to_string(&path).unwrap();
     assert!(ctron::parse_src(&src).1.is_empty(), "解析须零诊断");
-    let results = ctron::interp::run_test_file(&src, Profile::Full);
+    let results = ctron::interp::run_test_file(&src, "04d_bool_or.ct", Profile::Full);
     assert!(!results.is_empty());
     for (name, r) in &results {
         assert!(matches!(r, Ok(())), "test `{name}` 失败: {r:?}");

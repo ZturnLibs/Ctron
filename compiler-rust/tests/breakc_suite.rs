@@ -9,7 +9,7 @@ fn fixture_dir() -> std::path::PathBuf {
 
 fn run_fixture(name: &str) -> Vec<(String, Result<(), String>)> {
     let src = std::fs::read_to_string(fixture_dir().join(name)).unwrap();
-    ctron::interp::run_test_file(&src, Profile::Full)
+    ctron::interp::run_test_file(&src, name, Profile::Full)
 }
 
 #[test]
@@ -73,7 +73,7 @@ fn trans_emits_c_break_and_continue() {
     let src = "fn f() {\n    var i: I32 = 0\n    while i < 5 {\n        i += 1\n        if i == 3 { break }\n        if i == 1 { continue }\n    }\n}\n";
     let (file, diags) = ctron::parse_src(src);
     assert!(diags.is_empty(), "{diags:?}");
-    let code = ctron::trans::Trans::new().trans_files(std::slice::from_ref(&file)).unwrap();
+    let code = ctron::trans::Trans::new().trans_files(std::slice::from_ref(&file), "inline.ct").unwrap();
     assert!(code.contains("break;"), "应有 C break: {}", &code[code.len() - 800..]);
     assert!(code.contains("continue;"), "应有 C continue");
 }

@@ -1219,7 +1219,7 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 if st[2] == "ModEq" { cop = "%" }
                 var iexpr = ct_expr(tgt[2], env, file)
                 var lhs = "t_" + tgt[1][1] + ".d[" + iexpr + "]"
-                eln("if (" + iexpr + " < 0 || " + iexpr + " >= t_" + tgt[1][1] + ".n) \{ ctron_panic(\"index out of bounds\"); }", env)
+                eln("if (" + iexpr + " < 0 || " + iexpr + " >= t_" + tgt[1][1] + ".n) \{ ctron_panic(\"index out of bounds" + ploc(tgt) + "\"); }", env)
                 eln(lhs + " = " + ct_arg_cast(ct_typeof(st[3], env, file), byte_slice(tc0, 1, tc0.len), "(" + lhs + " " + cop + " " + ct_expr(st[3], env, file) + ")") + ";", env)
                 return env
             }
@@ -1233,7 +1233,7 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                     panic("ct_stmt:视图索引写接收者限 Ident")
                     return env
                 }
-                eln("if (" + ct_expr(tgt[2], env, file) + " < 0 || " + ct_expr(tgt[2], env, file) + " >= t_" + tgt[1][1] + ".n) \{ ctron_panic(\"index out of bounds\"); }", env)
+                eln("if (" + ct_expr(tgt[2], env, file) + " < 0 || " + ct_expr(tgt[2], env, file) + " >= t_" + tgt[1][1] + ".n) \{ ctron_panic(\"index out of bounds" + ploc(tgt) + "\"); }", env)
                 eln("t_" + tgt[1][1] + ".d[" + ct_expr(tgt[2], env, file) + "] = " + ct_arg_cast(ct_typeof(st[3], env, file), byte_slice(tc0, 1, tc0.len), ct_expr(st[3], env, file)) + ";", env)
                 return env
             }
@@ -1247,7 +1247,7 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 if tgt[1][0] != "Ident" {
                     tgtxt = ct_expr(tgt[1], env, file)
                 }
-                eln("if (" + ct_expr(tgt[2], env, file) + " < 0 || " + ct_expr(tgt[2], env, file) + " >= " + acnt + ") \{ ctron_panic(\"index out of bounds\"); }", env)
+                eln("if (" + ct_expr(tgt[2], env, file) + " < 0 || " + ct_expr(tgt[2], env, file) + " >= " + acnt + ") \{ ctron_panic(\"index out of bounds" + ploc(tgt) + "\"); }", env)
                 eln(tgtxt + "[" + ct_expr(tgt[2], env, file) + "] = " + ct_arg_cast(ct_typeof(st[3], env, file), aec, ct_expr(st[3], env, file)) + ";", env)
                 return env
             }
@@ -1260,7 +1260,7 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             }
             // 越界恒守(镜像读臂;语句级 t_lw 块单求值 idx/obj——OOB 写 = 堆腐蚀,
             // spec §4.5「索引永远边界检查」;2026-11-03 审计补)
-            eln("\{ int64_t t_lw = " + ct_expr(tgt[2], env, file) + "; if (t_lw < 0 || t_lw >= (int64_t)((ctron_list*)(" + tv + "))->n) \{ ctron_panic(\"index out of bounds\"); } ((ctron_list*)(" + tv + "))->items[t_lw] = " + vtxt + "; }", env)
+            eln("\{ int64_t t_lw = " + ct_expr(tgt[2], env, file) + "; if (t_lw < 0 || t_lw >= (int64_t)((ctron_list*)(" + tv + "))->n) \{ ctron_panic(\"index out of bounds" + ploc(tgt) + "\"); } ((ctron_list*)(" + tv + "))->items[t_lw] = " + vtxt + "; }", env)
             return env
         }
         if tgt[0] == "Member" {
@@ -2353,7 +2353,7 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
         if e[0] == "Call" && e[1][0] == "Ident" && e[1][1] == "assert" && e[2].len == 2 {
             // rt assert 失败 panic 退出(对齐 interp 臂 assert_fail 消息;
             // 旧静默 return 1 = 登记的「失败消息丢失」债,消息走 stderr+fflush)
-            eln("if (!(" + ct_expr(e[2][1], env, file) + ")) \{ ctron_panic(\"assert failed\"); }", env)
+            eln("if (!(" + ct_expr(e[2][1], env, file) + ")) \{ ctron_panic(\"assert failed" + ploc(e) + "\"); }", env)
             return env
         }
         if e[0] == "Call" && e[1][0] == "Ident" && e[1][1] == "assert_eq" && e[2].len == 3 {
@@ -2366,7 +2366,7 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
             } else {
                 cmp = "((" + ct_expr(a0, env, file) + ") == (" + ct_expr(a1, env, file) + "))"
             }
-            eln("if (!" + cmp + ") \{ ctron_panic(\"assert_eq failed\"); }", env)
+            eln("if (!" + cmp + ") \{ ctron_panic(\"assert_eq failed" + ploc(e) + "\"); }", env)
             return env
         }
         if e[0] == "Call" && e[1][0] == "Ident" && e[1][1] == "println" {

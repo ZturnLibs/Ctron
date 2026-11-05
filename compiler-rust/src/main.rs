@@ -78,7 +78,8 @@ fn main() -> ExitCode {
                 eprintln!("{path}:{}:{} {}: {}", d.span.line, d.span.col, d.code, d.message);
             }
             if !diags.is_empty() { return ExitCode::from(1); }
-            match ctron::trans::Trans::new().trans_files(std::slice::from_ref(&file)) {
+            let fname = std::path::Path::new(&path).file_name().map(|x| x.to_string_lossy().to_string()).unwrap_or_else(|| path.clone());
+            match ctron::trans::Trans::new().trans_files(std::slice::from_ref(&file), &fname) {
                 Ok(c_code) => {
                     match out_path {
                         Some(p) => { let _ = std::fs::write(&p, c_code); println!("{p}"); }
@@ -251,6 +252,9 @@ fn main() -> ExitCode {
                 eprintln!("无法读取 {path}");
                 return ExitCode::from(2);
             };
+            // P2-D 批③:panic 消息尾缀用夹具 basename(带扩展名,无目录)
+            let basename = std::path::Path::new(&path)
+                .file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| path.clone());
             let profile = if path.contains("bare") { ctron::sem::Profile::Bare }
                 else if path.contains("web") { ctron::sem::Profile::Web }
                 else { ctron::sem::Profile::Full };
@@ -263,13 +267,13 @@ fn main() -> ExitCode {
                 matches!(d, ctron::ast::Decl::Fn(f) if f.name == "main")
             });
             if is_main {
-                return match ctron::run_main_file(&src, profile) {
+                return match ctron::run_main_file(&src, &basename, profile) {
                     Ok(code) if code == 0 => ExitCode::SUCCESS,
                     Ok(code) => ExitCode::from(code as u8),
                     Err(m) => { eprintln!("{}", m); ExitCode::from(1) }
                 };
             }
-            let results = ctron::run_test_file(&src, profile);
+            let results = ctron::run_test_file(&src, &basename, profile);
             let mut failed = 0usize;
             let panic_ok = match &panic_marker {
                 Some(marker) => results.iter().any(|(_, r)| matches!(r, Err(m) if m.contains(marker))),
@@ -340,7 +344,9 @@ fn main() -> ExitCode {
             let profile = if path.contains("bare") { ctron::sem::Profile::Bare }
                 else if path.contains("web") { ctron::sem::Profile::Web }
                 else { ctron::sem::Profile::Full };
-            let report = ctron::testing::test_report(&src, profile, filter.as_deref());
+            let basename = std::path::Path::new(&path)
+                .file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| path.clone());
+            let report = ctron::testing::test_report(&src, &basename, profile, filter.as_deref());
             if !report.diags.is_empty() {
                 for d in &report.diags {
                     println!("{path}:{}:{} {}: {}", d.span.line, d.span.col, d.code, d.message);
@@ -488,7 +494,8 @@ fn main() -> ExitCode {
                 if !wd.is_empty() { return ExitCode::from(1); }
                 file.decls.extend(wf.decls);
             }
-            match ctron::trans::Trans::new().trans_files(std::slice::from_ref(&file)) {
+            let fname = std::path::Path::new(&path).file_name().map(|x| x.to_string_lossy().to_string()).unwrap_or_else(|| path.clone());
+            match ctron::trans::Trans::new().trans_files(std::slice::from_ref(&file), &fname) {
                 Ok(c_code) => {
                     let c_path = std::env::temp_dir().join("ctron_build.c");
                     std::fs::write(&c_path, c_code).unwrap();
