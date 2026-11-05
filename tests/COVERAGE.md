@@ -4638,3 +4638,35 @@ meta_check 4 红全基线/对端取证(1395/1406 缓存私清 HEAD 原在;04e_br
 **验收对账**:批①三态格式(file:line:col)贯通 + check_suite 快照红集合字节同;批② 尾槽
 复合化 + nline/ncol 消费协议 + dump 固定点;双侧节点槽协议同批落库,拆批漂移风险清零。
 后续在册:批③ interp panic 源位置(r4b 翻转)、批④ fixes 数据形、批⑤ LSP 反查。
+
+## 2026-11-05 续:S1 重放批落地 + 第三修复(ct_hoists)+ 全谱门禁与残红归因终账
+
+**提交谱**:
+- 2172372b 编译器两修复重放(G5-W1 动态计数 / done-skip 同地板补并)
+- 893343ca S1 全谱(net 地板 +35/熵别名/db 双包消解 −423/七消费方/run.sh×3)
+- b58e3858 ct_hoists 排除 Repeat 初始化——**第三缺陷(本批新咬出)**:While 体
+  let 提升机制(2a686695)把 [0] ** expr 动态计数 let 改写 Assign → init 走
+  ct_expr(Repeat) 恐慌;昨日 x_ emit 族 49/50 之绿实为旧 bin 无 G5-W1 修复时
+  cnt5 折 "1" 的静默错长假绿。修复 = Repeat let 不提升(逐迭代按运行时计数
+  分配,语义即原意);包探针定界(顶层绿/while 嵌套红)
+- stash p2d-wip2 冲突解决:八文件(全为 S1 自我重复态)取上游侧——stash 侧
+  enc.ct 尚带多项式错值 2989574331(证其为昨日修前态);stash 引用保留未 drop
+  (对端 P2-D WIP 参照)
+
+**门禁(净树重自举 NATIVE-OK 后,对端 afd03429 + 本批全量)**:
+- db **49/50**(唯一红 rm_json_link emit @68:14,昨日净 HEAD 工作树复现=携带红,
+  对端批① span 诊断已定位化);ffi **38/0**;net **13/6**(六红=净 HEAD 基线复现
+  同集,携带);http **111/7**(七红=净 HEAD 复现 i_multipart/sse_ws/serve_e2e×2/
+  frm_auth×2 + x_gzip_round=lane 链接环境,手工旗标单跑绿);suite **124/126**+
+  123/126 rc=0(分歧在册:09c 宿主 W8030=冻结种子无动态计数语义/10_trace/r4b
+  宿主界)
+- smoke 234/3 → 本批复跑红族换形:**decls 锁 539 实得 543**(对端 afd03429 增量,
+  锁注释随对其批更新)+ **T35/W8901 族九红**(std 模块缺失:strx/fsx/mathx/a/dom
+  ——tier 夹具引用主库从未跟踪的 std 扩展模块名,W8901 触发语义随对端批变化,
+  归属对端批①②归因窗)+ doc/web 残点同类
+- **r4b(R-P4b panic 源位置)随对端批落地**:锚迁 tests/ 根,panic 族 16/16
+  (boot cc)——R 线剩余真红锚再少一支(r4b 曾为 roadmap 双残锚之一)
+
+**登记(下一批)**:①smoke decls 锁 543 注释更新 + T35 夹具 std 扩展模块名
+复核(对端窗);②net/http/rm_json 携带红开专窗(与对端批①②交互面);
+③rm_json_link.ct:68 断言定位已由批① span 诊断给出,归因材料就绪。
