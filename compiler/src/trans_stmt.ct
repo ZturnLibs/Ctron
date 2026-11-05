@@ -949,7 +949,7 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                     var alr5 = rp5[1]
                     var n05: I64 = (alr5.len - 1).as[I64]()
                     var cnt5 = "1"
-                    if rp5[2][0] == "Int" { cnt5 = lit_to_dec(rp5[2][1]) }
+                    if rp5[2][0] == "Int" { cnt5 = lit_to_dec(rp5[2][1]) } else { cnt5 = ct_expr(rp5[2], env, file) }
                     var allz5 = true
                     var z5: I32 = 1
                     while z5 < alr5.len {

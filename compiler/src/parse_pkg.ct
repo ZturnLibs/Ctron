@@ -862,27 +862,15 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                     misses.push(segs[1])
                 }
             }
-            // 已合并模块重入,分两半(2026-09-23 P1b merge-through 收紧):
-            // ① 递归展开内部:保持旧 done-skip —— 中层 mf 不需要已完成模块的声明
-            //    (符号在消费级平面视图解析;补进 mf 反而在消费级 dup 撞名,smoke 3n 实证)
-            // ② 顶层消费方 use:补并 —— done-skip 会把直连请求一并吞掉(门面先行合并
-            //    同一模块时 keep 集不同 → 请求符号缺失:轻则 E2020,重则 emit 缺 extern
-            //    声明);照常重载走选择性合并,已在视图的符号于 dup 处 redo 静默跳过
+            // 已合并模块重入(P1b 2026-09-23 -> S1 2026-11-04 放宽):
+            // 旧 done-skip 假设「中层 mf 不需要已完成模块的声明」——同地板
+            // 多包消费成立即破(net.bind 先后被 http.client/db 两包以不同
+            // keep 集导入;首并集不为后续请求超集 -> 消费体 E2020/emit 缺
+            // extern,S1 db 组合探针实证)。故 done 一律照常重载走选择性合并:
+            // 已在视图的符号于 dup 处 redo 静默跳过(首胜),缺者补并。
+            // E5030 仍只在入口面新撞名时拦截(语义收紧不变)。
             var isdone = in_list(done, mpath)
-            if isdone && !top {
-                var nm3 = mk("File")
-                var j3: I32 = 1
-                while j3 < out.len {
-                    if j3 != i {
-                        nm3.push(out[j3])
-                    }
-                    j3 += 1
-                }
-                out = nm3
-                i = 1
-                continue
-            }
-            var redo = isdone && top
+            var redo = isdone
             if !isdone && in_list(stack, mpath) {
                 // stack 为单调"曾展开集"(不弹栈);真环在首次展开(未 done)即被拦,
                 // 已 done 者必为干净完成的合并,顶层重入补并不可能成环 → done 免检
