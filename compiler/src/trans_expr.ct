@@ -3,6 +3,28 @@
 // 索引/插值串 ctron_str_concat 链接)、ct_call_args 实参(形参类型码插转换 L↔N/A)、
 // ct_assigned/ct_hoists 声明提升、ct_zero 零值、a_count/a_elem 定长数组码解析。
 // =====================================================================
+// P2-D 批③:panic 消息源位置后缀 —— " (basename:line:col)"。
+// bname = 发射驱动入口源文件 basename(无目录;ctron_entry 空 = 锚 ANCHORINPUT);
+// line:col = 节点尾槽 span(批①侧表/批②复合形,nline/ncol 拆取)。
+fn ploc_bname() -> Str {
+    var p = ctron_entry()
+    if p == "" {
+        return "ANCHORINPUT"
+    }
+    var i: I32 = p.len
+    while i > 0 {
+        if byte_at(p, i - 1) == 47 {
+            return byte_slice(p, i, p.len)
+        }
+        i -= 1
+    }
+    return p
+}
+
+fn ploc(e: List[Str]) -> Str {
+    return " (" + ploc_bname() + ":" + nline(e) + ":" + ncol(e) + ")"
+}
+
 fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
     var t = e[0]
     if t == "Int" {
@@ -423,7 +445,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 panic("ct_expr:视图索引接收者限 Ident")
                 return ""
             }
-            return "(\{ int64_t t_vx = " + ct_expr(e[2], env, file) + "; if (t_vx < 0 || t_vx >= t_" + e[1][1] + ".n) \{ ctron_panic(\"index out of bounds\"); } (" + ct_ctype(byte_slice(ot, 1, ot.len)) + ")(t_" + e[1][1] + ".d[t_vx]); })"
+            return "(\{ int64_t t_vx = " + ct_expr(e[2], env, file) + "; if (t_vx < 0 || t_vx >= t_" + e[1][1] + ".n) \{ ctron_panic(\"index out of bounds" + ploc(e) + "\"); } (" + ct_ctype(byte_slice(ot, 1, ot.len)) + ")(t_" + e[1][1] + ".d[t_vx]); })"
         }
         // List 族索引读:越界恒守(spec §4.5「索引永远边界检查」;2026-11-03 审计补——
         // 原裸 items[idx] 越界 = 静默垃圾读/堆越权;消息对齐 seed rt_eval
@@ -439,7 +461,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 var ity = ct_ctype(byte_slice(ot, 1, ot.len))
                 litu = "(*(" + ity + "*)((ctron_list*)(" + lobj + "))->items[t_lx])"
             }
-            return "(\{ int64_t t_lx = " + lidx + "; if (t_lx < 0 || t_lx >= (int64_t)((ctron_list*)(" + lobj + "))->n) \{ ctron_panic(\"index out of bounds\"); } (" + litu + "); })"
+            return "(\{ int64_t t_lx = " + lidx + "; if (t_lx < 0 || t_lx >= (int64_t)((ctron_list*)(" + lobj + "))->n) \{ ctron_panic(\"index out of bounds" + ploc(e) + "\"); } (" + litu + "); })"
         }
 
         panic("ct_expr:index 目标非 List/数组:" + ot + " 名:" + e[1][1] + " 下标:" + e[2][1] + " 节点元数:" + e.len.to_string() + " 尾槽tag:" + e[e.len - 1][0])
@@ -1171,7 +1193,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                         panic("emit:lane 实参")
                         return ""
                     }
-                    return "(\{ int64_t t_lx = " + ct_expr(ag[1], env, file) + "; if (t_lx < 0 || t_lx >= (" + obj + ").n) \{ ctron_panic(\"index out of bounds\"); } (" + obj + ").d[t_lx]; })"
+                    return "(\{ int64_t t_lx = " + ct_expr(ag[1], env, file) + "; if (t_lx < 0 || t_lx >= (" + obj + ").n) \{ ctron_panic(\"index out of bounds" + ploc(e) + "\"); } (" + obj + ").d[t_lx]; })"
                 }
                 if m == "to_array" {
                     return "(" + obj + ")"
@@ -1248,25 +1270,25 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 // R1:Option[Str] 翻面后接收者=char* → NULL 模型(NULL 即 panic)
                 var exs = ct_typeof(cal[1], env, file)
                 if exs == "s" {
-                    return "((const char*)(" + obj + ") ? (const char*)(" + obj + ") : (ctron_panic(" + emsg + "), (const char*)0))"
+                    return "((const char*)(" + obj + ") ? (const char*)(" + obj + ") : (ctron_panic(ctron_str_concat(" + emsg + ", \"" + ploc(e) + "\")), (const char*)0))"
                 }
                 // T53:载荷码经接收者恢复(#elem 侧条目/被调声明 Result[..] 首参)——
                 // f 位型双关回读(与 ct_res_wrap f 臂配对;旧 _r.v 裸值消费位直转双向失真);
                 // 非 f 码 _r.v 直槽(int 族整宽;Str/聚合码回落旧行为,聚合消费走 match 臂)
                 var pec = ct_opt_elem_expr(file, cal[1], env)
                 if pec == "f" {
-                    return "(\{ ct_res _r = " + obj + "; if (_r.variant) \{ ctron_panic(" + emsg + "); } ((union \{ double _d; ct_i _i; })\{ ._i = (ct_i)(_r.v) })._d; })"
+                    return "(\{ ct_res _r = " + obj + "; if (_r.variant) \{ ctron_panic(ctron_str_concat(" + emsg + ", \"" + ploc(e) + "\")); } ((union \{ double _d; ct_i _i; })\{ ._i = (ct_i)(_r.v) })._d; })"
                 }
                 // u: struct 载荷解引用(与 ct_res_wrap u: 盒装写侧配对)
                 if pec.len > 2 && byte_slice(pec, 0, 2) == "u:" {
-                    return "(\{ ct_res _r = " + obj + "; if (_r.variant) \{ ctron_panic(" + emsg + "); } (*(" + ct_ctype(pec) + "*)(long)_r.v); })"
+                    return "(\{ ct_res _r = " + obj + "; if (_r.variant) \{ ctron_panic(ctron_str_concat(" + emsg + ", \"" + ploc(e) + "\")); } (*(" + ct_ctype(pec) + "*)(long)_r.v); })"
                 }
                 // G1-T3:s 码载荷=char* 指针(通道边界 malloc 中转/Result[Str] 同表示),
                 // 裸 ct_i 对指针目标编译断——cast const char*(旧 raw 槽形仅在 int 载荷下幸存)
                 if pec == "s" {
-                    return "(\{ ct_res _r = " + obj + "; if (_r.variant) \{ ctron_panic(" + emsg + "); } ((const char*)(long)_r.v); })"
+                    return "(\{ ct_res _r = " + obj + "; if (_r.variant) \{ ctron_panic(ctron_str_concat(" + emsg + ", \"" + ploc(e) + "\")); } ((const char*)(long)_r.v); })"
                 }
-                return "(\{ ct_res _r = " + obj + "; if (_r.variant) \{ ctron_panic(" + emsg + "); } _r.v; })"
+                return "(\{ ct_res _r = " + obj + "; if (_r.variant) \{ ctron_panic(ctron_str_concat(" + emsg + ", \"" + ploc(e) + "\")); } _r.v; })"
             }
             if or2(m == "is_err", m == "is_ok") {
                 var neg = ""
@@ -1347,7 +1369,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     var sv9 = ct_expr(ag[2], env, file)
                     var wr9 = "(const char*)(long)(" + sv9 + ")"
                     if or2(s_objt6 == "L", s_objt6 == "Ls") { wr9 = sv9 }
-                    return "(\{ int32_t t_si9 = (int32_t)(" + si9 + "); if (t_si9 < 0 || t_si9 >= (" + obj + ")->n) \{ ctron_panic(\"index out of bounds\"); } (" + obj + ")->items[t_si9] = " + wr9 + "; })"
+                    return "(\{ int32_t t_si9 = (int32_t)(" + si9 + "); if (t_si9 < 0 || t_si9 >= (" + obj + ")->n) \{ ctron_panic(\"index out of bounds" + ploc(e) + "\"); } (" + obj + ")->items[t_si9] = " + wr9 + "; })"
                 }
             }
             if m == "pop" {
@@ -1382,7 +1404,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     var sv9 = ct_expr(ag[2], env, file)
                     var wr9 = "(const char*)(long)(" + sv9 + ")"
                     if or2(s_objt6 == "L", s_objt6 == "Ls") { wr9 = sv9 }
-                    return "(\{ int32_t t_si9 = (int32_t)(" + si9 + "); if (t_si9 < 0 || t_si9 >= (" + obj + ")->n) \{ ctron_panic(\"index out of bounds\"); } (" + obj + ")->items[t_si9] = " + wr9 + "; })"
+                    return "(\{ int32_t t_si9 = (int32_t)(" + si9 + "); if (t_si9 < 0 || t_si9 >= (" + obj + ")->n) \{ ctron_panic(\"index out of bounds" + ploc(e) + "\"); } (" + obj + ")->items[t_si9] = " + wr9 + "; })"
                 }
             }
             if m == "pop" {
@@ -1432,7 +1454,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 if r_objt.len > 0 && byte_at(r_objt, 0) == 76 {
                     if ag.len < 2 { panic("emit:remove arity") }
                     var ri9 = ct_expr(ag[1], env, file)
-                    return "(\{ ctron_list* _rp = (ctron_list*)(" + obj + "); int32_t t_ri9 = (int32_t)(" + ri9 + "); if (t_ri9 < 0 || t_ri9 >= (_rp)->n) \{ ctron_panic(\"index out of bounds\"); } int32_t _rj9 = t_ri9; while (_rj9 + 1 < (_rp)->n) \{ (_rp)->items[_rj9] = (_rp)->items[_rj9 + 1]; _rj9 += 1; } (_rp)->n -= 1; })"
+                    return "(\{ ctron_list* _rp = (ctron_list*)(" + obj + "); int32_t t_ri9 = (int32_t)(" + ri9 + "); if (t_ri9 < 0 || t_ri9 >= (_rp)->n) \{ ctron_panic(\"index out of bounds" + ploc(e) + "\"); } int32_t _rj9 = t_ri9; while (_rj9 + 1 < (_rp)->n) \{ (_rp)->items[_rj9] = (_rp)->items[_rj9 + 1]; _rj9 += 1; } (_rp)->n -= 1; })"
                 }
                 if r_objt.len > 2 && byte_at(r_objt, 0) == 77 {
                     if ag.len < 2 { panic("emit:remove arity") }
@@ -2055,7 +2077,7 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
             if ag.len > 3 { u4 = ct_expr(ag[3], env, file) }
             return "ctron_u8s_str(" + u2 + ", (int)(" + u3 + "), (int)(" + u4 + "))"
         }
-        if callee == "panic" { return "ctron_panic(" + ct_call_args(ag, 1, env, file, "") + ")" }
+        if callee == "panic" { return "ctron_panic(ctron_str_concat(" + ct_call_args(ag, 1, env, file, "") + ", \"" + ploc(e) + "\"))" }
         // Option/Result 构造(Phase 5):Ok/Err/Some(expr) → ct_res(载荷按型别包装)
         if cal[0] == "Ident" {
             if or2(cal[1] == "Ok", or2(cal[1] == "Err", cal[1] == "Some")) {
@@ -3255,7 +3277,10 @@ fn ct_hoists(b: List[Str], env: List[Str], file: List[Str]) -> List[Str] {
     var i: I32 = 1
     while i < b.len - 1 {
         var st = b[i]
-        if st[0] == "Let" {
+        // S1/G5-W1:Repeat 初始化 let 不提升——声明点构造,表达式位无发射形
+        // (提升改写 Assign 走 ct_expr 即 ct_expr:Repeat 恐慌);留块内走
+        // ct_stmt G5-W1 臂,逐迭代按运行时计数分配,语义即原意。
+        if st[0] == "Let" && st[4][0] != "Repeat" {
             var pat = st[2]
             if or2(pat[0] == "PatId", pat[0] == "PatAgg" && pat[2][0] == "SubUnit") {
                 if !ct_assigned(pat[1], b) {
