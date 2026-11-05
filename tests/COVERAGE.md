@@ -4660,10 +4660,11 @@ meta_check 4 红全基线/对端取证(1395/1406 缓存私清 HEAD 原在;04e_br
   frm_auth×2 + x_gzip_round=lane 链接环境,手工旗标单跑绿);suite **124/126**+
   123/126 rc=0(分歧在册:09c 宿主 W8030=冻结种子无动态计数语义/10_trace/r4b
   宿主界)
-- smoke 234/3 → 本批复跑红族换形:**decls 锁 539 实得 543**(对端 afd03429 增量,
-  锁注释随对其批更新)+ **T35/W8901 族九红**(std 模块缺失:strx/fsx/mathx/a/dom
-  ——tier 夹具引用主库从未跟踪的 std 扩展模块名,W8901 触发语义随对端批变化,
-  归属对端批①②归因窗)+ doc/web 残点同类
+- smoke 红族换形(两次实测):昨日 234/3 → 本日 **222 ok / 15 fail**——decls 锁
+  539 实得 **543**(对端 afd03429 增量,锁注释随对其批更新)+ **W8901 std 模块
+  缺失族**(strx/fsx/mathx/a/dom 六类:T35 档位六处/use 撞名/web check·full·运行
+  面/doc std.<module>——tier 夹具引用主库从未跟踪的 std 扩展模块名,W8901 触发
+  语义随对端批①②变化,归属对端归因窗;昨日同环境无此族=随批①②落地引入)
 - **r4b(R-P4b panic 源位置)随对端批落地**:锚迁 tests/ 根,panic 族 16/16
   (boot cc)——R 线剩余真红锚再少一支(r4b 曾为 roadmap 双残锚之一)
 
