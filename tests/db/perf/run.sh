@@ -12,7 +12,7 @@ ROOT=$(dirname "$(dirname "$(dirname "$DIR")")")
 CC="$ROOT/compiler/bin/ctron-cc"
 EMIT="$ROOT/compiler/bin/ctron-emit"
 export CTRON_STDPATH="$ROOT/lib/std"
-DBPG="$ROOT/lib/db/c_src/ctron_dbpg.c"
+NET="$ROOT/lib/net/c_src/ctron_net.c"
 DBENT="$ROOT/lib/db/c_src/ctron_entropy.c"
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 N="${CTRON_PERF_N:-1000}"
@@ -64,7 +64,7 @@ fi
 
 # ── 构建:ctron 臂 + libpq 基线 ──
 if ! "$EMIT" run "$DIR/ctron_simple_query.ct" > "$T/ctron.c" 2>"$T/ctron.e.err" \
-   || ! cc -O1 -w -o "$T/ctron.bin" "$T/ctron.c" $DBPG $DBENT 2>"$T/ctron.cc.err"; then
+   || ! cc -O1 -w -o "$T/ctron.bin" "$T/ctron.c" $NET $DBENT 2>"$T/ctron.cc.err"; then
     echo "  [FAIL] perf: ctron 臂构建红(emit/cc;见下行)"; sed -n '1,3p' "$T/ctron.e.err" "$T/ctron.cc.err" 2>/dev/null
     exit 1
 fi

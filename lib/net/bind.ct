@@ -62,3 +62,8 @@ pub extern "c" fn ctron_net_unix_accept(lfd: I64, out_fd: &Box64) -> I64
 pub extern "c" fn ctron_net_unix_connect(path: Str, out_fd: &Box64) -> I64
 pub extern "c" fn ctron_net_unix_unlink(path: Str) -> I64
 pub extern "c" fn ctron_rt_scopes_json() -> Str
+
+// S1 db socket 地板归一增量(2026-11-04;specs/2026-11-04-c-shim-dissolution-design.md)
+// —— ctron_dbredis.c/ctron_dbpg.c 消解后的最小新增;db(redis/pg)fd 面经此二件。
+pub extern "c" fn ctron_net_socketpair(out_a: &Box64, out_b: &Box64) -> I64
+pub extern "c" fn ctron_net_is_wouldblock(rc: I64) -> I64

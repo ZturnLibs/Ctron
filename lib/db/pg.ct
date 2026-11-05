@@ -4,8 +4,8 @@
 //   协议核消费"注入源"帧:双薄源共驱一核——
 //     ① pg_recv_frame_script(回放源):List[Str] 十六进制帧逐帧出(录制/手工
 //        按协议文档构造;tests/db/replay_fixtures/*.script + README)——CI 零真库;
-//     ② pg_recv_frame_fd(真源):fd 直读(db 自有垫片 db/c_src/
-//        ctron_dbpg.c,镜像 ctron_net.c 约定;真 fd 冒烟 Task 6 nightly)。
+//     ② pg_recv_frame_fd(真源):fd 直读(net 地板 lib/net/c_src/ctron_net.c——
+//        S1 2026-11-04 dbpg 自有垫片消解归一;真 fd 冒烟 Task 6 nightly)。
 //   Ctron 无可发射 trait ⇒ 既定双入口形态:两入口 fn 共享核心解析器
 //   (pgx_*),统一产出 PgRecv(帧面)/PgRows/PgSess(会话面)。
 // ═══ 依赖纪律 ═══
@@ -16,11 +16,12 @@
 //   自出 pg_b64_encode/pg_b64_decode(List[I32] 字节容器,RFC 4648 标准
 //   字母表 + '=' 填充)。**不 use std.net**(Global Constraints):真源经
 //   PgCell64 标量胞(本文件自有声明;与 net bind.ct 的 Box64 同布局异名
-//   ——同名 decl 二次合并 E5030,合并单命名空间纪律)传 fd,垫片符号
-//   前缀 ctron_dbpg_*。SCRAM 客户端 nonce 真熵经 ctron_dbpg_entropy
-//   (P5-D 新 extern;db 垫片别名转发 ctron_entropy_fill——pg.ct 直宣
-//   ctron_entropy_fill 与 std/uuid.ct 同名 decl 合并即 E5030,探针实证,
-//   故出 db 前缀别名;链接需并链 ctron_entropy.c)。
+//   ——同名 decl 二次合并 E5030,合并单命名空间纪律)传 fd。S1 2026-11-04:
+//   dbpg 自有垫片消解,fd 地板符号经 net.bind 单次导入(本文件 use 位;
+//   redis/pg 双源互斥树不共载)。SCRAM 客户端 nonce 真熵经 ctron_dbpg_entropy
+//   (P5-D extern 别名,现居 ctron_entropy.c——pg.ct 直宣 ctron_entropy_fill
+//   与 std/uuid.ct 同名 decl 合并即 E5030,探针实证,故保 db 前缀别名;
+//   链接需并链 ctron_entropy.c)。
 // ═══ 发射面/解释面纪律(divergences (f)-(i) + P5 新证)═══
 //   ① (h) 载荷通道:跨模块数值消费一律 struct 标量字段 + 自由 getter
 //      (client.ct HttpLoc/HttpResp 同款);Result 数值载荷禁跨模块。
@@ -67,15 +68,66 @@
 // SCRAM 原语单子依赖(ws.ct→std.crypto 同款;P5-D)
 use std.crypto.{ sha256_bytes, hmac_sha256, pbkdf2_sha256 }
 
-pub extern "c" fn ctron_dbpg_read(fd: I64, buf: &I64[], cap: I64) -> I64
-pub extern "c" fn ctron_dbpg_write(fd: I64, buf: &I64[], n: I64) -> I64
-pub extern "c" fn ctron_dbpg_close(fd: I64) -> I64
-pub extern "c" fn ctron_dbpg_last_errno() -> I64
-pub extern "c" fn ctron_dbpg_socketpair(out: &I64[]) -> I64
+// fd 真源地板(S1 2026-11-04:dbpg 自有垫片消解入 net 地板;interp 无
+// extern 运行时 => fd 源面仍 emit 专臂,x_ 前缀纪律不变)
 pub extern "c" fn ctron_dbpg_entropy(buf: &I64[], n: I64) -> I64
+// ——上行别名:直宣 ctron_entropy_fill 与 std/uuid.ct 合并 E5030(头注),
+// 别名符号居 ctron_entropy.c 地板。net 地板符号经 net.bind 导入:
+use net.bind.{Box64, ctron_net_read_t, ctron_net_write, ctron_net_close, ctron_net_last_errno, ctron_net_tcp_connect, ctron_net_socketpair}
 // 真源 TCP 建连(P5-F nightly;host = ASCII 字节 lane,如 "127.0.0.1";
 // 阻塞 connect,无超时面 v0 登记;fd 或 -1,errno 槽同口径)
-pub extern "c" fn ctron_dbpg_connect(host: &I64[], port: I64) -> I64
+// 建连(P5-F nightly;host = ASCII 串;阻塞 connect,无超时面 v0 登记;
+// fd 或 -1,errno 槽同口径)
+pub fn pg_fd_connect(host: Str, port: I64) -> I64 {
+    var cell = Box64 { v: 0 }
+    var rc = ctron_net_tcp_connect(host, port, cell)
+    if rc != 0 {
+        return -1
+    }
+    return cell.v
+}
+
+// socketpair 夹具面(S1:net 地板 AF_UNIX 流对,双端 O_NONBLOCK 原样)
+pub fn pg_fd_socketpair(out: &I64[]) -> I64 {
+    var ca = Box64 { v: 0 }
+    var cb = Box64 { v: 0 }
+    var rc = ctron_net_socketpair(ca, cb)
+    if rc != 0 {
+        return rc
+    }
+    if out.len < 2 {
+        return -1
+    }
+    out[0] = ca.v
+    out[1] = cb.v
+    return 0
+}
+
+// 夹具直呼面(S1:x_fd_pipeline/x_pg_fd_session 原直呼 ctron_dbpg_*
+// extern 的 lane 形;包装换源不改调用形)
+pub fn pg_fd_write(fd: I64, lane: &I64[], n: I64) -> I64 {
+    var b8: U8[] = [0] ** n
+    var i: I64 = 0
+    while i < n {
+        b8[i] = lane[i].as[U8]()
+        i += 1
+    }
+    return ctron_net_write(fd, b8, pgz() + n)
+}
+
+pub fn pg_fd_read(fd: I64, lane: &I64[], cap: I64) -> I64 {
+    var b8: U8[] = [0] ** cap
+    var n = ctron_net_read_t(fd, b8, cap, -1)
+    if n < 0 {
+        return n
+    }
+    var j: I64 = 0
+    while j < n && j < lane.len {
+        lane[j] = b8[j].as[I64]()
+        j += 1
+    }
+    return n
+}
 
 // fd 出参标量胞(与 net bind.ct Box64 同布局异名;见头注依赖纪律);
 // 出参持态一律 Box[PgCell64](net 出参 Box[Box64] 同款堆胞,跨调用可见)
@@ -367,7 +419,8 @@ pub fn pg_recv_frame_fd(fd: I64, rbuf: &I64[], fill: Box[PgCell64], scr: &I64[])
                 return r
             }
         }
-        var n = ctron_dbpg_read(fd, scr, scr.len.as[I64]())
+        var scr8: U8[] = [0] ** scr.len
+        var n = ctron_net_read_t(fd, scr8, scr8.len, -1)
         if n < 0 {
             return pgx_recv_fail(pg_err_io(), 0)
         }
@@ -376,7 +429,7 @@ pub fn pg_recv_frame_fd(fd: I64, rbuf: &I64[], fill: Box[PgCell64], scr: &I64[])
         }
         var j: I64 = 0
         while j < n && fill.v < rbuf.len {
-            rbuf[fill.v] = scr[j]
+            rbuf[fill.v] = scr8[j].as[I64]()
             fill.v = fill.v + 1
             j += 1
         }
@@ -391,12 +444,13 @@ pub fn pg_send_msg_fd(fd: I64, msg: List[I32], scr: &I64[]) -> I64 {
     if msg.len > scr.len {
         return -1
     }
+    var b8: U8[] = [0] ** msg.len
     var i: I64 = 0
     while i < msg.len {
-        scr[i] = msg[i]
+        b8[i] = msg[i].as[U8]()
         i += 1
     }
-    var w = ctron_dbpg_write(fd, scr, pgz() + msg.len)
+    var w = ctron_net_write(fd, b8, pgz() + msg.len)
     if w < 0 {
         return -1
     }
@@ -404,11 +458,11 @@ pub fn pg_send_msg_fd(fd: I64, msg: List[I32], scr: &I64[]) -> I64 {
 }
 
 pub fn pg_fd_close(fd: I64) -> I64 {
-    return ctron_dbpg_close(fd)
+    return ctron_net_close(fd)
 }
 
 pub fn pg_fd_last_errno() -> I64 {
-    return ctron_dbpg_last_errno()
+    return ctron_net_last_errno()
 }
 
 // ---- 客户端消息装配(大端;len 含自身;宽域装配) ----

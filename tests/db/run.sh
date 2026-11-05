@@ -1,8 +1,8 @@
 #!/bin/sh
 # tests/db/run.sh —— db 数据访问层回放验收(P5-C/P5-D/P5-E;§P5 Task 3/4/5)
 # 口径:db(pg.ct/db.ct/redis.ct/pool.ct/rowmap.ct)为纯 Ctron 叶
-# (不触 std.net;fd 真源经自有垫片 db/c_src/ctron_dbpg.c +
-# ctron_dbredis.c;P5-D SCRAM 单子扩展 std.crypto;P5-E pool 单子扩展
+# (不触 std.net;fd 真源 = net 地板 ctron_net.c——S1 2026-11-04 dbpg/dbredis
+# 自有垫片消解归一,specs/2026-11-04-c-shim-dissolution-design.md;P5-D SCRAM
 # std.db.pg、rowmap 单子扩展 std.db.pg——严格互斥树:消费方对
 # pool/rowmap/pg 三门面**二选一** use,单路径导入树,直 use pg 而复用
 # pool/rowmap 即 E5020 环),
@@ -14,18 +14,17 @@
 #   副 = emit 同源对拍(ctron-emit → cc → 原生):各目录全量含 x_。
 #   x_ 前缀 = 仅 emit 臂入计(tests/crypto_vec x_uuid_live 同款结构性登记):
 #          x_fd_edge / x_fd_pipeline 承载 fd 真源面(EBADF → err 6 + errno 槽;管线帧 mtype/fill 持态/send-all 整发三钉)——
-#          interp 无 extern 运行时,需链 db/c_src/ctron_dbpg.c。
+#          interp 无 extern 运行时,需链 net 地板(S1 归一后)。
 #          fd 长度域门(读前即拒,不触 extern)已由 e_protocol_violation
 #          双臂承载;真库 fd 冒烟 Task 6 nightly。
 #          P5-D:x_scram_neg(错口令/签名不符两条 SCRAM 重链)、
 #          x_scram_rfc7677(RFC 7677 原例 c=4096)——解释器堆不回收
 #          (P5-B 登记;实测 ≈1GB/块压缩,s_ 单链文件已抵预算线);
 #          x_scram_nonce(nonce 真熵,interp 无 extern 运行时)链
-#          ctron_dbpg.c + ctron_entropy.c(ctron_dbpg_entropy 别名转发)。
+#          net 地板 + ctron_entropy.c(ctron_dbpg_entropy 别名转发)。
 #          P5-E:x_rd_fd(Redis fd 真源:P5-F 真分片跨两次 recv(incomplete
 #          面)+ incomplete 三臂 + 管线包 fill 持态/send-all 整发钉)链
-#          ctron_dbredis.c(与 ctron_dbpg.c 分置:同名 extern decl 合并
-#          即 E5030;socketpair 两端 O_NONBLOCK,P5-F)。
+#          net 地板(socketpair 两端 O_NONBLOCK,P5-F;S1 归一)。
 #   两臂同一夹具集双计 pass;任一臂红即红。pass>0 空集守卫。
 #   双运行时矩阵(CTRON_RT=coro)不适用:纯层无停车点,无 rt 依赖。
 # 前置:compiler/native.sh、cc(副臂)
@@ -116,25 +115,17 @@ if [ -x "$EMIT" ]; then
         name=$(basename "$f" .ct)
         EXTRA=""
         if [ "$name" = "x_fd_edge" ] || [ "$name" = "x_fd_pipeline" ] || [ "$name" = "e_protocol_violation" ]; then
-            # fd 源面(extern 引用进 emit C):链 db 自有垫片
-            # (ctron_dbpg_entropy 别名引 ctron_entropy_fill → 并链熵垫片)
-            EXTRA="$ROOT/lib/db/c_src/ctron_dbpg.c $ROOT/lib/db/c_src/ctron_entropy.c"
+            # fd 源面(extern 引用进 emit C):S1 2026-11-04 dbpg/dbredis 自有
+            # 垫片消解入 net 地板;熵别名 ctron_dbpg_entropy 居熵垫片,并链熵垫片
+            EXTRA="$ROOT/lib/net/c_src/ctron_net.c $ROOT/lib/db/c_src/ctron_entropy.c"
         fi
-        if [ "$name" = "x_pg_fd_session" ]; then
-            # PG fd 真源全会话(P5-F:SCRAM 下行双发 + 简单/扩展查询 +
-            # 事务状态)链 dbpg 垫片;ctron_dbpg_entropy 别名引
-            # ctron_entropy_fill → 并链熵垫片(nonce 面经 pg_scram_nonce
-            # 链接面;夹具定值 nonce 不触熵,符号面仍须全)
-            EXTRA="$ROOT/lib/db/c_src/ctron_dbpg.c $ROOT/lib/db/c_src/ctron_entropy.c"
-        fi
-        if [ "$name" = "x_scram_nonce" ]; then
-            # nonce 真熵:ctron_dbpg_entropy 别名转发 → 并链熵垫片
-            EXTRA="$ROOT/lib/db/c_src/ctron_dbpg.c $ROOT/lib/db/c_src/ctron_entropy.c"
+        if [ "$name" = "x_pg_fd_session" ] || [ "$name" = "x_scram_nonce" ]; then
+            # PG fd 真源全会话(P5-F)+ nonce 真熵(P5-D):net 地板 + 熵垫片
+            EXTRA="$ROOT/lib/net/c_src/ctron_net.c $ROOT/lib/db/c_src/ctron_entropy.c"
         fi
         if [ "$name" = "x_rd_fd" ]; then
-            # Redis fd 真源(P5-E):自有垫片(ctron_dbredis_*;与 dbpg 分置
-            # ——同名 extern decl 合并即 E5030)
-            EXTRA="$ROOT/lib/db/c_src/ctron_dbredis.c"
+            # Redis fd 真源(P5-E)链 net 地板(S1 归一;原 dbredis 自有垫片)
+            EXTRA="$ROOT/lib/net/c_src/ctron_net.c"
         fi
         if "$EMIT" run "$f" > "$T/$name.e.c" 2>"$T/$name.e.err" \
            && cc -O1 -w -o "$T/$name.e.bin" "$T/$name.e.c" $EXTRA 2>"$T/$name.e.cc.err" \

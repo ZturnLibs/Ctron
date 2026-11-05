@@ -112,3 +112,9 @@ int64_t ctron_entropy_fill(int64_t* buf, int64_t n) {
     }
     return 0;
 }
+
+/* P5-D 别名(S1 2026-11-04:dbpg 垫片消解后别名迁居本文件;pg.ct 直宣
+ * ctron_entropy_fill 与 std/uuid.ct 同名 extern decl 合并 E5030——头注在案) */
+int64_t ctron_dbpg_entropy(int64_t* buf, int64_t n) {
+    return ctron_entropy_fill(buf, n);
+}

@@ -13,9 +13,8 @@ ROOT=$(dirname "$(dirname "$(dirname "$DIR")")")
 CC="$ROOT/compiler/bin/ctron-cc"
 EMIT="$ROOT/compiler/bin/ctron-emit"
 export CTRON_STDPATH="$ROOT/lib/std"
-DBPG="$ROOT/lib/db/c_src/ctron_dbpg.c"
+NET="$ROOT/lib/net/c_src/ctron_net.c"
 DBENT="$ROOT/lib/db/c_src/ctron_entropy.c"
-DBREDIS="$ROOT/lib/db/c_src/ctron_dbredis.c"
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 npass=0; nfail=0; nskip=0
 echo "== tests/db/nightly 真靶冒烟(P5-F;真 Postgres/Redis;非 CI 主环)=="
@@ -23,7 +22,7 @@ echo "== tests/db/nightly 真靶冒烟(P5-F;真 Postgres/Redis;非 CI 主环)=="
 # ── 构建门(无靶也跑:smoke 夹具健康检查)──
 for name in pg_smoke redis_smoke; do
     if "$EMIT" run "$DIR/$name.ct" > "$T/$name.c" 2>"$T/$name.e.err" \
-       && cc -O1 -w -o "$T/$name.bin" "$T/$name.c" $DBPG $DBENT $DBREDIS 2>"$T/$name.cc.err"; then
+       && cc -O1 -w -o "$T/$name.bin" "$T/$name.c" $NET $DBENT 2>"$T/$name.cc.err"; then
         npass=$((npass+1)); echo "  PASS build $name"
     else
         nfail=$((nfail+1)); echo "  FAIL build $name(构建门红:emit/cc;非靶面问题也须记录)"; sed -n '1,3p' "$T/$name.e.err" "$T/$name.cc.err" 2>/dev/null

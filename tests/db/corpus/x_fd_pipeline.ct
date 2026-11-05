@@ -12,11 +12,11 @@
 //      连带修正:lane 形参按发射器 view 胞镜像,裸指针 ABI 巧合不可依)。
 // f3 取帧走对端已关的读 → err 3 eof(阻塞不存在:残留消化/EOF 两途
 // 均即时);真库互操作 Task 6 nightly。
-use db.pg.{pg_recv_frame_fd, pg_send_msg_fd, pg_query_msg, pg_hex_decode, pgv_rc, pgv_err, pgv_type, pgv_body_len, pgv_body_at, pg_err_eof, PgCell64, ctron_dbpg_socketpair, ctron_dbpg_write, ctron_dbpg_read}
+use db.pg.{pg_recv_frame_fd, pg_send_msg_fd, pg_query_msg, pg_hex_decode, pgv_rc, pgv_err, pgv_type, pgv_body_len, pgv_body_at, pg_err_eof, PgCell64, pg_fd_socketpair, pg_fd_write, pg_fd_read}
 
 test "pipeline frames: R+Z one packet, mtypes correct, fill residual consumed, then eof" {
     var sv: I64[2] = [0, 0]
-    assert_eq(ctron_dbpg_socketpair(sv), 0)
+    assert_eq(pg_fd_socketpair(sv), 0)
     // 模拟服务端一包写入 R(AuthOk)+ Z(idle)= 15B(真 PG 常态管线)
     var pkt = pg_hex_decode("5200000008000000005a0000000549")
     var pktl: I64[16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -25,7 +25,7 @@ test "pipeline frames: R+Z one packet, mtypes correct, fill residual consumed, t
         pktl[w] = pkt[w]
         w += 1
     }
-    assert_eq(ctron_dbpg_write(sv[1], pktl, 15), 15)
+    assert_eq(pg_fd_write(sv[1], pktl, 15), 15)
     // 先关对端:后续读只有 残留消化 / EOF 两途,钉不挂起
     assert_eq(pg_fd_close(sv[1]), 0)
     var rbuf: I64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -51,7 +51,7 @@ test "pipeline frames: R+Z one packet, mtypes correct, fill residual consumed, t
 
 test "send-all: 5006B query message crosses 4096 chunk intact" {
     var sv: I64[2] = [0, 0]
-    assert_eq(ctron_dbpg_socketpair(sv), 0)
+    assert_eq(pg_fd_socketpair(sv), 0)
     // sql = 5000 × 'a' → Query 帧 1 + 4 + 5001 = 5006B(> 4096 chunk)
     var sql = ""
     var k: I64 = 0
@@ -81,7 +81,7 @@ test "send-all: 5006B query message crosses 4096 chunk intact" {
     var guard: I64 = 0
     while total < 5006 && guard < 100 {
         guard += 1
-        let n = ctron_dbpg_read(sv[1], sr, 4096)
+        let n = pg_fd_read(sv[1], sr, 4096)
         assert(n > 0)
         if total == 0 {
             first = sr[0]

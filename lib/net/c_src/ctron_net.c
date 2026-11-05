@@ -1174,3 +1174,25 @@ const char* ctron_net_resolve_all(const char* host) {
     if (n == 0 || allbuf[0] == '\0') return "";
     return allbuf;
 }
+
+/* S1 db socket 地板归一增量(2026-11-04;specs/2026-11-04-c-shim-dissolution-design.md):
+ * ctron_dbredis.c/ctron_dbpg.c 消解入本文件后的最小新增(P2 例外记账:净 -423 行 + 本二件)。
+ * socketpair = AF_UNIX/SOCK_STREAM,双端 O_NONBLOCK(P5-F x_rd_fd 语义原样);
+ * is_wouldblock = rc<0 且 errno∈{EAGAIN,EWOULDBLOCK}——errno 值平台各异,
+ * Ctron 层无平台常量表达面,判别故置地板。 */
+int64_t ctron_net_socketpair(Box64* a, Box64* b) {
+    int sv[2];
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) != 0) return ct_err();
+    for (int i = 0; i < 2; i++) {
+        int fl = fcntl(sv[i], F_GETFL, 0);
+        if (fl >= 0) fcntl(sv[i], F_SETFL, fl | O_NONBLOCK);
+    }
+    if (a) a->v = (int64_t)sv[0];
+    if (b) b->v = (int64_t)sv[1];
+    return 0;
+}
+
+int64_t ctron_net_is_wouldblock(int64_t rc) {
+    if (rc >= 0) return 0;
+    return (errno == EAGAIN || errno == EWOULDBLOCK) ? 1 : 0;
+}

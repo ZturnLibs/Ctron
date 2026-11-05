@@ -14,11 +14,10 @@
 // 与 net/c_src/ctron_net.c 垫片一致,链接零改。门面迁移落库后回改 use net
 // (一行,登记 README)。
 //
-// 运行(native 臂,门外语义;db c_src 一并链接——ctron_entropy/ctron_dbpg/
-// ctron_dbredis,uuid 真熵垫片宿主):
+// 运行(native 臂,门外语义;net 地板 + 熵垫片一并链接(S1 归一):
 //   compiler/bin/ctron-emit run examples/ctslink/src/serve_net.ct > /tmp/sl.c
 //   cc -O1 -w -pthread -I net/c_src -o /tmp/sl.bin /tmp/sl.c \
-//      net/c_src/ctron_net.c db/c_src/ctron_dbpg.c db/c_src/ctron_dbredis.c db/c_src/ctron_entropy.c
+//      net/c_src/ctron_net.c db/c_src/ctron_entropy.c
 //   /tmp/sl.bin   # 127.0.0.1:8093(env CTS_LINK_PORT);POST /__shutdown 排空退出
 //
 // 存储注入(pg.ct script/fd 双源同构口径,README「存储双源」在册):
@@ -43,8 +42,8 @@ pub extern "c" fn ctron_net_close(fd: I64) -> I64
 use std.uuid.{ uuid_v4 }
 use std.strconv.{ parse_i64, sc_get_l }
 use db.db.{ db_std, dsn_parse, pgd_ok, pgd_user, pgd_pass, pgd_host, pgd_port, pgd_name }
-use db.pg.{ ctron_dbpg_connect, ctron_dbpg_close, pg_send_msg_fd, pg_scram_handshake_fd, pg_query_fd, pg_scram_nonce, pg_startup_msg, pg_query_msg, pg_terminate_msg, pg_str_bytes, PgCell64, pgs_rc, pgs_err, pgs_emsg, pgs_sigok, pgr_rc, pgr_tag, pgr_emsg }
-use db.redis.{ ctron_dbredis_connect, redis_send_cmd_fd, redis_recv_fd, redis_get_cmd, redis_incr_cmd, RdsCell64, rs_rc, rs_ival, rs_sval, rs_isnull }
+use db.pg.{ pg_fd_connect, pg_fd_close, pg_send_msg_fd, pg_scram_handshake_fd, pg_query_fd, pg_scram_nonce, pg_startup_msg, pg_query_msg, pg_terminate_msg, PgCell64, pgs_rc, pgs_err, pgs_emsg, pgs_sigok, pgr_rc, pgr_tag, pgr_emsg }
+use db.redis.{ redis_fd_connect, redis_send_cmd_fd, redis_recv_fd, redis_get_cmd, redis_incr_cmd, RdsCell64, rs_rc, rs_ival, rs_sval, rs_isnull }
 use web.router.{ has_conflict }
 use web.serve.{ SrvIo, serve_with }
 use main.{ app_with, full_router }
@@ -221,14 +220,7 @@ fn rd_connect(url: Str) -> I64 {
         println("ctslink: CTRON_REDIS_URL 畸形,计数走内存")
         return 0 - 1
     }
-    let hb = pg_str_bytes(t.host)
-    let hostl: I64[256] = [0] ** 256
-    var i: I64 = 0
-    while i < hb.len && i < 256 {
-        hostl[i] = hb[i]
-        i += 1
-    }
-    let fd = ctron_dbredis_connect(hostl, t.port)
+    let fd = redis_fd_connect(t.host, t.port)
     if fd < 0 {
         println("ctslink: redis 连接失败,计数走内存")
         return 0 - 1
@@ -249,14 +241,7 @@ fn pg_boot(dsn: Str) -> I64 {
     if dbname.len == 0 {
         dbname = pgd_user(d)
     }
-    let hb = pg_str_bytes(pgd_host(d))
-    let hostl: I64[256] = [0] ** 256
-    var hi: I64 = 0
-    while hi < hb.len && hi < 256 {
-        hostl[hi] = hb[hi]
-        hi += 1
-    }
-    let fd = ctron_dbpg_connect(hostl, pgd_port(d))
+    let fd = pg_fd_connect(pgd_host(d), pgd_port(d))
     if fd < 0 {
         println("ctslink: pg 连接失败,行存储走内存")
         return 0 - 1
@@ -268,12 +253,12 @@ fn pg_boot(dsn: Str) -> I64 {
     let s = pg_scram_handshake_fd(fd, rbuf, fill, scr, pgd_user(d), pgd_pass(d), pg_scram_nonce())
     if pgs_rc(s) != 0 || pgs_sigok(s) != 1 {
         println("ctslink: pg SCRAM 失败 err=" + pgs_err(s).to_string() + " " + pgs_emsg(s))
-        ctron_dbpg_close(fd)
+        pg_fd_close(fd)
         return 0 - 1
     }
     let rc = pg_apply_schema(fd)
     pg_send_msg_fd(fd, pg_terminate_msg(), scr)
-    ctron_dbpg_close(fd)
+    pg_fd_close(fd)
     if rc == 0 {
         println("ctslink: pg schema 就绪(v1 行存储仍内存,DDL 已应用)")
     }
@@ -315,14 +300,7 @@ fn pg_boot(dsn: Str) -> I64 {
     if dbname.len == 0 {
         dbname = pgd_user(d)
     }
-    let hb = pg_str_bytes(pgd_host(d))
-    let hostl: I64[256] = [0] ** 256
-    var hi: I64 = 0
-    while hi < hb.len && hi < 256 {
-        hostl[hi] = hb[hi]
-        hi += 1
-    }
-    let fd = ctron_dbpg_connect(hostl, pgd_port(d))
+    let fd = pg_fd_connect(pgd_host(d), pgd_port(d))
     if fd < 0 {
         println("ctslink: pg 连接失败,行存储走内存")
         return 0 - 1
@@ -334,12 +312,12 @@ fn pg_boot(dsn: Str) -> I64 {
     let s = pg_scram_handshake_fd(fd, rbuf, fill, scr, pgd_user(d), pgd_pass(d), pg_scram_nonce())
     if pgs_rc(s) != 0 || pgs_sigok(s) != 1 {
         println("ctslink: pg SCRAM 失败 err=" + pgs_err(s).to_string() + " " + pgs_emsg(s))
-        ctron_dbpg_close(fd)
+        pg_fd_close(fd)
         return 0 - 1
     }
     let rc = pg_apply_schema(fd)
     pg_send_msg_fd(fd, pg_terminate_msg(), scr)
-    ctron_dbpg_close(fd)
+    pg_fd_close(fd)
     if rc == 0 {
         println("ctslink: pg schema 就绪(v1 行存储仍内存,DDL 已应用)")
     }

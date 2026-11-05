@@ -31,7 +31,7 @@ sh compiler/ctc.sh examples/ctslink/src/main.ct   # 裸跑即测试(mw 会话族
 ```sh
 compiler/bin/ctron-emit run examples/ctslink/src/serve_net.ct > /tmp/sl.c
 cc -O1 -w -pthread -I net/c_src -o /tmp/sl.bin /tmp/sl.c \
-   net/c_src/ctron_net.c db/c_src/ctron_dbpg.c db/c_src/ctron_dbredis.c db/c_src/ctron_entropy.c
+   net/c_src/ctron_net.c db/c_src/ctron_entropy.c
 CTS_LINK_PORT=8093 /tmp/sl.bin        # POST /__shutdown 排空退出
 ```
 

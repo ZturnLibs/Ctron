@@ -3,16 +3,16 @@
 // ═══ 架构口径(镜像 pg.ct 双薄源共驱一核)═══
 //   ① redis_recv_script(回放源):List[Str] 十六进制回包逐条出(一行一条
 //      完整回包;tests/db/redis_replay/*.script + README)——CI 零真库;
-//   ② redis_recv_fd(真源):fd 直读(db 自有垫片 db/c_src/
-//      ctron_dbredis.c,ctron_dbpg.c 同构镜像;真 fd 冒烟 Task 6 nightly;
+//   ② redis_recv_fd(真源):fd 直读(net 地板 lib/net/c_src/ctron_net.c——
+//      S1 2026-11-04 dbredis 自有垫片消解归一;真 fd 冒烟 Task 6 nightly;
 //      interp 无 extern 运行时 ⇒ fd 源面 emit 专臂,x_ 前缀)。
 //   核解析器 redisx_*(字节表 + 游标)双源共享;统一产出 RedisReply。
 // ═══ 依赖纪律 ═══
 //   零 std use 纯叶(与 pg.ct/db.ct 同口径;严格互斥树——db 不 use
 //   std.net)。十六进制面自持(redis_hex_*,pg.ct 自持 b64 同款先例:仅
-//   为夹具 I/O 复制 30 行工具面,不为此拉 std/enc 载荷面)。extern 符号
-//   前缀 ctron_dbredis_*(与 ctron_dbpg_* 分置:同名 extern decl 二次
-//   合并即 E5030,P5-D 探针实证)。
+//   为夹具 I/O 复制 30 行工具面,不为此拉 std/enc 载荷面)。net 地板
+//   extern 符号经 net.bind 单次导入(本文件 use 位;同名 extern decl 二次
+//   合并即 E5030,P5-D 探针实证——redis/pg 双源互斥树不共载)。
 // ═══ RESP2 面(本任务)═══
 //   命令编码 = RESP 数组(逐参 bulk string):*N\r\n $len\r\n arg\r\n …;
 //   GET/SET/DEL/EXPIRE/INCR 五命令装配面(redis_cmd + 五具名包装)。
@@ -59,14 +59,9 @@
 //   (池侧 = 丢弃,不回池)。登记:pub/sub(P8)/MULTI 会话态落地时
 //   本分类随动。
 
-pub extern "c" fn ctron_dbredis_read(fd: I64, buf: &I64[], cap: I64) -> I64
-pub extern "c" fn ctron_dbredis_write(fd: I64, buf: &I64[], n: I64) -> I64
-pub extern "c" fn ctron_dbredis_close(fd: I64) -> I64
-pub extern "c" fn ctron_dbredis_last_errno() -> I64
-pub extern "c" fn ctron_dbredis_socketpair(out: &I64[]) -> I64
-// 真源 TCP 建连(P5-F nightly;host = ASCII 字节 lane;阻塞 connect,fd
-// 循环至整包口径;无超时面 v0 登记)
-pub extern "c" fn ctron_dbredis_connect(host: &I64[], port: I64) -> I64
+// fd 真源地板(S1 2026-11-04:dbredis 自有垫片消解入 net 地板;interp 无
+// extern 运行时 => fd 源面仍 emit 专臂,x_ 前缀纪律不变)。
+use net.bind.{Box64, ctron_net_read_t, ctron_net_write, ctron_net_close, ctron_net_last_errno, ctron_net_tcp_connect, ctron_net_socketpair, ctron_net_is_wouldblock}
 
 // fd 出参标量胞(与 pg.ct PgCell64 同布局异名——同名 decl 合并 E5030
 // 纪律;出参持态一律 Box[RdsCell64] 堆胞,跨调用可见)
@@ -527,6 +522,7 @@ pub fn redis_recv_script(lines: List[Str], cur: I64) -> RedisReply {
 // 守卫计数防滞留。成功后 lane 前移消费 used 字节。
 pub fn redis_recv_fd(fd: I64, rbuf: &I64[], fill: Box[RdsCell64], scr: &I64[]) -> RedisReply {
     var guard: I64 = 0
+    var scr8: U8[] = [0] ** scr.len
     while guard < 100000 {
         guard += 1
         if fill.v > 0 {
@@ -553,7 +549,10 @@ pub fn redis_recv_fd(fd: I64, rbuf: &I64[], fill: Box[RdsCell64], scr: &I64[]) -
             }
             // r.used == 0 且 rc 0 = incomplete 面:落读(不返不弃)
         }
-        var n = ctron_dbredis_read(fd, scr, scr.len.as[I64]())
+        var n = ctron_net_read_t(fd, scr8, scr8.len, -1)
+        if ctron_net_is_wouldblock(n) == 1 {
+            n = -2
+        }
         if n == -2 {
             // 垫片 would-block 面(非阻塞 fd;阻塞 fd 不见此面:读即等待,
             // 循环至整包/EOF/IO):incomplete 面返调用方,续等后重入
@@ -570,7 +569,7 @@ pub fn redis_recv_fd(fd: I64, rbuf: &I64[], fill: Box[RdsCell64], scr: &I64[]) -
         // 显形(无声吞包不存在——流信任失必以 err 面浮出)
         var j: I64 = 0
         while j < n && fill.v < rbuf.len {
-            rbuf[fill.v] = scr[j]
+            rbuf[fill.v] = scr8[j].as[I64]()
             fill.v = fill.v + 1
             j += 1
         }
@@ -584,12 +583,13 @@ pub fn redis_send_cmd_fd(fd: I64, msg: List[I32], scr: &I64[]) -> I64 {
     if msg.len > scr.len {
         return -1
     }
+    var b8: U8[] = [0] ** msg.len
     var i: I64 = 0
     while i < msg.len {
-        scr[i] = msg[i]
+        b8[i] = msg[i].as[U8]()
         i += 1
     }
-    var w = ctron_dbredis_write(fd, scr, redisz() + msg.len)
+    var w = ctron_net_write(fd, b8, redisz() + msg.len)
     if w < 0 {
         return -1
     }
@@ -597,11 +597,68 @@ pub fn redis_send_cmd_fd(fd: I64, msg: List[I32], scr: &I64[]) -> I64 {
 }
 
 pub fn redis_fd_close(fd: I64) -> I64 {
-    return ctron_dbredis_close(fd)
+    return ctron_net_close(fd)
 }
 
 pub fn redis_fd_last_errno() -> I64 {
-    return ctron_dbredis_last_errno()
+    return ctron_net_last_errno()
+}
+
+// socketpair 夹具面(S1:net 地板 AF_UNIX 流对,双端 O_NONBLOCK 原样;
+// out = I64[] lane 双 fd 槽,x_rd_fd 同口径)
+pub fn redis_fd_socketpair(out: &I64[]) -> I64 {
+    var ca = Box64 { v: 0 }
+    var cb = Box64 { v: 0 }
+    var rc = ctron_net_socketpair(ca, cb)
+    if rc != 0 {
+        return rc
+    }
+    if out.len < 2 {
+        return -1
+    }
+    out[0] = ca.v
+    out[1] = cb.v
+    return 0
+}
+
+// 真源 TCP 建连(P5-F nightly;host = ASCII 串;阻塞 connect;无超时面
+// v0 登记不变。S1:dbredis lane 形 host 删,直通 net 地板)
+pub fn redis_fd_connect(host: Str, port: I64) -> I64 {
+    var cell = Box64 { v: 0 }
+    var rc = ctron_net_tcp_connect(host, port, cell)
+    if rc != 0 {
+        return -1
+    }
+    return cell.v
+}
+
+// 夹具直呼面(S1:x_rd_fd 原直呼 ctron_dbredis_* extern 的 lane 形;
+// read 保留 -2 would-block 面,x_rd_fd incomplete 续读钉不变)
+pub fn redis_fd_write(fd: I64, lane: &I64[], n: I64) -> I64 {
+    var b8: U8[] = [0] ** n
+    var i: I64 = 0
+    while i < n {
+        b8[i] = lane[i].as[U8]()
+        i += 1
+    }
+    return ctron_net_write(fd, b8, redisz() + n)
+}
+
+pub fn redis_fd_read(fd: I64, lane: &I64[], cap: I64) -> I64 {
+    var b8: U8[] = [0] ** cap
+    var n = ctron_net_read_t(fd, b8, cap, -1)
+    if ctron_net_is_wouldblock(n) == 1 {
+        return -2
+    }
+    if n < 0 {
+        return n
+    }
+    var j: I64 = 0
+    while j < n && j < lane.len {
+        lane[j] = b8[j].as[I64]()
+        j += 1
+    }
+    return n
 }
 
 // ---- 客户端命令装配(RESP 数组;宽域装配)----
