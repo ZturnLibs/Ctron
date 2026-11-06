@@ -4671,3 +4671,73 @@ meta_check 4 红全基线/对端取证(1395/1406 缓存私清 HEAD 原在;04e_br
 **登记(下一批)**:①smoke decls 锁 543 注释更新 + T35 夹具 std 扩展模块名
 复核(对端窗);②net/http/rm_json 携带红开专窗(与对端批①②交互面);
 ③rm_json_link.ct:68 断言定位已由批① span 诊断给出,归因材料就绪。
+
+## 2026-11-05:P2-D 批③ interp/原生 panic 源位置——r4b 翻转迁主套件(三引擎烙定)
+
+**翻转判据兑现**:r4b_panic_location.panic.ct 自 roadmap 迁主套件(run_suite 自动发现;
+marker = 全 basename,`//@ panic:` 行随迁更新);roadmap_suite r4b 行 + PanicMsgRed 变体 +
+匹配臂三件删(翻转协议)。CLI 实测:`index out of bounds (r4b_panic_location.panic.ct:8:18)`
+双引擎逐字节同。
+
+**格式契约**:`{msg} ({basename}:{line:col})`;溢出/除零族三引擎裸消息(RT 帮手无调用点
+位置,03m/03n/03o 口径);解释器内部限流位点(指令上限/嵌套过深)不加。
+
+**Rust 面**:Interp file_name + cur_id(Cell,每节点一写,性能面 = 门禁实测无感) +
+ppanic/decorate 出口兜底(幂等防双缀);19 显式位点 + ~60 兜底覆盖;溢出族 decorate 排除;
+run_main_file/run_test_file 加 file_name 参(调用方 12 处含 examples/perf 补修)。
+**trans 发射面(ct_panic,第四引擎面 bg_16 误查 ctron_panic 漏检)**:trans_file 加
+file_name;位点 12 改(match 无臂/用户 panic/bit shift/List.set/expect 三槽/索引读写
+rt 帮手/utf8 边界——utf8 锚 = range 上界 to,对齐 interp cur_id 终值语义)/7 裸(溢出
+×3/div0 ×2/ct_felem 域外/ct_assert);调用方 8 点 5 文件;parser.rs eid 加 pub(crate)
+(最小使能,报备)。
+**自宿面**:ebname/eploc/hassuf(eval_env)+ 22 位点;发射面 ploc/ploc_bname(trans_expr/
+trans_stmt 12+6 位点;driver_emit 49 静态 RT 样板裸留);AST 缓存 V2 格式门(尾槽协议
+演进 → 旧缓存整体拒收回退 parse,腐坏回退同款 fail-closed)。
+
+**批② 回填**(批③ 落地暴露):Index/TypeArgs/Unary/Range/Int/Float 六 tag 补 nstamp
+(尾槽真值);形态表 bless Unary SNS*/TypeArgs NNS*/Index NNS*/Range SNNS*(ast_kind
+星规则 = 末声明槽重复,尾槽须声明为 S);parse_pkg.ct 对端遗留合并标记解决(取 stash 侧
+注释版,纯注释双版本)。
+
+**门**:cargo lib 51/51 + 十套件全项基线 parity(check 6 红集合同;fmt/parse/run/lex/
+native 同挂同因);native_suite r4b 分歧消失(双引擎逐字),03o = 基线旧账维持(原生裸
+`integer overflow` 缺 `(-)` marker,契约明文);smoke 234/3(锁 543 过;E5030 ×3 = 对端
+垫片消解 replay 在途,pad_left/FsError 其域);suite 124/126(分歧 3 = 09c 对端/10_trace
+宿主旧账/r4b 宿主 ctronc 无位置——compiler-c lane 在册);meta_check 4 = 基线/对端取证;
+drv_parity 136/0(panic 位点零触)。
+
+**已知边界(登记,批③.5 抛光在册)**:①自宿 assert_eq 实参路径 panic = (bn:0:0)(实参
+求值节点尾槽缺失,文件名仍携,r4b 判据无损);②发射面 ANCHORINPUT-sed 流 bn = 全路径
+(含 basename 子串,判据无损);③自宿 dogfood 自编译时,发射面用户 panic 臂烘自宿源位
+(外层尾缀,语义 = 发射点自身位置);④suite [panic] r4b 宿主分歧 = ctronc 无位置机制
+(compiler-c lane);⑤native 03o = 基线旧账(分歧(1))。⑥锚差 ±1:rust Index 锚 = 索引
+表达式首记号(18),bootstrap/emitted = '[' 记号(17)——子串判据无损,逐字差分非门。
+
+**后续在册**:批④ fixes 数据形 + 拼写建议;批⑤ LSP 反查;批③.5 上述边界抛光。
+
+## 2026-11-06 续:conc 族十红归因定谳——对端在飞 WIP(sem_type/driver_check)所致,非本批
+
+**交换实验(bin 换位法)**:暂存对端在飞 WIP(sem_type.ct +64/driver_check.ct,stash
+peer-wip-semtype-dc)→ 净源重拼 + seed 发射双 bin → smoke conc 面 **全绿**
+(conc_spawn/chan/mutex/atomic/parallel/joinor/cancel/fnval/fnval_str/fnfield/
+byteslice_arg/resret/pmapclo/cloval 十四件"原生==解释 逐字一致")→ 换回原 bin
+复跑 = conc 族十红复现。定谳:红源 = 对端在飞 WIP,与 b58e3858/893343ca/
+d8295846 三修复零涉。
+
+**本批新增**:
+- d8295846 ct_stmts 提升名 Repeat 赋值位原地重分配——昨日 ct_hoists 排除
+  (b58e3858)只修了块内声明径;提升径的 Assign 改写位(init 走 ct_expr)仍恐慌。
+  修正形 = 提升照旧(循环外读循环内绑定的既有契约不破),赋值位按 G5-W1 同形
+  原地重发 .n/.d/amalloc/memset/块拷贝(逐迭代运行时计数)。
+- 本批新咬出并登记:**std/json emit 面 jget_i64 对 I64_MAX 恒 -1**(=2×MAX+1
+  双处理特征;jget_big 同路径正确 → 非 path 解析,是 jint64 装配/Result 包裹;
+  interp 面正确)——rm_json_link 携带红根因落定(此前归因"HEAD 携带"细化为
+  「std/json emit 面边界值」)。另 interp 面 fold 探针在 MAX/10 边界
+  `integer overflow (*)` 恒守恐慌(acc==922337203685477580×10 合法,涉嫌
+  checked-mul 边界 >=/> 一致性)——算术标签族(IP-23 23a json 车道)专窗材料。
+- 复核探针存档:/tmp 已清;形状四探针(n-in-2field/big 同径/n-alone/n-first)
+  emit 全 -1、big 全对、interp 全对——定界 jint64 值域装配而非 path。
+
+**门禁**:conc 全绿(净源 bin);db 49/50、ffi 38/0、net 13/6、http 111/7、
+suite 124/126 + 123/126 rc=0(携带红维持昨日归因);对端 WIP 回植后 conc 红
+复归其窗。
