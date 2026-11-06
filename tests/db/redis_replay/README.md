@@ -41,7 +41,7 @@
 | `r_truncbulk.script` | bulk 声明长 > 实际字节(截断)→ err 2 | `rr_replay.ct` |
 
 (非脚本夹具:`x_rd_fd.ct` = fd 真源面 emit 臂专面 —— 半包续读(分片 bulk)/
-NULL bulk / eof 三钉 + send-all 命令整发;链 `std/db/c_src/ctron_dbredis.c`。)
+NULL bulk / eof 三钉 + send-all 命令整发;链 `std/net/c_src/ctron_net.c`(S1 归一)。)
 
 ## 口径注
 

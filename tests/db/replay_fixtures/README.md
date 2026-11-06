@@ -39,7 +39,7 @@ Frontend/Backend Protocol);构造过程可复核落盘 = 同目录
 
 (非脚本夹具:`corpus/x_fd_edge.ct` = fd 真源 IO 边 EBADF → err 6 + errno 槽;
 `corpus/x_fd_pipeline.ct` = fd 真源三钉 —— 管线帧 mtype / fill 跨调用持态 /
-send-all 整发。均 emit 臂专面,链 `std/db/c_src/ctron_dbpg.c`。)
+send-all 整发。均 emit 臂专面,链 `std/net/c_src/ctron_net.c`(S1 归一)。)
 
 ## 口径注
 
