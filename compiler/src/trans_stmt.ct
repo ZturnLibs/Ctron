@@ -268,16 +268,55 @@ fn ct_stmts(b: List[Str], env: List[Str], file: List[Str], hl: List[Str], hreg: 
                 k += 1
             }
             if hit && nm != "" {
-                var na = List[Str]()
-                na.push("Ident")
-                na.push(nm)
-                var nas = List[Str]()
-                nas.push("Assign")
-                nas.push(na)
-                nas.push("Eq")
-                nas.push(st[4])
-                env2 = ct_stmt(nas, env2, file, hreg)
-                skip = true
+                // S1/G5-W1:Repeat 初始化的提升名 = 声明点构造,Assign 改写位
+                // 原地按运行时计数重分配(G5-W1 同形),否则 init 走 ct_expr
+                // 即 ct_expr:Repeat 恐慌(893343ca 批 conc 族十红实测)
+                if st[4][0] == "Repeat" {
+                    var rp6 = st[4]
+                    var alr6 = rp6[1]
+                    var n06: I64 = (alr6.len - 1).as[I64]()
+                    var cnt6 = "1"
+                    if rp6[2][0] == "Int" { cnt6 = lit_to_dec(rp6[2][1]) } else { cnt6 = ct_expr(rp6[2], env2, file) }
+                    var vt6 = ""
+                    if st[3][0] != "None" {
+                        vt6 = ct_ty_code(ct_targ_env(st[3], env2), file)
+                    } else {
+                        vt6 = ct_typeof(st[4], env2, file)
+                    }
+                    var vec6 = ct_ctype(byte_slice(vt6, 1, vt6.len))
+                    var allz6 = true
+                    var z6: I32 = 1
+                    while z6 < alr6.len {
+                        if or2(alr6[z6][0] != "Int", alr6[z6][1] != "0") {
+                            allz6 = false
+                        }
+                        z6 += 1
+                    }
+                    eln("t_" + nm + ".n = (long long)(" + cnt6 + ") * " + n06.to_string() + ";", env2)
+                    eln("t_" + nm + ".d = (" + vec6 + "*)ctron_amalloc(sizeof(" + vec6 + ") * ((long long)(" + cnt6 + ") * " + n06.to_string() + "));", env2)
+                    if allz6 {
+                        eln("memset(t_" + nm + ".d, 0, sizeof(" + vec6 + ") * ((long long)(" + cnt6 + ") * " + n06.to_string() + "));", env2)
+                    } else {
+                        var k6b: I32 = 1
+                        while k6b < alr6.len {
+                            eln("t_" + nm + ".d[" + (k6b - 1).to_string() + "] = " + ct_expr(alr6[k6b], env2, file) + ";", env2)
+                            k6b += 1
+                        }
+                        eln("\{ long long _ri = " + n06.to_string() + "; long long _n0 = " + n06.to_string() + "; long long _tot = (long long)(" + cnt6 + ") * _n0; while (_ri < _tot) \{ t_" + nm + ".d[_ri] = t_" + nm + ".d[_ri - _n0]; _ri += 1; } }", env2)
+                    }
+                    skip = true
+                } else {
+                    var na = List[Str]()
+                    na.push("Ident")
+                    na.push(nm)
+                    var nas = List[Str]()
+                    nas.push("Assign")
+                    nas.push(na)
+                    nas.push("Eq")
+                    nas.push(st[4])
+                    env2 = ct_stmt(nas, env2, file, hreg)
+                    skip = true
+                }
             }
         }
         if !skip {
