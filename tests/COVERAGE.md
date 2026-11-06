@@ -4741,3 +4741,25 @@ d8295846 三修复零涉。
 **门禁**:conc 全绿(净源 bin);db 49/50、ffi 38/0、net 13/6、http 111/7、
 suite 124/126 + 123/126 rc=0(携带红维持昨日归因);对端 WIP 回植后 conc 红
 复归其窗。
+
+## 2026-11-06 续:P2-D 批④ 诊断 fixes 数据形 + 未知名拼写建议(v1)——双镜 JSON 面贯通
+
+**数据形**:Rust Diagnostic 加 `notes: Vec<Span>`(v1 恒空)+ `fixes: Vec<Fix{span,text}>`,
+derive Default,13 构造点机械迁移(check 3/lexer 1/parser 1/sem 6/token 2);自宿 JSON 面
+fixes[] 槽位填充(T19 fix-it 形:`edits[{kind,span,text}]`,镜像 E3030 既有协议——D5 草形
+被 T19 先例取代,账记)。
+**建议源 v1**:E2020 未解析名 → 候选(locals ∪ fn 名表;自宿另含 tc[0])字节级 Levenshtein
+≤2,**严格唯一最小**(次小 ≥ 最小+1)才建议;池空/并列 → 不建议。消息主体零变化(钉 =
+子串判据)。Rust 位点:check_ident/check_ident_call_global 两处(err_fixes 下发);自宿位点:
+sem_type E2020.name(diag 串尾约定 ` => fix:名@行`,json 面解析剥尾填 fixes——message
+无尾残留,json message 纯净)。
+**json 实测**:`tyop`(近邻 type)→ fixes text "type";`zzqq`(池空)→ 不建议;文本面
+`E2020: 未解析的名称(unresolved):tyop => fix:type@5`。
+**门**:cargo lib 51 + 十套件全项基线 parity(check 6 红集合同);smoke 234/3(锁 544 过,
++1 = sem_type nearest_name;E5030 ×3 = 对端垫片消解 replay 在途);suite 124/126(分歧 3
+在册同批③);meta 4 基线/对端;drv_parity 136/0。
+**流程事件**:对端会话为落其 S1 replay,将在飞批④ 自宿两件 stash 隔离(peer-wip-semtype-dc)
+→ smoke 一度 8 红(splice 混合态);stash 按路径取回 + 重建后全绿。共享树并行纪律再证:
+stash 协调须双侧知情,后续以 commit 粒度交错。
+**后续在册**:批④.5(field/method 名建议、notes 定义点回填、fix 应用器);批⑤ LSP 反查;
+批③.5 边界抛光。

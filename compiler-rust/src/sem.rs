@@ -387,6 +387,7 @@ pub fn build_package(
                         code: "E5020",
                         message: "循环依赖(circular import):模块间 use 形成环".into(),
                         span: crate::token::Span::new(1, 1, 0, 0),
+                        ..Default::default()
                     });
                 }
             }
@@ -424,6 +425,7 @@ pub fn build_package(
                     code: "E2020.use.nat",
                     message: format!("use 前奏/native 符号不支持别名:{}", imp.alias.as_deref().unwrap_or(sym_name)),
                     span: crate::token::Span::new(1, 1, 0, 0),
+                    ..Default::default()
                 });
             } else {
                 let target_syms = sema.mod_by_path.get(&target.join("."))
@@ -612,6 +614,7 @@ fn collect_own_decls(
                         code: "E5010",
                         message: format!("孤儿规则(orphan rule)违规:trait `{}` 与类型 `{}` 均非本包定义;在包内定义新类型或等待 trait 演进", trait_name, for_type),
                         span: crate::token::Span::new(1, 1, 0, 0),
+                        ..Default::default()
                     });
                 }
                 lower.sema.impls.push(ImplEntry { module: pf.module.clone(), trait_name, for_type });
@@ -743,6 +746,7 @@ fn resolve_import(
                                     code: "E5035",
                                     message: format!("use 别名撞名:{bind}(与既有名冲突)"),
                                     span: crate::token::Span::new(1, 1, 0, 0),
+                                    ..Default::default()
                                 });
                             } else {
                                 syms.insert(bind.to_string(), sym);
@@ -752,6 +756,7 @@ fn resolve_import(
                                 code: "E2020",
                                 message: format!("`{}` 未导出(模块私有):pub 或 pub(pkg) 方可跨模块使用", sym_name),
                                 span: crate::token::Span::new(1, 1, 0, 0),
+                                ..Default::default()
                             });
                         }
                     }
@@ -760,6 +765,7 @@ fn resolve_import(
                             code: "E2020",
                             message: format!("未解析的名称 `{}`(模块 {} 中不存在)", sym_name, target.join(".")),
                             span: crate::token::Span::new(1, 1, 0, 0),
+                            ..Default::default()
                         });
                     }
                 }

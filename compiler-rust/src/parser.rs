@@ -46,7 +46,7 @@ impl Parser {
     fn eat(&mut self, t: &Tok) -> bool { if self.at(t) { self.bump(); true } else { false } }
     fn err_here(&mut self, code: &'static str, msg: String) {
         let span = self.cur_span();
-        self.diags.push(Diagnostic { code, message: msg, span });
+        self.diags.push(Diagnostic { code, message: msg, span, ..Default::default() });
     }
     fn expect(&mut self, t: &Tok, ctx: &str) -> Span {
         if self.at(t) { return self.bump().span; }

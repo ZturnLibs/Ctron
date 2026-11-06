@@ -33,7 +33,7 @@ impl<'src> Lexer<'src> {
     }
 
     fn err(&mut self, code: &'static str, msg: String, span: Span) {
-        self.diags.push(Diagnostic { code, message: msg, span });
+        self.diags.push(Diagnostic { code, message: msg, span, ..Default::default() });
     }
 
     /// 跳过行内空白与注释(含 /// 与 //@);换行不在此处理(它是记号)。

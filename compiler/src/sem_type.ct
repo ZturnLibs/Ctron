@@ -14,6 +14,62 @@ fn seq2(a: Str, b: Str) -> Bool {
 }
 
 
+// P2-D 批④:E2020 拼写近邻 —— 候选 = loc ∪ cands;字节级 Levenshtein ≤2;
+// 严格唯一最小(次小 ≥ 最小 + 1)才返回,否则 ""(消息主体零变化,fix 走 diag 串尾)。
+fn nearest_name(loc: List[Str], cands: List[Str], rt: Str) -> Str {
+    var best = ""
+    var bestD: I32 = 3
+    var secondD: I32 = 3
+    var ci: I32 = 0
+    while ci < 2 {
+        var src = loc
+        if ci == 1 { src = cands }
+        var i: I32 = 0
+        while i < src.len {
+            var c = src[i]
+            if c.len > 0 && !seq2(c, rt) && (seq2(best, "") || !seq2(c, best)) {
+                var prev = List[I32]()
+                var j: I32 = 0
+                while j <= c.len {
+                    prev.push(j)
+                    j += 1
+                }
+                var k: I32 = 1
+                while k <= rt.len {
+                    var cur = List[I32]()
+                    cur.push(k)
+                    var j2: I32 = 1
+                    while j2 <= c.len {
+                        var cost: I32 = 1
+                        if byte_at(c, j2 - 1) == byte_at(rt, k - 1) { cost = 0 }
+                        var v = prev[j2 - 1] + cost
+                        if prev[j2] + 1 < v { v = prev[j2] + 1 }
+                        if cur[j2 - 1] + 1 < v { v = cur[j2 - 1] + 1 }
+                        cur.push(v)
+                        j2 += 1
+                    }
+                    prev = cur
+                    k += 1
+                }
+                var d = prev[c.len]
+                if d <= 2 {
+                    if d < bestD {
+                        secondD = bestD
+                        bestD = d
+                        best = c
+                    } else {
+                        if d < secondD { secondD = d }
+                    }
+                }
+            }
+            i += 1
+        }
+        ci += 1
+    }
+    if bestD <= 2 && secondD >= bestD + 1 { return best }
+    return ""
+}
+
 // ---------------- E2020/E2010:名字解析与类型统一 v1(2026-09-09) ----------------
 // 范围:bare 调用目标 + Ident 读解析 + 基础类型统一(let/return/实参/二元/条件/? )。
 // 成员调用面(UFCS/方法表解析)与内建类型留 v2。保守可证:任一侧类型未知即放行;
@@ -766,7 +822,13 @@ fn tce(file: List[Str], e: List[Str], tc: List[Str], loc: List[Str], envT: List[
         }
         if rt.len > 0 && !in_list(loc, rt) && !in_list(diags, "E2020@" + nline(e) + ": 未解析的名称(unresolved):" + rt) {
             if !in_list(tc[0], rt) && !prelude_ok(rt) && !in_list(tc[6], rt) {
-                diag1(diags, "E2020.name", nline(e), rt)
+                // P2-D 批④:唯一近邻 → 串尾 fix 标记(json 面消费);消息主体零变化
+                var nf = nearest_name(loc, tc[0], rt)
+                if seq2(nf, "") {
+                    diag1(diags, "E2020.name", nline(e), rt)
+                } else {
+                    diags.push(diag_render1("E2020.name", nline(e), rt) + " => fix:" + nf + "@" + nline(e))
+                }
             } else {
                 var g: I32 = 0
                 while g < tc[0].len {

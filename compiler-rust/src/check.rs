@@ -914,6 +914,7 @@ pub fn check_package(
                         "struct `{}` 含类引用字段({}),拷贝为浅共享;需要深拷贝请显式克隆或改用 own",
                         d.name, shallow.join(", ")),
                     span: Span::new(1, 1, 0, 0),
+                    ..Default::default()
                 });
                 let _ = di;
             }
@@ -1057,6 +1058,7 @@ impl<'a> Checker<'a> {
                         code: "E4010",
                         message: format!("能力使用超出清单声明:{key}(缺声明;在 Ctron.ctcl 的 pkg 块 caps 列表加入 \"{key}\")"),
                         span: Span::new(1, 1, 0, 0),
+                        ..Default::default()
                     });
                 }
             }
@@ -1067,7 +1069,61 @@ impl<'a> Checker<'a> {
     // ---------- 基础 ----------
 
     fn err(&mut self, code: &'static str, msg: String, span: Span) {
-        self.diags.push(Diagnostic { code, message: msg, span });
+        self.err_fixes(code, msg, span, Vec::new());
+    }
+
+    /// P2-D 批④:带 fixes 的诊断(仅 E2020 未解析名接唯一近邻建议)
+    fn err_fixes(&mut self, code: &'static str, msg: String, span: Span, fixes: Vec<crate::token::Fix>) {
+        self.diags.push(Diagnostic { code, message: msg, span, notes: Vec::new(), fixes });
+    }
+
+    /// P2-D 批④:E2020 未解析名 → 拼写建议候选。
+    /// 字节级 Levenshtein 距离 ≤2;仅当最小值严格唯一(次小 ≥ 最小+1)才返回。
+    /// 候选池:局部作用域链(self.scopes)+ 全部 fn 名 + 全部类型 def 名。
+    fn nearest_name(&self, name: &str) -> Option<String> {
+        fn lev(a: &str, b: &str) -> usize {
+            let a = a.as_bytes();
+            let b = b.as_bytes();
+            if a.is_empty() { return b.len(); }
+            if b.is_empty() { return a.len(); }
+            let mut prev: Vec<usize> = (0..=b.len()).collect();
+            let mut cur = vec![0usize; b.len() + 1];
+            for i in 1..=a.len() {
+                cur[0] = i;
+                for j in 1..=b.len() {
+                    let cost = if a[i - 1] == b[j - 1] { 0 } else { 1 };
+                    cur[j] = (prev[j] + 1).min(cur[j - 1] + 1).min(prev[j - 1] + cost);
+                }
+                std::mem::swap(&mut prev, &mut cur);
+            }
+            prev[b.len()]
+        }
+        let mut best: Option<(usize, String)> = None;
+        let mut second: Option<usize> = None;
+        let mut consider = |cand: &str, best: &mut Option<(usize, String)>, second: &mut Option<usize>| {
+            if cand == name { return; }
+            let d = lev(name, cand);
+            if d > 2 { return; }
+            match best {
+                None => { *best = Some((d, cand.to_string())); }
+                Some((bd, _)) if d < *bd => {
+                    if second.is_none() { *second = Some(*bd); }
+                    *best = Some((d, cand.to_string()));
+                }
+                Some((bd, _)) if d == *bd => { *second = Some(d); }
+                Some(_) => { if second.map_or(true, |sd| d < sd) { *second = Some(d); } }
+            }
+        };
+        for scope in &self.scopes {
+            for k in scope.keys() { consider(k, &mut best, &mut second); }
+        }
+        for f in &self.sema.fns { consider(&f.name, &mut best, &mut second); }
+        for d in &self.sema.defs { consider(&d.name, &mut best, &mut second); }
+        match (best, second) {
+            (Some((d, cand)), Some(sd)) if sd >= d + 1 => Some(cand),
+            (Some((_, cand)), None) => Some(cand),
+            _ => None,
+        }
     }
 
     fn resolve(&self, ty: &Ty) -> Ty {
@@ -2458,7 +2514,8 @@ impl<'a> Checker<'a> {
                     return self.named("Arena", vec![]);
                 }
                 let sp = self.name_spans.get(name).copied().unwrap_or_else(|| Span::new(1, 1, 0, 0));
-                self.err("E2020", format!("未解析的名称 `{}`", name), sp);
+                let fix = self.nearest_name(name).map(|s| crate::token::Fix { span: sp, text: s });
+                self.err_fixes("E2020", format!("未解析的名称 `{}`", name), sp, fix.into_iter().collect());
                 Ty::Err
             }
         }
@@ -2760,7 +2817,9 @@ impl<'a> Checker<'a> {
                         for a in args { self.expr(a, None); }
                         return Ty::Named { def: *def, args: vec![] };
                     }
-                    self.err("E2020", format!("未解析的名称 `{}`", name), span_of(id));
+                    let sp = span_of(id);
+                    let fix = self.nearest_name(name).map(|s| crate::token::Fix { span: sp, text: s });
+                    self.err_fixes("E2020", format!("未解析的名称 `{}`", name), sp, fix.into_iter().collect());
                     for a in args { self.expr(a, None); }
                     return Ty::Err;
                 };

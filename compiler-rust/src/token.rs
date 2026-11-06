@@ -39,7 +39,7 @@ pub enum Tok {
     Newline, Eof,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Span {
     pub line: u32,   // 1-based
     pub col: u32,    // 1-based
@@ -54,10 +54,20 @@ pub struct Token {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct Fix {
+    pub span: Span,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Diagnostic {
     pub code: &'static str, // 词法器只用 "E1001"
     pub message: String,
     pub span: Span,
+    /// P2-D 批④:v1 恒空(预留)
+    pub notes: Vec<Span>,
+    /// P2-D 批④:E2020 未解析名的唯一近邻重命名建议
+    pub fixes: Vec<Fix>,
 }
 
 impl Span {
@@ -74,7 +84,7 @@ mod tests {
     fn token_kinds_are_constructible() {
         let t = Token { tok: Tok::Int { text: "255".into(), suffix: NumSuffix::U8 }, span: Span::new(1, 1, 0, 5) };
         assert_eq!(t.tok, Tok::Int { text: "255".into(), suffix: NumSuffix::U8 });
-        let d = Diagnostic { code: "E1001", message: "禁用的标点 ;".into(), span: t.span };
+        let d = Diagnostic { code: "E1001", message: "禁用的标点 ;".into(), span: t.span, ..Default::default() };
         assert_eq!(d.code, "E1001");
     }
 }

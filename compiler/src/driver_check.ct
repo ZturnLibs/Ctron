@@ -165,7 +165,34 @@ fn json_diag(path: Str, src: Str, ln: Str, first: Bool) {
         fixes = "[\{\"title\":\"static var 不存在;用 let(不可变)或 Global[T](可变全局)\",\"edits\":[\{\"kind\":\"replace\",\"span\":\{\"line_start\":" + at.to_string() + ",\"col_start\":1,\"line_end\":" + at.to_string() + ",\"col_end\":11},\"text\":\"let\"}]}]"
     }
     if seq2(code, "E2020") {
-        fixes = "[\{\"title\":\"检查拼写或添加 use 导入\",\"edits\":[]}]"
+        // P2-D 批④:sem 串尾 " => fix:名@行" → fixes[] edit(span 镜像 133 行占位形);无尾维持 []
+        var fx: I32 = -1
+        var fi: I32 = 0
+        while fi < msg.len - 7 {
+            if byte_at(msg, fi) == 32 && byte_at(msg, fi + 1) == 61 && byte_at(msg, fi + 2) == 62 && byte_at(msg, fi + 3) == 32 && byte_at(msg, fi + 4) == 102 && byte_at(msg, fi + 5) == 105 && byte_at(msg, fi + 6) == 120 && byte_at(msg, fi + 7) == 58 {
+                fx = fi
+            }
+            fi += 1
+        }
+        if fx >= 0 {
+            var tail = byte_slice(msg, fx + 8, msg.len)
+            var ta: I32 = -1
+            var ti: I32 = 0
+            while ti < tail.len {
+                if byte_at(tail, ti) == 64 { ta = ti }
+                ti += 1
+            }
+            var fname = tail
+            var fline = at
+            if ta >= 0 {
+                fname = byte_slice(tail, 0, ta)
+                fline = dvi(byte_slice(tail, ta + 1, tail.len))
+            }
+            msg = byte_slice(msg, 0, fx)
+            fixes = "[\{\"title\":\"检查拼写或添加 use 导入\",\"edits\":[\{\"kind\":\"replace\",\"span\":\{\"line_start\":" + fline.to_string() + ",\"col_start\":1,\"line_end\":" + fline.to_string() + ",\"col_end\":1},\"text\":\"" + json_escape(fname) + "\"}]}]"
+        } else {
+            fixes = "[\{\"title\":\"检查拼写或添加 use 导入\",\"edits\":[]}]"
+        }
     }
     if seq2(code, "W8010") {
         fixes = "[\{\"title\":\"struct 含类引用字段拷贝浅共享;改值字段或显式 Box\",\"edits\":[]}]"
