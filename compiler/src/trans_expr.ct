@@ -1166,8 +1166,17 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                 // 面(List.pop 弹栈)不再双求值;载荷经 ct_i 槽按默认型别折回
                 if objt == "R" {
                     var rdf = ct_expr(ag[1], env, file)
+                    // S1-续:载荷读型由接收者元素码驱动(旧按默认实参 typeof:
+                    // Result[I64,Str].or(0) 的 0 字面=i32 → 载荷 int32 截断,
+                    // jget_i64(MAX)=-1 实证;镜像下方 1182 Option 侧同族修复形。
+                    // 元素码经 ct_opt_elem_expr:Ident=#elem 侧条目/Call=返回型
+                    // Result[I64,Str] → "6")
+                    var rec6 = ct_opt_elem_expr(file, cal[1], env)
                     var rdc = ct_ctype(ct_typeof(ag[1], env, file))
-                    // _co 行唯一化(T25 v2 收口:嵌套 or 链探针实证块作用域遮蔽
+                    if rec6 == "6" {
+                        rdc = "int64_t"
+                    }
+                    // _co 行唯一化(T25 v2 收口:嵌套 or 链探针实证块作用域遮蔽'
                     // 本就合法,唯一化为防御位——后件发射形变不再可撞名)
                     var con = "_co" + nline(e)
                     return "(\{ ct_res " + con + " = (" + obj + "); (" + rdc + ")((" + con + ".variant == 0) ? ((ct_i)(long)" + con + ".v) : ((ct_i)(long)(" + rdf + "))); })"
