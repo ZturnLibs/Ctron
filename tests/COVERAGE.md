@@ -4763,3 +4763,29 @@ sem_type E2020.name(diag 串尾约定 ` => fix:名@行`,json 面解析剥尾填 
 stash 协调须双侧知情,后续以 commit 粒度交错。
 **后续在册**:批④.5(field/method 名建议、notes 定义点回填、fix 应用器);批⑤ LSP 反查;
 批③.5 边界抛光。
+
+## 2026-11-19 续:smoke 残三红(E5030 三角)归因收口 + W8901 族归因更正
+
+**W8901 族(T35/use 撞名/web/doc 九红)归因更正**:系本工作区 CTRON_STDPATH
+env 泄漏(显式指路覆盖夹具本地 std/ 解析 → 主库无 strx/fsx/mathx/a/dom 即
+W8901;净 env `env -u CTRON_STDPATH` 全清)。非对端批①②语义变化——昨日
+「归属对端归因窗」记法作废更正。教训:lane 门禁前统一 `env -u CTRON_STDPATH`。
+
+**E5030 三角(真实依赖图/deep γδ 复放/发布旅程)归属定谳**:
+- 现象:app→fmtkit×2+invoiceapi→netlite→codecore 菱形(.ctart 工件加载)
+  合并报 `E5030: use 导入同名 decl:pad_left / FsError`。
+- 定界:净提交工作树(4138c7e6,含本批全部提交)复现 ✓;**d107e5e6 基线
+  工作树(剔除本批四提交)复现 ✓** —— 批①②③ 已提交批次引入的回归,
+  与 b58e3858/893343ca/2172372b/d8295846 零涉。
+- 形状:3n 走 seed 解释 cc_emit(冻结 pkg_load_use C)??—— 否:3n 的
+  `ctc.sh main.ct` = seed 解释 **build/cc_emit.ct 拼接源**(含对端批①②③
+  parse/sem 改动),三角随批①②③落地引入(11-04 bg_1 同环境 234/3 无三角;
+  bg_17 的 15 败里三角已被 head 截断隐藏两日)。
+- 移交:对端批①②③窗(parse_* span/尾槽复合化 × ast_load_node 工件加载
+  路径的 done/keep 面账),净复现命令已存本条(工作树法:HEAD 基线
+  build.sh + seed 二进制补位 + 3n 密封五包→app 检查,3 分钟)。
+
+**门禁终态(净 env + 4138c7e6 全量 bin)**:smoke **234/3**(唯一残红=
+三角,对端窗);db **50/50 全绿首达**(rm_json_link 由 4138c7e6 转绿);
+ffi 38/0;net 13/6、http 111/7(携带红,净 HEAD 复现);suite 124/126+
+123/126 rc=0。
