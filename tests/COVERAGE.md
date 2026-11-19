@@ -4789,3 +4789,35 @@ W8901;净 env `env -u CTRON_STDPATH` 全清)。非对端批①②语义变化—
 三角,对端窗);db **50/50 全绿首达**(rm_json_link 由 4138c7e6 转绿);
 ffi 38/0;net 13/6、http 111/7(携带红,净 HEAD 复现);suite 124/126+
 123/126 rc=0。
+
+## 2026-11-19 续二:E5030 三角根因链定谳(引入点=2172372b done-skip 放行 × 工件闭包再嵌)——设计题移交
+
+**二分定谳(工作树法,3n 全链 3 分钟/点)**:
+- afd03429(批①②,无本批)→ **绿**(rc=0 五行锚定全符)
+- 2172372b(仅两编译修复重放:G5-W1 + done-skip 放行)→ **红**(E5030 pad_left)
+- d107e5e6(批③ + 本批全部)→ 红(继承)
+- 引入点 = **2172372b 的 done-skip 放行**,机理:done 模块全量重并 → seal(ast 驱动)
+  的工件把传递依赖 decls 内嵌(fmtkit.ast 内嵌 codecore.pad_left ×3 实证,
+  /tmp/sc3 留存)→ 消费方跨工件合并撞内嵌重名 → 顶层 E5030。
+  旧 done-skip 语义下工件仅封自身 decls → 无内嵌 → 无碰撞(afd03429 绿)。
+
+**修正尝试一(miss-completion:done 重入仅补缺失请求符号)反向发现**:
+net.bind 案例(http+db)可解;但 3n 工件闭包再嵌场景 —— 内嵌副本 vs 首并副本
+跨工件撞名,需**内容等价判等**(decl_ser = ast_emit_node 序列化串比对)——
+等价静默首胜可清 E5030,但随之 **消费方程序 decls=0 静默空壳**(check OK decls=0、
+run rc=0 无输出;bin/ctron-chk main.ct 实证)—— 工件加载/合并深水面(ast_load_node
+× 选择性合并 × done 账本)交互未根因。已回退该尝试(parse_pkg 恢复 done-skip
+原形 = 4138c7e6 提交态),树回稳定门禁态。
+
+**当前终态**(全量重自举 NATIVE-OK ×2 后):
+db **50/50**、ffi 38/0、suite 124/126+123/126 rc=0、net 13/6、http 111/7、
+smoke **234/3**(唯一残红 = E5030 三角,本条移交)。
+
+**移交(D8-2/S2a 工件车道专窗)**:
+① 设计裁决:done 重入策略三选一 ——(a) 恢复整跳(现状=回到 11-04 前的
+http+db 同地板 E2020/缺 extern 旧伤);(b) miss-completion + 内容等价判等
+(本批方向,须先根因 decls=0 空壳);(c) seal 侧去内嵌(工件仅封自身 decls,
+消费方经 codecore.ctart 取依赖 —— 需 D8-2 L2 digest 面适配)。
+② 复现:3n(smoke 3n 节)/工作树三点二分命令见 2026-11-19 续一条。
+③ 材料:decls=0 复现 bin 构建法(parse_pkg 落 decl_ser+dupeq 块 → build.sh →
+seed 发射 cc_run)+ jget_i64/.or(0) 修后四象限全对齐实证(4138c7e6)。
