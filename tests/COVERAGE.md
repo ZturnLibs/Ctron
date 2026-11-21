@@ -4831,3 +4831,7 @@ interp 驱动 println 缓冲累积、完成时统一输出(现行设计);panic �
 (r1/r2 合法 + r3 真溢出)——rc=1 零 stdout,r1/r2 结果不可见。影响面 = 诊断
 体验(程序部分输出辅助定位),非正确性。登记待修:panic 路径先冲刷累积 out
 再 abort(P1-A2 曾为 Drop 体 println 补过同族半边)。
+最小复现(bm2 形):main 内 r1/r2 合法 println → r3 真溢出 panic → rc=1
+零 stdout(r1/r2 不可见);同表达式在逐语句 println 间隔下(bm3 形)全绿
+——interp println = 累积面,direct/捕获双通道区分(main 直出/test 捕获)
+为修形方向。
