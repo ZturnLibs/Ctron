@@ -4732,9 +4732,11 @@ d8295846 三修复零涉。
 - 本批新咬出并登记:**std/json emit 面 jget_i64 对 I64_MAX 恒 -1**(=2×MAX+1
   双处理特征;jget_big 同路径正确 → 非 path 解析,是 jint64 装配/Result 包裹;
   interp 面正确)——rm_json_link 携带红根因落定(此前归因"HEAD 携带"细化为
-  「std/json emit 面边界值」)。另 interp 面 fold 探针在 MAX/10 边界
-  `integer overflow (*)` 恒守恐慌(acc==922337203685477580×10 合法,涉嫌
-  checked-mul 边界 >=/> 一致性)——算术标签族(IP-23 23a json 车道)专窗材料。
+  「std/json emit 面边界值」)。另「interp 面 fold 探针 MAX/10 边界恒守恐慌」**更正=非缺陷**:11-19 探针
+  (bm2 复测)实为第三 fold(18446744073709551615 > MAX)合法恒守 + 融合式
+  acc*(10+d)=acc×17 同真溢出——r1/r2 合法输出被恐慌路径 stdout 丢失吞没
+  (缓冲 println 未冲刷即 exit,cosmetic 面新登记);边界算术本体三形
+  (分离/括弧/融合)逐一实测全对,checked-mul 无 >=/> 缺陷。
 - 复核探针存档:/tmp 已清;形状四探针(n-in-2field/big 同径/n-alone/n-first)
   emit 全 -1、big 全对、interp 全对——定界 jint64 值域装配而非 path。
 
@@ -4821,3 +4823,11 @@ http+db 同地板 E2020/缺 extern 旧伤);(b) miss-completion + 内容等价判
 ② 复现:3n(smoke 3n 节)/工作树三点二分命令见 2026-11-19 续一条。
 ③ 材料:decls=0 复现 bin 构建法(parse_pkg 落 decl_ser+dupeq 块 → build.sh →
 seed 发射 cc_run)+ jget_i64/.or(0) 修后四象限全对齐实证(4138c7e6)。
+
+## 2026-11-21:panic 路径 stdout 丢失(cosmetic 登记)
+
+interp 驱动 println 缓冲累积、完成时统一输出(现行设计);panic 路径
+(longjmp/exit)不冲刷 → 恐慌前的程序合法输出全部丢失。复现:bm2 三语句
+(r1/r2 合法 + r3 真溢出)——rc=1 零 stdout,r1/r2 结果不可见。影响面 = 诊断
+体验(程序部分输出辅助定位),非正确性。登记待修:panic 路径先冲刷累积 out
+再 abort(P1-A2 曾为 Drop 体 println 补过同族半边)。
