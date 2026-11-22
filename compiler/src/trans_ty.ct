@@ -1527,6 +1527,12 @@ fn ct_typeof(e: List[Str], env: List[Str], file: List[Str]) -> Str {
         }
         if ot == "LI" { return "i" }
         // T54:List[I64] 索引产 I64(码 6;曾落 "N" 致 == 误走 strcmp 段错误)
+        // §3.6 切片视图 v<元素码>:索引产元素码(v6 -> 6/v8 -> 8;曾兜底 "i"
+        // 致元素算术落 I32 w-臂,255*16777216 类越界恐慌/x_gzip_round 实证)
+        if ot.len > 1 && byte_at(ot, 0) == 118 { return byte_slice(ot, 1, ot.len) }
+        // p<元素码> 指针衰变(&I64[] 参数/绑定):Index 同产元素码(6 域算术臂,
+        // 不再兜底 "i" 落 I32 w-臂)
+        if ot.len > 1 && byte_at(ot, 0) == 112 { return byte_slice(ot, 1, ot.len) }
         if ot == "L6" { return "6" }
         // Lu: 族(T14-②):索引产元素型(去 L 前缀)
         if ct_is_lcode(ot) { return byte_slice(ot, 1, ot.len) }
