@@ -4835,3 +4835,23 @@ interp 驱动 println 缓冲累积、完成时统一输出(现行设计);panic �
 零 stdout(r1/r2 不可见);同表达式在逐语句 println 间隔下(bm3 形)全绿
 ——interp println = 累积面,direct/捕获双通道区分(main 直出/test 捕获)
 为修形方向。
+
+## 2026-11-21 终:E5030 三角修复落地(0c9da99f msyms 全局账)——smoke 237/0 完全绿首达
+
+**设计终形(=第四形 d:done-skip + 逐请求缺失补并)**:done 重入不再全量重并
+(2172372b 形,工件闭包再嵌 ×3 → 跨工件 E5030),也不整跳(11-04 前形,
+http+db 同地板漏并 E2020)——**逐请求符号核对 msyms 全局账**:
+- 请求 ⊆ 已并 → nm3 跳过(旧语义,工件再嵌场景无重名)
+- 有缺 → 放行选择性合并(redo 静默首胜,缺者补并;done.push 因 redo 免记)
+- 合并收尾记账(syms → msyms)——判定账源;签名 +msyms 线程化
+  (_t 入口建账,递归穿透;修正 11-19 miss-scan 误用嵌套 out 作用域缺陷)
+
+**终验(净 env + 全量重自举 NATIVE-OK)**:
+- smoke **237 ok / 0 fail 完全绿**:三角三面全修(真实依赖图五行锚定 ✓/
+  deep γδ 复放 ✓/发布旅程全链 ✓)
+- db **50/50**(rm_json_link 11-04 起两周一枚由 4138c7e6 转绿,保持)
+- ffi 38/0;net 13/6、http 111/7(携带红,净 HEAD 复现维持);suite rc=0
+- 组合探针:http.client+db.pg 同地板消费 rc=0(11-19 E2020 旧伤清偿)
+
+**交接题结案**:D8-2/S2a 三选一设计题 → 终形(d) 落地,设计题撤。遗留 =
+对端 trans_probe.rs WIP(未触碰)+ origin push 协调(对端窗)。
