@@ -4855,3 +4855,21 @@ http+db 同地板漏并 E2020)——**逐请求符号核对 msyms 全局账**:
 
 **交接题结案**:D8-2/S2a 三选一设计题 → 终形(d) 落地,设计题撤。遗留 =
 对端 trans_probe.rs WIP(未触碰)+ origin push 协调(对端窗)。
+
+## 2026-11-22 终:E5030 三角修复落地(msyms) + Index 元素码 v/p 两臂补全——smoke 237/0 完全绿
+
+**0c9da99f msyms 全局账**(设计终形 d)细节见 11-19 续二条;**4138c7e6 R 臂**
+(rm_json_link 转绿)见 11-19 条。本日新增:
+- **trans_ty Index 元素码 v/p 两臂**:切片视图 v<元素码> 与指针衰变
+  p<元素码> 的 Index typeof 曾兜底 "i" → 元素算术落 I32 w-臂,
+  255×16777216 类合法中间值越 I32 界即恐慌(x_gzip_round u32le 装配
+  实证,http 车道携带红之一);补臂后 **http 111/7 → 112/6**
+  (x_gzip_round 转绿),suite/smoke/db/ffi 零涟漪(in-range 值两臂同结果)。
+- **smoke 237 ok / 0 fail 完全绿首达**(E5030 三角 + W8901 env 泄漏 + 
+  rm_json_link 三族全清);净 env 基线口径确立(lane 门禁前
+  env -u CTRON_STDPATH)。
+- interp "MAX 边界恒守"更正=非缺陷(11-21 条);panic 路径 stdout 丢失
+  cosmetic 在册(bm2 形)。
+
+**门禁终态**:db 50/50、ffi 38/0、net 13/6(携带)、http 112/6、
+suite 124/126+123/126 rc=0、smoke 237/0。
