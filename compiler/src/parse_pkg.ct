@@ -610,7 +610,8 @@ fn pkg_load_use_m(file: List[Str], dir: Str, stack: List[Str], diags: List[Str],
 fn pkg_load_use_t(file: List[Str], dir: Str, stack: List[Str], diags: List[Str], misses: List[Str], prof: Str) -> List[Str] {
     var unit = List[Str]()
     var f2: List[Str] = gui_ds_premerge(file, unit)
-    var out = pkg_load_use_done(f2, dir, stack, List[Str](), diags, true, misses, prof, "")
+    var msyms = List[Str]()
+    var out = pkg_load_use_done(f2, dir, stack, List[Str](), diags, true, misses, prof, "", msyms)
     return gui_ds_postmerge(out, unit, diags)
 }
 
@@ -644,7 +645,7 @@ fn pkg_refs_walk(d: List[Str], ktags: List[Str], kshapes: List[Str], acc: List[S
 // done = 已合并模块路径集(菱形/共享依赖第二次引用时整体跳过,防 E5030 重复;
 // stack 只承"展开中"路径 —— 菱形非环,E5020 仅真环)
 // ameta = 当前展开模块的工件 meta 路径(D8-2 L2 消费方身份;"" = 源码模块,无记录面)
-fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str], diags: List[Str], top: Bool, misses: List[Str], prof: Str, ameta: Str) -> List[Str] {
+fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str], diags: List[Str], top: Bool, misses: List[Str], prof: Str, ameta: Str, msyms: List[Str]) -> List[Str] {
     pkg_check_caps(file, dir, diags)
     if diags.len > 0 {
         return file
@@ -870,7 +871,36 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
             // 已在视图的符号于 dup 处 redo 静默跳过(首胜),缺者补并。
             // E5030 仍只在入口面新撞名时拦截(语义收紧不变)。
             var isdone = in_list(done, mpath)
+            // S1-续:done 重入 = 缺失请求符号补并(msyms 全局账)——同地板多包消费
+            // (http+db 各自 use net.bind,keep 集不同)不再整跳漏并;3n 工件再嵌
+            // 场景:请求符号已并入 msyms -> 缺失空 -> nm3 跳过(不重展开,无重名)。
+            var miss = false
+            var k9: I32 = 1
+            while k9 + 1 < symsN.len + 1 && k9 < symsN.len {
+                var nm9 = symsN[k9]
+                var hit9 = false
+                var z9: I32 = 0
+                while z9 < msyms.len {
+                    if msyms[z9] == nm9 { hit9 = true }
+                    z9 += 1
+                }
+                if !hit9 { miss = true }
+                k9 += 2
+            }
             var redo = isdone
+    if isdone && !miss && !top {
+        var nm3 = mk("File")
+        var j3: I32 = 1
+        while j3 < out.len {
+            if j3 != i {
+                nm3.push(out[j3])
+            }
+            j3 += 1
+        }
+        out = nm3
+        i = 1
+        continue
+    }
             if !isdone && in_list(stack, mpath) {
                 // stack 为单调"曾展开集"(不弹栈);真环在首次展开(未 done)即被拦,
                 // 已 done 者必为干净完成的合并,顶层重入补并不可能成环 → done 免检
@@ -979,7 +1009,7 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                             estack = List[Str]()
                             estack.push(mpath)
                         }
-                        mf = pkg_load_use_done(mf, dir, estack, edone, diags, false, misses, prof, next_meta)
+                        mf = pkg_load_use_done(mf, dir, estack, edone, diags, false, misses, prof, next_meta, msyms)
                         if diags.len > 0 {
                             return out
                         }
@@ -1202,6 +1232,12 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                         i = 0
                         if !redo {
                             done.push(mpath)
+                        }
+                        // S1-续:并入符号记账(msyms)——done 重入缺失补并的判定账源
+                        var k12: I32 = 0
+                        while k12 + 1 < syms.len {
+                            msyms.push(syms[k12])
+                            k12 += 2
                         }
                     }
                 None => {
