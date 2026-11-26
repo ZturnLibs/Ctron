@@ -300,6 +300,9 @@ tk_mf() { cp "$ROOT/$TKFIX/ctron.ctcl" "$1/ctron.ctcl"; }
 tk_side() { # $1=side 目录 $2=prep 名(空 = 工作清单)
     mkdir -p "$1"
     cp -r "$ROOT/$TKFIX/data" "$1/data"
+    # bad/ 坏清单族同入沙盒(2026-11-26 补:此前未拷 —— task -f bad/*.ctcl 七例两侧
+    # 一致报「缺清单」,对拍空洞通过;驱动器 CTCL 诊断面从未被真比过)
+    cp -r "$ROOT/$TKFIX/bad" "$1/bad"
     if [ -n "$2" ]; then "$2" "$1"; else tk_mf "$1"; fi
 }
 tk_case() { # $1=label $2=prep(空 = 工作清单),其余 = 语料
@@ -311,6 +314,15 @@ tk_case() { # $1=label $2=prep(空 = 工作清单),其余 = 语料
     tk_side "$TK/nat" "$prep"
     (cd "$TK/nat" && CTRON_DRV_ROOT="$TK/nat" "$NAT" "$@") > "$T/nat.out" 2>&1; r2=$?
     report "$label" "$r1" "$r2"
+}
+tk_case_msg() { # $1=label $2=prep $3=期望子串(两侧输出都须含 —— 对拍只证一致,一致地报错不算过),其余 = 语料
+    label=$1; prep=$2; want=$3; shift 3
+    tk_case "$label" "$prep" "$@"
+    if grep -qF "$want" "$T/sh.out" && grep -qF "$want" "$T/nat.out"; then
+        return 0
+    fi
+    pass=$((pass-1)); fail=$((fail+1))
+    echo "    期望子串「${want}」未双侧出现: sh=[$(head -1 "$T/sh.out")] nat=[$(head -1 "$T/nat.out")]"
 }
 t16_case() { # clean --all 非项目目录 T16 状态钉:输出逐字节 + build 留/缓存净 双面
     label=$1
@@ -350,6 +362,9 @@ tk_prep_pkg() { # gate 内建回落件:项目模式(Ctron.ctcl + fmt 规范形 s
     printf 'pkg {\n    manifest_version = 1\n    name = "tkp"\n    version = "0.1.0"\n}\n' > "$1/Ctron.ctcl"
     printf 'fn main() {\n    println("hi")\n}\n' > "$1/src/main.ct"
 }
+tk_prep_repo() { # 仓库工作清单(含 P2-C W1 build 块)原样入沙盒:三实现须同样放行
+    cp "$ROOT/ctron.ctcl" "$1/ctron.ctcl"
+}
 
 echo "== task/gate/clean 臂(W4 波2 批2:本地 CTCL 读取+runner)=="
 tk_case "task 列表(名\\tdesc 全表)"                      "" task
@@ -362,6 +377,17 @@ tk_case "task -f E5050 缺 config_version(END 路径)"      "" task -f bad/e5050
 tk_case "task -f 块未闭合(END 路径)"                     "" task -f bad/unclosed.ctcl a
 tk_case "task -f E5045 重复键"                           "" task -f bad/dupkey.ctcl a
 tk_case "task 元字符拒(两条出路行)"                       "" task -f bad/meta.ctcl a
+# build 块(P2-C W1 构建配置;记录块,合法键 profile|target|emit_checks|diag_collect,
+# 值域同 tools/ctcl_ctron_schema.ctcl;runner 不消费 —— ctc.sh 读 → CTRON_CFG_*)。
+# 2026-11-26 补:三实现(sh / ps1 / 原生)曾均不识此块,`ctron gate` 自 10-31 起在
+# 解析步即 E5044 —— 全新检出(无原生件)的 CI 全量门第 0 步即停,本地因泳道各跑
+# 各的脚本而未觉。
+tk_case_msg "task 表含 build 块(仓库工作清单;记录块放行)"    tk_prep_repo "gate" task
+tk_case_msg "build 带名实参(E5041 记录块)"                  "" "E5041 build 是记录块,不带名字实参" task -f bad/build_arg.ctcl a
+tk_case_msg "build 重复(E5045 最多一个)"                    "" "E5045 build 块最多一个" task -f bad/build_dup.ctcl a
+tk_case_msg "build 未知键(E5043)"                           "" "E5043 块 build 中未知键 bogus;合法键:profile, target, emit_checks, diag_collect" task -f bad/build_key.ctcl a
+tk_case_msg "build 值域(E5046 profile)"                     "" "E5046 profile 的值应为 full|web|bare 之一" task -f bad/build_val.ctcl a
+tk_case_msg "build 类型(E5046 emit_checks)"                 "" "E5046 emit_checks 的类型应为 str" task -f bad/build_type.ctcl a
 tk_case "task 引号转义双层(CTCL+切分)"                    "" task quotes
 tk_case "task fail-stop(rc 透传+跳后续)"                 "" task failstop
 tk_case "task.cwd 正例(spawn cwd+PWD 导出)"              tk_prep_cwd task cwdr

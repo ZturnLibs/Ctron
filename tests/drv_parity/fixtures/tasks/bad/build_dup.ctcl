@@ -1,0 +1,11 @@
+ctron {
+    config_version = 1
+}
+
+build {
+    profile = "full"
+}
+
+build {
+    target = "native"
+}

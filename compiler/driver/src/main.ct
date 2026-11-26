@@ -1286,6 +1286,74 @@ fn ctcl_next_line(text: Str, start: I32) -> I32 {
     return text.len
 }
 
+// build 块键值行(P2-C W1 构建配置;记录块,runner 不消费 = ctc.sh 读 → CTRON_CFG_*)。
+// 键集/值域同 tools/ctcl_ctron_schema.ctcl;诊断逐字镜像根脚本 DRV_READER_AWK 的
+// build 臂。一错即停(ctcl_fail → 2);seen = 本块已见键(重复键 E5045)。
+fn ctcl_build_kv(nr: I32, key: Str, val: Str, seen: List[Str]) -> I32 {
+    if key != "profile" && key != "target" && key != "emit_checks" && key != "diag_collect" {
+        return ctcl_fail(nr, "E5043 块 build 中未知键 " + key + ";合法键:profile, target, emit_checks, diag_collect")
+    }
+    var si: I32 = 0
+    while si < seen.len {
+        if seen[si] == key {
+            return ctcl_fail(nr, "E5045 重复键 " + key)
+        }
+        si += 1
+    }
+    seen.push(key)
+    var notstr: Bool = false
+    if val.len == 0 {
+        notstr = true
+    } else {
+        if byte_at(val, 0) != 34 {
+            notstr = true
+        }
+    }
+    if notstr {
+        return ctcl_fail(nr, "E5046 " + key + " 的类型应为 str")
+    }
+    if !ctcl_uq_ok(val) {
+        return ctcl_fail(nr, "E5048 " + key + " 字符串非法(转义仅 \\\" 与 \\\\)")
+    }
+    var bv = ctcl_unquote(val)
+    var inDom: Bool = false
+    if key == "profile" {
+        if bv == "full" {
+            inDom = true
+        }
+        if bv == "web" {
+            inDom = true
+        }
+        if bv == "bare" {
+            inDom = true
+        }
+        if !inDom {
+            return ctcl_fail(nr, "E5046 profile 的值应为 full|web|bare 之一")
+        }
+    } else if key == "target" {
+        if bv == "native" {
+            inDom = true
+        }
+        if bv == "thumbv7em-none-eabi" {
+            inDom = true
+        }
+        if bv == "riscv32imac-unknown-none" {
+            inDom = true
+        }
+        if bv == "wasm32-unknown-unknown" {
+            inDom = true
+        }
+        if !inDom {
+            return ctcl_fail(nr, "E5046 target 的值应为 native|thumbv7em-none-eabi|riscv32imac-unknown-none|wasm32-unknown-unknown 之一")
+        }
+    } else {
+        if bv != "on" && bv != "off" {
+            return ctcl_fail(nr, "E5046 " + key + " 的值应为 on|off 之一")
+        }
+    }
+    return 0
+}
+
 fn ctcl_parse(text: Str, var recs: List[Str], var tnames: List[Str]) -> I32 {
     // 根脚本 DRV_READER_AWK 状态机逐字(:74-180)。记录流:T\t名\tdesc(关块时落,
     // = awk printf "TASK...")/ W\t名\tcwd(有 cwd 键才落)/ S\t名\t步(steps 解析
@@ -1302,6 +1370,8 @@ fn ctcl_parse(text: Str, var recs: List[Str], var tnames: List[Str]) -> I32 {
     var sawCtron: Bool = false
     var seenCfg: Bool = false
     var cfgOk: Bool = false
+    var sawBuild: Bool = false
+    var bseen = List[Str]()
     var nr: I32 = 0
     var start: I32 = 0
     while start < text.len {
@@ -1341,8 +1411,8 @@ fn ctcl_parse(text: Str, var recs: List[Str], var tnames: List[Str]) -> I32 {
                 id = byte_slice(head, 0, wcut)
                 arg = ctcl_rtrim(byte_slice(head, wcut + 1, head.len))
             }
-            if id != "ctron" && id != "task" {
-                return ctcl_fail(nr, "E5044 未知块 " + id + ";合法块:ctron, task")
+            if id != "ctron" && id != "task" && id != "build" {
+                return ctcl_fail(nr, "E5044 未知块 " + id + ";合法块:ctron, task, build")
             }
             if id == "ctron" {
                 if arg.len != 0 {
@@ -1352,6 +1422,17 @@ fn ctcl_parse(text: Str, var recs: List[Str], var tnames: List[Str]) -> I32 {
                     return ctcl_fail(nr, "E5045 ctron 块最多一个")
                 }
                 sawCtron = true
+            } else if id == "build" {
+                // P2-C W1 构建配置块:记录块,runner 不消费(ctc.sh 读 → CTRON_CFG_*);
+                // 键集/值域同 tools/ctcl_ctron_schema.ctcl。2026-11-26 补:此前不识
+                // 此块,ctron gate 在解析步即 E5044(全新检出的 CI 全量门第 0 步即停)。
+                if arg.len != 0 {
+                    return ctcl_fail(nr, "E5041 build 是记录块,不带名字实参")
+                }
+                if sawBuild {
+                    return ctcl_fail(nr, "E5045 build 块最多一个")
+                }
+                sawBuild = true
             } else {
                 if arg.len == 0 {
                     return ctcl_fail(nr, "E5041 task 是键控块:task \"名\" \{ ... }")
@@ -1447,6 +1528,12 @@ fn ctcl_parse(text: Str, var recs: List[Str], var tnames: List[Str]) -> I32 {
                     return ctcl_fail(nr, "E5050 config_version 必须为 1")
                 }
                 cfgOk = true
+            } else if blk == "build" {
+                // build 块键值行:键集/类型/值域/重复键四查(ctcl_build_kv,逐字镜像 awk)
+                var brc = ctcl_build_kv(nr, key, val, bseen)
+                if brc != 0 {
+                    return brc
+                }
             } else {
                 if key != "steps" && key != "desc" && key != "cwd" {
                     return ctcl_fail(nr, "E5043 块 task 中未知键 " + key + ";合法键:steps, desc, cwd")

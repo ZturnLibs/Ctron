@@ -99,11 +99,18 @@ function unquote(s,  body, i, c, out) {
         head = rtrim(substr(head, 1, length(head) - 1))
         if (match(head, /[ \t]/) == 0) { id = head; arg = "" }
         else { id = substr(head, 1, RSTART - 1); arg = rtrim(substr(head, RSTART + 1)) }
-        if (id != "ctron" && id != "task") fail("E5044 未知块 " id ";合法块:ctron, task")
+        if (id != "ctron" && id != "task" && id != "build") fail("E5044 未知块 " id ";合法块:ctron, task, build")
         if (id == "ctron") {
             if (arg != "") fail("E5041 ctron 是记录块,不带名字实参")
             if (saw_ctron) fail("E5045 ctron 块最多一个")
             saw_ctron = 1
+        } else if (id == "build") {
+            # P2-C W1 构建配置块:记录块,runner 不消费(ctc.sh 读 → CTRON_CFG_*);
+            # 键集/值域同 tools/ctcl_ctron_schema.ctcl。2026-11-26 补:此前不识此块,
+            # ctron gate 在解析步即 E5044(全新检出的 CI 全量门第 0 步即停)。
+            if (arg != "") fail("E5041 build 是记录块,不带名字实参")
+            if (saw_build) fail("E5045 build 块最多一个")
+            saw_build = 1
         } else {
             if (arg == "") fail("E5041 task 是键控块:task \"名\" { ... }")
             arg = unquote(arg)
@@ -139,6 +146,18 @@ function unquote(s,  body, i, c, out) {
         if (val !~ /^-?(0|[1-9][0-9]*)$/) fail("E5046 config_version 的类型应为 int")
         if (val != "1") fail("E5050 config_version 必须为 1")
         cfg_ok = 1
+        next
+    }
+    if (blk == "build") {
+        if (key != "profile" && key != "target" && key != "emit_checks" && key != "diag_collect") fail("E5043 块 build 中未知键 " key ";合法键:profile, target, emit_checks, diag_collect")
+        if (key in seen_bkey) fail("E5045 重复键 " key)
+        seen_bkey[key] = 1
+        if (substr(val, 1, 1) != "\"") fail("E5046 " key " 的类型应为 str")
+        bv = unquote(val)
+        if (!UQ_OK) fail("E5048 " key " 字符串非法(转义仅 \\\" 与 \\\\)")
+        if (key == "profile" && bv != "full" && bv != "web" && bv != "bare") fail("E5046 profile 的值应为 full|web|bare 之一")
+        if (key == "target" && bv != "native" && bv != "thumbv7em-none-eabi" && bv != "riscv32imac-unknown-none" && bv != "wasm32-unknown-unknown") fail("E5046 target 的值应为 native|thumbv7em-none-eabi|riscv32imac-unknown-none|wasm32-unknown-unknown 之一")
+        if ((key == "emit_checks" || key == "diag_collect") && bv != "on" && bv != "off") fail("E5046 " key " 的值应为 on|off 之一")
         next
     }
     if (key != "steps" && key != "desc" && key != "cwd") fail("E5043 块 task 中未知键 " key ";合法键:steps, desc, cwd")

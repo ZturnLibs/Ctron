@@ -475,6 +475,7 @@ function Dv-Unquote($s, [ref]$ok) {
 function Dv-Load($path) {
 	$tasks = @(); $names = @()
 	$blk = ''; $cur = $null; $sawCtron = $false; $seenCfg = $false; $cfgOk = $false
+	$sawBuild = $false; $bkeys = @()   # build 块(P2-C W1 构建配置)状态:最多一块 + 块内已见键
 	$ln = 0
 	try {
 		foreach ($raw in [IO.File]::ReadAllLines($path)) {
@@ -487,11 +488,17 @@ function Dv-Load($path) {
 				$head = $line.Substring(0, $line.Length - 1).TrimEnd(' ', "`t")
 				$ws = $head.IndexOfAny([char[]]@(' ', "`t"))
 				if ($ws -lt 0) { $id = $head; $arg = '' } else { $id = $head.Substring(0, $ws); $arg = $head.Substring($ws + 1).TrimEnd(' ', "`t") }
-				if ($id -ne 'ctron' -and $id -ne 'task') { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5044 未知块 $id;合法块:ctron, task") }
+				if ($id -ne 'ctron' -and $id -ne 'task' -and $id -ne 'build') { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5044 未知块 $id;合法块:ctron, task, build") }
 				if ($id -eq 'ctron') {
 					if ($arg -ne '') { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5041 ctron 是记录块,不带名字实参") }
 					if ($sawCtron) { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5045 ctron 块最多一个") }
 					$sawCtron = $true
+				} elseif ($id -eq 'build') {
+					# P2-C W1 构建配置块:记录块,runner 不消费(ctc.sh 读 → CTRON_CFG_*);键集/值域同
+					# tools/ctcl_ctron_schema.ctcl。2026-11-26 补(镜像 sh DRV_READER_AWK / 原生 ctcl_parse)
+					if ($arg -ne '') { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5041 build 是记录块,不带名字实参") }
+					if ($sawBuild) { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5045 build 块最多一个") }
+					$sawBuild = $true
 				} else {
 					if ($arg -eq '') { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5041 task 是键控块:task `"名`" { ... }") }
 					$ok = $false
@@ -527,6 +534,18 @@ function Dv-Load($path) {
 				if ($val -notmatch '^-?(0|[1-9][0-9]*)$') { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5046 config_version 的类型应为 int") }
 				if ($val -ne '1') { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5050 config_version 必须为 1") }
 				$cfgOk = $true
+				continue
+			}
+			if ($blk -eq 'build') {
+				if ($key -ne 'profile' -and $key -ne 'target' -and $key -ne 'emit_checks' -and $key -ne 'diag_collect') { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5043 块 build 中未知键 $key;合法键:profile, target, emit_checks, diag_collect") }
+				if ($bkeys -contains $key) { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5045 重复键 $key") }
+				$bkeys += $key
+				if ($val.Length -eq 0 -or $val[0] -ne '"') { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5046 $key 的类型应为 str") }
+				$ok = $false
+				$bv = Dv-Unquote $val ([ref]$ok)
+				if (-not $ok) { throw [CtronParseError]::new('ctron: ctron.ctcl:' + $ln + ': E5048 ' + $key + ' 字符串非法(转义仅 \" 与 \\)') }
+				$dom = switch ($key) { 'profile' { @('full', 'web', 'bare') } 'target' { @('native', 'thumbv7em-none-eabi', 'riscv32imac-unknown-none', 'wasm32-unknown-unknown') } default { @('on', 'off') } }
+				if ($dom -notcontains $bv) { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5046 $key 的值应为 $($dom -join '|') 之一") }
 				continue
 			}
 			if ($key -ne 'steps' -and $key -ne 'desc' -and $key -ne 'cwd') { throw [CtronParseError]::new("ctron: ctron.ctcl:${ln}: E5043 块 task 中未知键 $key;合法键:steps, desc, cwd") }
