@@ -111,11 +111,13 @@ fn eq_val(a: Val, b: Val) -> Bool {
 
 // P2-D 批③:解释面 panic 位点后缀帮手(eploc;发射面同名逻辑在 trans_expr.ploc,
 // cc_run 拼接不含 trans_*,故此独立同构副本;格式逐字一致 " (basename:line:col)")。
-// bname = 入口源文件 basename(无目录;ctron_entry 空 = 锚 ANCHORINPUT)。
+// bname = 入口源文件 basename(无目录);ctron_entry 空时回落锚 ANCHORINPUT ——
+// 该字面量在 ctc.sh seed 流程被换靶 sed 换成输入路径,回退值同走取基名
+// (2026-11-25;曾原样返回 = seed 解释与原生解释位置串形态分歧)。
 fn ebname() -> Str {
     var p = ctron_entry()
     if seq2(p, "") {
-        return "ANCHORINPUT"
+        p = "ANCHORINPUT"
     }
     var i: I32 = p.len
     while i > 0 {

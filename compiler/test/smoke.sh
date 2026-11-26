@@ -700,6 +700,18 @@ P
     else
         bad "发射器自发射失败"
     fi
+    echo "== 5b) panic 源位置双面同形(seed 解释 vs 原生解释;契约 {msg} ({basename}:{line:col}))=="
+    # 2026-11-25 回归钉:位置帮手的回退字面量 "ANCHORINPUT" 被 ctc.sh 换靶 sed 一并
+    # 换成输入全路径 → seed 流程烙全路径、原生流程烙基名,固定点 5) 因此分歧
+    "$COMP/ctc.sh" "$ROOT/tests/r4b_panic_location.panic.ct" > "$T/pl_s.out" 2>&1
+    "$COMP/bin/ctron-cc" run "$ROOT/tests/r4b_panic_location.panic.ct" > "$T/pl_n.out" 2>&1
+    if grep -q "(r4b_panic_location.panic.ct:" "$T/pl_s.out" && ! grep -q "/r4b_panic_location.panic.ct" "$T/pl_s.out" \
+       && grep -q "(r4b_panic_location.panic.ct:" "$T/pl_n.out" && ! grep -q "/r4b_panic_location.panic.ct" "$T/pl_n.out" \
+       && ! grep -q "/compiler/build/cc_run.ct" "$T/pl_n.out"; then
+        ok "panic 位置串两流程同为基名(含原生 bin 的外层自宿尾缀)"
+    else
+        bad "panic 位置串形态不一致: seed=[$(head -1 "$T/pl_s.out")] native=[$(head -1 "$T/pl_n.out")]"
+    fi
     echo "== 4c) std 全模块发射原生 parity(矩阵第三臂;known=iter 一项,余面=泛型 impl trait 面 v2;opt 已清 2026-10-23) =="
     emit_green=0
     emit_knownred=0

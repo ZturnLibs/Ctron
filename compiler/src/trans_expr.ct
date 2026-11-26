@@ -4,12 +4,14 @@
 // ct_assigned/ct_hoists 声明提升、ct_zero 零值、a_count/a_elem 定长数组码解析。
 // =====================================================================
 // P2-D 批③:panic 消息源位置后缀 —— " (basename:line:col)"。
-// bname = 发射驱动入口源文件 basename(无目录;ctron_entry 空 = 锚 ANCHORINPUT);
-// line:col = 节点尾槽 span(批①侧表/批②复合形,nline/ncol 拆取)。
+// bname = 发射驱动入口源文件 basename(无目录);ctron_entry 空时回落锚
+// ANCHORINPUT —— 该字面量在 ctc.sh seed 流程被换靶 sed 换成输入路径(曾原样
+// 返回 = 全路径,与原生 run <file> 流程的基名分歧 → 自举固定点红;2026-11-25
+// 回退值同走取基名);line:col = 节点尾槽 span(批①侧表/批②复合形,nline/ncol 拆取)。
 fn ploc_bname() -> Str {
     var p = ctron_entry()
     if p == "" {
-        return "ANCHORINPUT"
+        p = "ANCHORINPUT"
     }
     var i: I32 = p.len
     while i > 0 {
