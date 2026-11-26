@@ -133,4 +133,8 @@ impl Drop for UnixStream
 | `net_read_t(net: StdNet, fd: I64, var buf: [U8], cap: I64, timeout_ms: I64)` | `I64` | — |
 | `net_write_str(net: StdNet, fd: I64, s: Str)` | `I64` | — |
 | `net_close(net: StdNet, fd: I64)` | `I64` | — |
+| `net_hton_u16(v: I64)` | `I64` | — |
+| `net_ntoh_u16(v: I64)` | `I64` | — |
+| `net_hton_u32(v: I64)` | `I64` | — |
+| `net_ntoh_u32(v: I64)` | `I64` | — |
 

@@ -185,6 +185,8 @@ wants_gzip 收编调整(登记):绑定简判「contains gzip 且非 gzip;q=0」�
 | `dispatch_h[S](r: Router[S], method: Str, path: Str, body: Str, hdrs: List[Pair])` | `Resp` | — |
 | `dispatch[S](r: Router[S], method: Str, path: Str, body: Str)` | `Resp` | — |
 | `enc_level_default()` | `I64` | — |
+| `crc32_update(crc: I64, in: &[I64], off: I64, n: I64)` | `I64` | — |
+| `crc32(in: &[I64], n: I64)` | `I64` | — |
 | `gzip_compress(in: &[I64], in_n: I64, out: &[I64], cap: I64, level: I64)` | `I64` | — |
 | `gzip_decompress(in: &[I64], in_n: I64, out: &[I64], cap: I64)` | `I64` | — |
 | `content_coding_negotiate(accept_enc: Str, have: Str)` | `Str` | — |

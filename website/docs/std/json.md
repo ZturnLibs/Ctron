@@ -30,6 +30,9 @@ JSON parsing per RFC 8259: `parse` flattens a document into `[path, tag, value]`
 | `jget_i64(entries: List[List[Str]], path: Str)` | `Result[I64, Str]` | 类型化读取:I64(标签须 n 且整数语法形态) |
 | `jget_f64(entries: List[List[Str]], path: Str)` | `Result[F64, Str]` | 类型化读取:F64(标签须 n;量级窗/精度口径见区块头注) |
 | `jget_bool(entries: List[List[Str]], path: Str)` | `Result[Bool, Str]` | 类型化读取:Bool(标签须 b;Bool 载荷发射面绿,Result 面可用) |
+| `jget_u64(entries: List[List[Str]], path: Str)` | `Result[U64, Str]` | 类型化读取:U64(IP-23 23a;ni 域正数亦收,负/超域 → range) |
+| `jget_big(entries: List[List[Str]], path: Str)` | `Result[Str, Str]` | 原文读取(IP-23 23a;数值四态皆收,原文保真面) |
+| `jnum_of(entries: List[List[Str]], path: Str)` | `Result[JNum, Str]` | tagged 总口(IP-23 23a):JNum 四态判别(match/downcast 消费) |
 | `jv_i64(entries: List[List[Str]], path: Str, dft: I64)` | `I64` | 带默认读取:I64(错误面吞没取 dft;kind 查询用 jk_i64) |
 | `jv_f64(entries: List[List[Str]], path: Str, dft: F64)` | `F64` | 带默认读取:F64 |
 | `jv_bool(entries: List[List[Str]], path: Str, dft: Bool)` | `Bool` | 带默认读取:Bool |
@@ -47,7 +50,8 @@ JSON parsing per RFC 8259: `parse` flattens a document into `[path, tag, value]`
 | `jw_keys(entries: List[List[Str]], path: Str)` | `List[Str]` | 枚举 path 的直接成员名(对象=键序列,数组=下标序列"0","1",…) |
 | `write_json(entries: List[List[Str]])` | `Option[Str]` | 写出:entries(json.ct parse 产物)→ 紧凑 JSON 文本;空表 → None |
 | `jw_ent(path: Str, tag: Str, val: Str)` | `List[Str]` | 条目构造助手(测试与调用方共用) |
-| `num_json(v: I64)` | `Str` | ---- 标量规范形(S3 轨迹值编码;§5.1 字节级钉死;RFC 8259 标量)----<br>JSON number:整数 = 十进制原文(F64 形态未纳:浮点文本格式语言侧未钉,登记) |
+| `num_json_f64(v: F64)` | `Str` | JSON number:F64 写出规范定义处(IP-23 23a-2 钉子;to_string(F64)/println<br>浮点面三臂同形,种子 ctron_f64_to_string 即发射侧镜像) |
+| `num_json(v: I64)` | `Str` | ---- 标量规范形(S3 轨迹值编码;§5.1 字节级钉死;RFC 8259 标量)----<br>JSON number:整数 = 十进制原文;F64 = 规范机(num_json_f64,上方钉子) |
 | `bool_json(v: Bool)` | `Str` | JSON bool |
 | `str_json(v: Str)` | `Str` | JSON string:esc 已含引号(显式别名,语义锚定 S3 轨迹契约) |
 

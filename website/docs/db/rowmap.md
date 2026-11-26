@@ -116,6 +116,8 @@
 | `rm_oid(x: RmVal)` | `I64` | — |
 | `rm_coli(x: RmVal)` | `I64` | — |
 | `rm_i64(r: PgRows, row: I64, name: Str)` | `RmVal` | — |
+| `rm_is_num_oid(oid: I64)` | `I64` | 整族 ∪ numeric(1700):U64/越域整数在 PG 侧的真载体是 numeric;原文通道<br>与 derive(Json) Big=Str 字段直收裁决同构(Str 绑定零损通行) |
+| `rm_big(r: PgRows, row: I64, name: Str)` | `RmVal` | 原文绑定:数值列(整族 ∪ numeric 1700;ni/nu/nb 域皆可)→ RmVal.s = 单元<br>原文。自持族门(rmx_gate 不识 numeric;rm_i64/rm_str 等对 numeric 仍<br>kind 2,类型面 fail-closed 不变);形态校验 fail-closed(可选负号 +<br>全数字,非数值形态 → kind 5);调用方以 Str 字段直收,域语义(I64/U64/Big)<br>由消费侧 std/json 分类管线裁定(jget_big 同构)。 |
 | `rm_f64(r: PgRows, row: I64, name: Str)` | `RmVal` | — |
 | `rm_bool(r: PgRows, row: I64, name: Str)` | `RmVal` | — |
 | `rm_str(r: PgRows, row: I64, name: Str)` | `RmVal` | — |

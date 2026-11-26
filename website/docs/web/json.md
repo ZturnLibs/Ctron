@@ -72,6 +72,8 @@ i64 走 jget_i64 Result 面(T53 数值保真闭环后为 std/json 唯一 pub 数
 | `jd_str(d: JDoc, path: Str)` | `Option[Str]` | 取值:标签须 s;缺路径/null/类型不符 → None |
 | `jd_bool(d: JDoc, path: Str)` | `Option[Bool]` | 取值:标签须 b 且原文 true/false;缺路径/null/类型不符 → None |
 | `jd_i64(d: JDoc, path: Str)` | `Option[I64]` | 取值:标签须 n 且整数语法形态(小数/指数/越 I64 域 → None;经 jget_i64 Result 面) |
+| `jd_u64(d: JDoc, path: Str)` | `Option[U64]` | 取值:U64 全域(nu;jget_u64 域口径 = nu + ni 正数,负域/越 2^64-1 → None)。<br>IP-23 23b(§12.6):数值保真面从 I64 单缝扩 U64——UInt 载荷经 Option 读回不截断。 |
+| `jd_big(d: JDoc, path: Str)` | `Option[Str]` | 取值:数值原文直收(jget_big 四态皆可:ni/nu/nb/nf 原文保真;缺路径/null/<br>非数 → None)。越域整数(U64 之上)经 Str 载荷零损通行,与 derive(Json)<br>Big=Str 字段直收裁决同构(IP-23 23b)。 |
 | `jd_str_between(d: JDoc, path: Str, lo: I32, hi: I32)` | `Option[Str]` | 校验族:取值 + 域检查一体,Option 回形(闭区间 [lo, hi],双界含)。<br>jd_str_between 长度为字节长(同仓 Str.len 全 byte 口径——"中文" 记 6)。 |
 | `jd_i64_between(d: JDoc, path: Str, lo: I64, hi: I64)` | `Option[I64]` | — |
 | `html(body: Str)` | `Resp` | — |

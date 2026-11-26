@@ -92,6 +92,12 @@ fd 出参标量胞(与 pg.ct PgCell64 同布局异名——同名 decl 合并 E5
 | `var used` | `I64` |
 | `var next` | `I64` |
 
+**struct Box64**
+
+| Field | Type |
+|---|---|
+| `var v` | `I64` |
+
 ## pub fn
 
 | Signature | Returns | Description |
@@ -121,6 +127,10 @@ fd 出参标量胞(与 pg.ct PgCell64 同布局异名——同名 decl 合并 E5
 | `redis_send_cmd_fd(fd: I64, msg: List[I32], scr: &[I64])` | `I64` | 命令发送(fd 源;List[I32] → lane 暂存后整发;0 成 / -1 败)。垫片<br>write 为 send-all 整长 chunk 循环(ctron_dbpg.c 同口径,无静默截断)。 |
 | `redis_fd_close(fd: I64)` | `I64` | — |
 | `redis_fd_last_errno()` | `I64` | — |
+| `redis_fd_socketpair(out: &[I64])` | `I64` | socketpair 夹具面(S1:net 地板 AF_UNIX 流对,双端 O_NONBLOCK 原样;<br>out = I64[] lane 双 fd 槽,x_rd_fd 同口径) |
+| `redis_fd_connect(host: Str, port: I64)` | `I64` | 真源 TCP 建连(P5-F nightly;host = ASCII 串;阻塞 connect;无超时面<br>v0 登记不变。S1:dbredis lane 形 host 删,直通 net 地板) |
+| `redis_fd_write(fd: I64, lane: &[I64], n: I64)` | `I64` | 夹具直呼面(S1:x_rd_fd 原直呼 ctron_dbredis_* extern 的 lane 形;<br>read 保留 -2 would-block 面,x_rd_fd incomplete 续读钉不变) |
+| `redis_fd_read(fd: I64, lane: &[I64], cap: I64)` | `I64` | — |
 | `redis_cmd(parts: List[Str])` | `List[I32]` | 通用命令装配:*N\r\n + 逐参 $len\r\n arg\r\n(参数计数 i16 域门先于<br>计数装配,(i) 族同门;空参表 = 空表 fail-closed——RESP 命令至少 1 参) |
 | `redis_get_cmd(key: Str)` | `List[I32]` | GET key → *2\r\n$3\r\nGET\r\n$len\r\nkey\r\n |
 | `redis_set_cmd(key: Str, val: Str)` | `List[I32]` | SET key val → *3 |

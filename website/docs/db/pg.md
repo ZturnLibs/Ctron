@@ -144,10 +144,20 @@ ErrorResponse/NoticeResponse 字段面:code(1B) + cstring 值,0x00 终。<br>S/V
 | `var cfinal` | `Str` |
 | `var sigok` | `I64` |
 
+**struct Box64**
+
+| Field | Type |
+|---|---|
+| `var v` | `I64` |
+
 ## pub fn
 
 | Signature | Returns | Description |
 |---|---|---|
+| `pg_fd_connect(host: Str, port: I64)` | `I64` | 真源 TCP 建连(P5-F nightly;host = ASCII 字节 lane,如 "127.0.0.1";<br>阻塞 connect,无超时面 v0 登记;fd 或 -1,errno 槽同口径)<br>建连(P5-F nightly;host = ASCII 串;阻塞 connect,无超时面 v0 登记;<br>fd 或 -1,errno 槽同口径) |
+| `pg_fd_socketpair(out: &[I64])` | `I64` | socketpair 夹具面(S1:net 地板 AF_UNIX 流对,双端 O_NONBLOCK 原样) |
+| `pg_fd_write(fd: I64, lane: &[I64], n: I64)` | `I64` | 夹具直呼面(S1:x_fd_pipeline/x_pg_fd_session 原直呼 ctron_dbpg_*<br>extern 的 lane 形;包装换源不改调用形) |
+| `pg_fd_read(fd: I64, lane: &[I64], cap: I64)` | `I64` | — |
 | `pg_frame_max()` | `I64` | — |
 | `pg_err_frame()` | `I64` | — |
 | `pg_err_proto()` | `I64` | — |
@@ -249,5 +259,6 @@ ErrorResponse/NoticeResponse 字段面:code(1B) + cstring 值,0x00 终。<br>S/V
 | `hmac_sha256(key: List[I32], msg: List[I32])` | `List[I32]` | — |
 | `pbkdf2_sha256(pass: List[I32], salt: List[I32], iters: I32, dklen: I32)` | `List[I32]` | — |
 | `bytes_to_hex(b: List[I32])` | `Str` | — |
+| `hex_valid(s: Str)` | `Bool` | — |
 | `bytes_from_hex(s: Str)` | `List[I32]` | — |
 

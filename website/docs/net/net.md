@@ -109,6 +109,7 @@ impl Drop for UnixStream
 | `net_tcp_accept(net: StdNet, lfd: I64, out_fd: Box[Box64])` | `I64` | 接受连接;垫片在出口开 NODELAY+KEEPALIVE(§11.3)。构造 TcpStream { fd: out_fd.v }。 |
 | `net_tcp_accept_t(net: StdNet, lfd: I64, timeout_ms: I64, out_fd: Box[Box64])` | `I64` | 带超时 accept(内化批4;daemon 服务臂拍醒语义):rc 0 = 受理(fd 经 out_fd);<br>-2 = 超时无连接/被信号打断(与 loom 传承 accept_wait 同值域);-1 = 失败。 |
 | `net_tcp_connect(net: StdNet, host: Str, port: I64, out_fd: Box[Box64])` | `I64` | 连接;NODELAY+KEEPALIVE 默认开(§11.3)。 |
+| `net_tcp_connect_t(net: StdNet, host: Str, port: I64, timeout_ms: I64, out_fd: Box[Box64])` | `I64` | 带超时 connect(局域网发现批次;accept_t 对偶,补裸 connect 无超时缺口):<br>垫片非阻塞 connect + poll 可写 + SO_ERROR 判定;出口恢复阻塞属性。<br>rc 值域与 net_tcp_accept_t 同形:0 = 已连接(fd 经 out_fd);-2 = 超时;<br>-1 = 失败(last_net_error 取详情)。timeout_ms &lt;= 0 同 poll 口径 = 永久。 |
 | `net_read_t(net: StdNet, fd: I64, var buf: [U8], cap: I64, timeout_ms: I64)` | `I64` | 带超时读:timeout_ms &lt;= 0 永久阻塞;&gt;0 到时置 ETIMEDOUT 返 -1。<br>&gt;0 n / 0 eof / &lt;0 err;字节直入视图(无单次上限,头注⑤)。 |
 | `net_write(net: StdNet, fd: I64, var buf: [U8], n: I64)` | `I64` | — |
 | `net_write_str(net: StdNet, fd: I64, s: Str)` | `I64` | — |
@@ -120,6 +121,13 @@ impl Drop for UnixStream
 | `net_udp_bind(net: StdNet, fd: I64, host: Str, port: I64, out_port: Box[Box64])` | `I64` | UDP 绑定并回读实际端口(:0);自发自收回环的前置。 |
 | `net_udp_sendto(net: StdNet, fd: I64, host: Str, port: I64, var buf: [U8], n: I64)` | `I64` | — |
 | `net_udp_recvfrom(net: StdNet, fd: I64, var buf: [U8], cap: I64, timeout_ms: I64)` | `I64` | 单报文以视图容量为上限(头注⑤)。 |
+| `net_udp_set_broadcast(net: StdNet, fd: I64, on: I64)` | `I64` | UDP 定向广播开关(SO_BROADCAST):on != 0 开 / == 0 关;开后方可向<br>255.255.255.255 定向广播(POSIX/winsock 双分支同形)。rc 0 成 / &lt;0 败。 |
+| `net_udp_recvfrom_from(net: StdNet, fd: I64, var buf: [U8], cap: I64, timeout_ms: I64)` | `I64` | 带回对端地址的单报文接收(recvfrom 的地址面;原函数保留不动):接收/超时<br>口径与 net_udp_recvfrom 逐条相同(&gt;0 n / 到时 -1 槽 ETIMEDOUT / 错 -1);<br>对端地址文本经 net_udp_last_peer 取(C-owned TLS → str_from_c 深拷)。<br>成功接收后应立即取(peer 槽随下一次调用失效)。 |
+| `net_udp_last_peer(net: StdNet)` | `Str` | recvfrom_from 的对偶读面:最近一次成功接收的对端 "host:port" 文本<br>(v6 为 "[host]:port",与 addr_host/addr_port 解析约定同形;无对端/失败 "")。 |
+| `net_hton_u16(v: I64)` | `I64` | ---- 字节序(网络序 = 大端;纯 Ctron 通用件,局域网发现批次) ----<br>大端编解码:net_hton_u32(0x01020304) = 0x04030201 —— 小端主机(本仓全部<br>现役靶:darwin/linux/windows)上其结果值的内存布局即线序字节 01 02 03 04;<br>net_ntoh 为逆变换,与 hton 同式(自逆)。移位+掩码(bit.* 命名空间,§4.5)<br>实现:结果只由数值决定,无需探测主机字节序。入参取无符号值域<br>(u32: [0, 2^32) / u16: [0, 2^16)),负值语义不担保。 |
+| `net_ntoh_u16(v: I64)` | `I64` | — |
+| `net_hton_u32(v: I64)` | `I64` | — |
+| `net_ntoh_u32(v: I64)` | `I64` | — |
 | `net_unix_listen(net: StdNet, path: Str, out_fd: Box[Box64])` | `I64` | ---- AF_UNIX(P3-E;与 TCP 三件同形,差异点) ----<br>SO_REUSEADDR 不开(AF_UNIX 无端口占用语义;tcp_defaults 的 NODELAY 断言面<br>同理不适用 —— AF_UNIX 无 NODELAY 可言);垫片 bind 前 unlink 清陈旧 socket<br>文件(后绑者赢);路径上限 104(darwin sun_path 104 / linux 108 取 min,含<br>NUL):超限 EINVAL。accept/connect 阻塞形态与 tcp 同(无新停车点)。 |
 | `net_unix_accept(net: StdNet, lfd: I64, out_fd: Box[Box64])` | `I64` | — |
 | `net_unix_connect(net: StdNet, path: Str, out_fd: Box[Box64])` | `I64` | — |
