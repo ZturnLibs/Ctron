@@ -1,0 +1,5 @@
+use app.a.{ pair, via_helper }
+
+pub fn rb() -> I32 {
+    return pair() + via_helper(1)
+}

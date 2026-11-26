@@ -1,0 +1,15 @@
+// 重入捎带的同名声明与入口自定义声明内容不同 = 真撞名,必须仍然拦截:
+// b 的代码里的 pair 指 a.pair,平面视图里却只能绑定到入口自己的 pair
+//@ fail: E5030
+//@ msg: pair
+
+use app.a.{ via_helper }
+use app.b.{ rb }
+
+fn pair() -> I32 {
+    return 9
+}
+
+fn main() {
+    println("x")
+}

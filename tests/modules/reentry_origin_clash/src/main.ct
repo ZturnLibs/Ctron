@@ -1,0 +1,11 @@
+// 重入捎带的同名声明来自另一个模块(内容不同)= 真撞名,必须仍然拦截:
+// 视图里是 x.pair,b 的代码里的 pair 指 a.pair —— 平面视图装不下两份
+//@ fail: E5030
+//@ msg: pair
+
+use app.x.{ pair, fx }
+use app.b.{ rb }
+
+fn main() {
+    println((pair() + fx()).to_string())
+}

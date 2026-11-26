@@ -1,0 +1,9 @@
+// 顶层重入(2026-11-25):同模块第二条 use 补并缺失符号;已随首并带入的
+// 非具名声明(test 块)不得重复捎带(decls 锁 4,见 compiler/test/smoke.sh 3d2)
+use app.a.{ pair }
+use app.a.{ extra }
+
+test "顶层重入:同模块第二条 use 补并" {
+    assert_eq(pair(), 1)
+    assert_eq(extra(1), 2)
+}

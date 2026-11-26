@@ -1,0 +1,12 @@
+// 被中间模块 b 重入的模块
+pub fn pair() -> I32 {
+    return 1
+}
+
+pub fn via_helper(n: I32) -> I32 {
+    return helper(n) + 1
+}
+
+fn helper(n: I32) -> I32 {
+    return n * 2
+}

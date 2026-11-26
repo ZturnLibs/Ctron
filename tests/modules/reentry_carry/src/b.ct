@@ -1,0 +1,6 @@
+// 中间模块:向 a 请求 via_helper(账上缺失)→ 触发 a 的嵌套重入
+use app.a.{ pair, via_helper }
+
+pub fn rb() -> I32 {
+    return pair() + via_helper(1)
+}

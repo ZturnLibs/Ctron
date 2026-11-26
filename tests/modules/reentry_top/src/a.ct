@@ -1,0 +1,12 @@
+// 入口对同一模块写两条 use:第二条走顶层重入补并
+pub fn pair() -> I32 {
+    return 1
+}
+
+pub fn extra(n: I32) -> I32 {
+    return n + 1
+}
+
+test "a inner" {
+    assert_eq(extra(1), 2)
+}

@@ -611,13 +611,40 @@ fn pkg_load_use_t(file: List[Str], dir: Str, stack: List[Str], diags: List[Str],
     var unit = List[Str]()
     var f2: List[Str] = gui_ds_premerge(file, unit)
     var msyms = List[Str]()
-    var out = pkg_load_use_done(f2, dir, stack, List[Str](), diags, true, misses, prof, "", msyms)
+    var out = pkg_load_use_done(f2, dir, stack, List[Str](), diags, true, misses, prof, "", msyms, List[Str]())
     return gui_ds_postmerge(out, unit, diags)
 }
 
 // 名槽 decl 种类(与 E5030 dup 检查面一致;spec §4.2 P1b 精化口径)
 fn pkg_is_named_kind(t: Str) -> Bool {
     return or2(t == "Fn", or2(t == "FnPub", or2(t == "Struct", or2(t == "Enum", or2(t == "FnExt", or2(t == "Static", t == "Const"))))))
+}
+
+// 两个节点是否逐槽等价:from = 起比槽(顶层 decl 传 2 = 跳过名槽——别名改写各站
+// 各异;子节点递归传 1)。S 槽串比,N 槽递归,形态表驱动;形态不认/槽非法/超深 →
+// false(保守 = 仍按撞名拦;不走 ast_emit_node,其失败路径会打印 E-AST-* 诊断)
+fn pkg_decl_same(a: List[Str], b: List[Str], from: I32, ktags: List[Str], kshapes: List[Str], depth: I32) -> Bool {
+    if depth > 4000 { return false }
+    if or2(a.len != b.len, a[0] != b[0]) { return false }
+    var sh = ast_shape(ktags, kshapes, a[0])
+    if sh == "?" { return false }
+    var i: I32 = from
+    while i < a.len {
+        var kind = ast_kind(sh, i - 1)
+        if kind == "S" {
+            if a[i] != b[i] { return false }
+        } else {
+            if kind == "N" {
+                if !pkg_decl_same(a[i], b[i], 1, ktags, kshapes, depth + 1) {
+                    return false
+                }
+            } else {
+                return false
+            }
+        }
+        i += 1
+    }
+    return true
 }
 
 // 引用收集:形态表驱动,S 槽收集、N 槽递归;未知标签/非法槽/超深 → false(保守信号)
@@ -645,7 +672,9 @@ fn pkg_refs_walk(d: List[Str], ktags: List[Str], kshapes: List[Str], acc: List[S
 // done = 已合并模块路径集(菱形/共享依赖第二次引用时整体跳过,防 E5030 重复;
 // stack 只承"展开中"路径 —— 菱形非环,E5020 仅真环)
 // ameta = 当前展开模块的工件 meta 路径(D8-2 L2 消费方身份;"" = 源码模块,无记录面)
-fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str], diags: List[Str], top: Bool, misses: List[Str], prof: Str, ameta: Str, msyms: List[Str]) -> List[Str] {
+// rsyms = 嵌套重入(redo && !top)补并时捎带的具名声明名账 —— 顶层合并对其中
+// 与视图既有者逐槽一致的同名声明按"同一定义再次相遇"跳过(2026-11-25;此前误报 E5030)
+fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str], diags: List[Str], top: Bool, misses: List[Str], prof: Str, ameta: Str, msyms: List[Str], rsyms: List[Str]) -> List[Str] {
     pkg_check_caps(file, dir, diags)
     if diags.len > 0 {
         return file
@@ -1009,7 +1038,7 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                             estack = List[Str]()
                             estack.push(mpath)
                         }
-                        mf = pkg_load_use_done(mf, dir, estack, edone, diags, false, misses, prof, next_meta, msyms)
+                        mf = pkg_load_use_done(mf, dir, estack, edone, diags, false, misses, prof, next_meta, msyms, rsyms)
                         if diags.len > 0 {
                             return out
                         }
@@ -1174,6 +1203,12 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                                         continue
                                     }
                                 }
+                                if redo && !named {
+                                    // 重入:非具名声明(Test/Impl/Trait…)已随首并带入视图 →
+                                    // 不重复捎带(隔离重展开会把依赖整模块再并入,同此)
+                                    j4 += 1
+                                    continue
+                                }
                                 // 改用名:本 Use 交替对里 name→alias 的映射(spec §4.3)
                                 var rn = ""
                                 var k6: I32 = 0
@@ -1186,12 +1221,14 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                                 var iname = mf[j4][1]
                                 if rn != "" { iname = rn }
                                 var dup = false
+                                var prior = List[Str]()
                                 var j5: I32 = 1
                                 while j5 < merged.len {
                                     if pkg_is_named_kind(merged[j5][0]) {
                                         if pkg_is_named_kind(mf[j4][0]) {
                                             if mf[j4].len > 1 && merged[j5].len > 1 && merged[j5][1] == iname {
                                                 dup = true
+                                                prior = merged[j5]
                                             }
                                         }
                                     }
@@ -1208,9 +1245,19 @@ fn pkg_load_use_done(file: List[Str], dir: Str, stack: List[Str], done: List[Str
                                         j4 += 1
                                         continue
                                     }
+                                    // 嵌套重入捎带(rsyms 在册)且名槽外逐槽一致 = 同一定义绕路
+                                    // 再入,非撞名 → 跳过(内容不同 = 另一来源/入口自定义,仍拦)
+                                    if in_list(rsyms, iname) && pkg_decl_same(prior, mf[j4], 2, ktags, kshapes, 0) {
+                                        j4 += 1
+                                        continue
+                                    }
                                     // E5030:同名 decl 曾"首个胜出"静默遮蔽 → 现拦截(报名用改用名)
                                     diag1(diags, "E5030", "", iname)
                                     return out
+                                }
+                                if redo && !top {
+                                    // 嵌套重入捎带入账:回到顶层合并时供 dup 裁决查
+                                    rsyms.push(iname)
                                 }
                                 if rn != "" {
                                     // 合并期重命名:浅拷贝顶层槽,子节点共享(spec §4.3)

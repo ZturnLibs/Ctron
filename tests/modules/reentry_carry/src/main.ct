@@ -1,0 +1,10 @@
+// done 重入回归钉(2026-11-25):入口先并 a.pair,再并 b —— b 展开时重入 a 补并
+// via_helper,曾把已并入视图的 pair 当"新撞名"误报 E5030(库内 web 域包 8/10 文件
+// check 红、参考页生成中断的根因)。同一份定义再次相遇不是撞名。
+use app.a.{ pair }
+use app.b.{ rb }
+
+test "done 重入:缺失补并不把已并符号当新撞名" {
+    assert_eq(pair(), 1)
+    assert_eq(rb(), 4)
+}

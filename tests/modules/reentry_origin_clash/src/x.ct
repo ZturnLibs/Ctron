@@ -1,0 +1,8 @@
+// 另一个来源的同名声明(内容与 a.pair 不同)
+pub fn pair() -> I32 {
+    return 7
+}
+
+pub fn fx() -> I32 {
+    return 7
+}

@@ -1,0 +1,20 @@
+// 被入口先并、再经 b 重入的模块:pair(入口已并)+ via_helper(请求账上缺失 → 补并)
+pub fn pair() -> I32 {
+    return 1
+}
+
+pub fn via_helper(n: I32) -> I32 {
+    return helper(n) + 1
+}
+
+fn helper(n: I32) -> I32 {
+    return n * 2
+}
+
+pub fn unused() -> I32 {
+    return 0
+}
+
+test "a inner" {
+    assert_eq(via_helper(2), 5)
+}
