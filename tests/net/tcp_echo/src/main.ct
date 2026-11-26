@@ -4,7 +4,8 @@
 // 句柄 Drop RAII(作用域出口关 fd)与显式 close + fd=-1 纪律(置 -1 后 Drop 跳过)。
 // 形态(发射面事实,Task 6 登记):门面 = 免费函数 + net: StdNet 按值首参
 // (trait 方法不发射;&Net 引用形参发射即坏);错误面 = rc(0 成/<0 败)+
-// last_net_error();缓冲 = &I64[] 视图 lane(每字节一条 lane)。
+// last_net_error();缓冲 = U8 字节道(缓冲门面 2026-10-08 平面化为 var buf: U8[],
+// 每元素一字节;夹具 2026-11-26 随迁,此前 I64[N] lane 形致 buf[0] 取到位型)。
 // CI 纪律:仅回环、:0、零外联(tests/net/run.sh 同口径)。
 use net.{Net_probe, net_tcp_accept_t, addr_format, addr_host, addr_port, last_net_error, net_close, net_get_nodelay, net_read_t, net_resolve, net_resolve_all, net_set_nodelay, net_shutdown_write, net_tcp_accept, net_tcp_connect, net_tcp_listen, net_tcp_sockname, net_udp_bind, net_udp_recvfrom, net_udp_sendto, net_udp_socket, net_write, net_write_str, TcpListener, TcpStream, UdpSock}
 use net.bind.{ctron_net_last_errno, Box64}
@@ -49,7 +50,7 @@ test "tcp echo roundtrip + udp self-talk" {
     assert(net_get_nodelay(net, srv.fd) == 1)
 
     // ---- poll 超时门:静默 socket 50ms 到期 → rc<0 + errno 置位 ----
-    var buf: I64[4096] = [0, 0, 0, 0]
+    var buf: U8[4096] = [0] ** 4096
     let tr = net_read_t(net, srv.fd, buf, 4096, 50)
     assert(tr < 0)
     assert(ctron_net_last_errno() != 0)
@@ -96,7 +97,7 @@ test "tcp echo roundtrip + udp self-talk" {
     assert(rcub == 0)
     assert(uport_box.v > 0)
     var ud = UdpSock { fd: ufd_box.v }
-    var ubuf: I64[2048] = [0, 0]
+    var ubuf: U8[2048] = [0] ** 2048
     ubuf[0] = 104
     ubuf[1] = 105
     let us = net_udp_sendto(net, ud.fd, "127.0.0.1", uport_box.v, ubuf, 2)

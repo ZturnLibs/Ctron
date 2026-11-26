@@ -37,7 +37,7 @@ test "udp loopback roundtrip, two sockets both directions" {
     let b = UdpSock { fd: bfd_box.v }
 
     // ---- A→B:'h''i' 2 字节 → B 清零后按字节收回 ----
-    var ab: I64[64] = [0, 0]
+    var ab: U8[64] = [0] ** 64
     ab[0] = 104
     ab[1] = 105
     let s1 = net_udp_sendto(net, a.fd, "127.0.0.1", bport_box.v, ab, 2)
@@ -50,7 +50,7 @@ test "udp loopback roundtrip, two sockets both directions" {
     assert(ab[1] == 105)
 
     // ---- B→A:'o''k' 2 字节 → A 清零后按字节收回(真"往返") ----
-    var ba: I64[64] = [0, 0]
+    var ba: U8[64] = [0] ** 64
     ba[0] = 111
     ba[1] = 107
     let s2 = net_udp_sendto(net, b.fd, "127.0.0.1", aport_box.v, ba, 2)

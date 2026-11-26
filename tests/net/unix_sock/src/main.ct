@@ -63,7 +63,7 @@ test "unix socket roundtrip + half-close + stale-file rebind" {
     let srv = UnixStream { fd: afd_box.v }
 
     // ---- 双向读写回环 ----
-    var buf: I64[4096] = [0, 0, 0, 0]
+    var buf: U8[4096] = [0] ** 4096
     assert(net_write_str(net, st.fd, "ping") == 4)
     let rn = net_read_t(net, srv.fd, buf, 4096, 1000)
     assert(rn == 4)

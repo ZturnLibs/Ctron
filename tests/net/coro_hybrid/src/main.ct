@@ -31,7 +31,7 @@ test "hybrid bare-plane: tcp roundtrip + timeout gate + half-close + sleep + udp
     let srv = TcpStream { fd: afd_box.v }
 
     // ---- poll 超时门:静默 socket 50ms 到期 → rc<0 + errno 置位(P1 门) ----
-    var buf: I64[4096] = [0, 0, 0, 0]
+    var buf: U8[4096] = [0] ** 4096
     let tr = net_read_t(net, srv.fd, buf, 4096, 50)
     assert(tr < 0)
     assert(ctron_net_last_errno() != 0)
@@ -67,7 +67,7 @@ test "hybrid bare-plane: tcp roundtrip + timeout gate + half-close + sleep + udp
     assert(net_udp_bind(net, ufd_box.v, "127.0.0.1", 0, uport_box) == 0)
     assert(uport_box.v > 0)
     var ud = UdpSock { fd: ufd_box.v }
-    var ubuf: I64[2048] = [0, 0]
+    var ubuf: U8[2048] = [0] ** 2048
     ubuf[0] = 117
     ubuf[1] = 100
     let us = net_udp_sendto(net, ud.fd, "127.0.0.1", uport_box.v, ubuf, 2)

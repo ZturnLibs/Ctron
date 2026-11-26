@@ -38,15 +38,17 @@
 
 #define BIG_N (256 * 1024)
 
-/* net 垫片面(ctron_net.c;ct_view6 声明序布局镜像,tests/ffi/repr_c 先例) */
-typedef struct { int64_t* d; int64_t n; } ct_view6;
+/* net 垫片面(ctron_net.c;ct_view_w8u 声明序布局镜像:缓冲 = U8 字节道,2026-10-08
+ * 缓冲面平面化起每元素一字节;旧 ct_view6 int64 lane 模型未随迁 = T1 字节内容错,
+ * 2026-11-26 随夹具同批迁移) */
+typedef struct { uint8_t* d; int64_t n; } ct_view_w8u;
 int64_t ctron_net_now_ns(void);
 void    ctron_net_sleep_ms(int64_t ms);
 int64_t ctron_net_last_errno(void);
 const char* ctron_net_resolve_first(const char* host);
-int64_t ctron_net_read_t(int64_t fd, ct_view6 buf, int64_t cap, int64_t timeout_ms);
-int64_t ctron_net_write(int64_t fd, ct_view6 buf, int64_t n);
-int64_t ctron_net_udp_recvfrom(int64_t fd, ct_view6 buf, int64_t cap, int64_t timeout_ms);
+int64_t ctron_net_read_t(int64_t fd, ct_view_w8u buf, int64_t cap, int64_t timeout_ms);
+int64_t ctron_net_write(int64_t fd, ct_view_w8u buf, int64_t n);
+int64_t ctron_net_udp_recvfrom(int64_t fd, ct_view_w8u buf, int64_t cap, int64_t timeout_ms);
 
 #define CHECK(cond, msg) do { \
     if (!(cond)) { \
@@ -106,7 +108,7 @@ typedef struct {                  /* 读面(read_t / udp_recvfrom 共用载荷) 
     int      cap;
     int      timeout;              /* <0 永久 */
     int      is_udp;
-    int64_t *lane;
+    uint8_t *lane;
     int64_t  rc;
     int64_t  eno;                 /* 协程上下文内取 TLS errno 槽 */
     uint64_t t0;
@@ -116,7 +118,7 @@ typedef struct {                  /* 读面(read_t / udp_recvfrom 共用载荷) 
 static void read_body(void *p)
 {
     rctx_t *c = (rctx_t*)p;
-    ct_view6 v = { c->lane, c->cap };
+    ct_view_w8u v = { c->lane, c->cap };
     c->t0 = now_ns();
     c->rc = c->is_udp
         ? ctron_net_udp_recvfrom(c->fd, v, c->cap, c->timeout)
@@ -125,7 +127,7 @@ static void read_body(void *p)
     c->elapsed = now_ns() - c->t0;
 }
 
-static int64_t g_big[BIG_N];      /* 写压载荷:(i*7+13)&0xff */
+static uint8_t g_big[BIG_N];      /* 写压载荷:(i*7+13)&0xff */
 typedef struct {
     int      fd;
     int64_t  rc;
@@ -134,7 +136,7 @@ typedef struct {
 static void write_body(void *p)
 {
     wctx_t *w = (wctx_t*)p;
-    ct_view6 v = { g_big, BIG_N };
+    ct_view_w8u v = { g_big, BIG_N };
     uint64_t t0 = now_ns();
     w->rc = ctron_net_write(w->fd, v, BIG_N);
     w->elapsed = now_ns() - t0;
@@ -192,8 +194,8 @@ int main(void)
 
         {
             int sp[2];
-            static int64_t lane[64];
-            ct_view6 v = { lane, 64 };
+            static uint8_t lane[64];
+            ct_view_w8u v = { lane, 64 };
             int64_t rc;
             CHECK(socketpair(AF_UNIX, SOCK_STREAM, 0, sp) == 0, "T0: socketpair");
             set_nonblock(sp[0]);
@@ -226,7 +228,7 @@ int main(void)
     /* ---- T1:停车点①——协程 read_t 永久,写端延迟 80ms 唤醒 ---- */
     {
         int sp[2];
-        static int64_t lane[64];
+        static uint8_t lane[64];
         static rctx_t A;
         memset(&A, 0, sizeof A);
         A.fd = 0; A.cap = 64; A.timeout = -1; A.lane = lane;
@@ -254,7 +256,7 @@ int main(void)
     /* ---- T2:停车点①超时——协程 read_t 60ms 静默 → ETIMEDOUT ---- */
     {
         int sp[2];
-        static int64_t lane[64];
+        static uint8_t lane[64];
         static rctx_t B;
         memset(&B, 0, sizeof B);
         B.fd = 0; B.cap = 64; B.timeout = 60; B.lane = lane;
@@ -335,7 +337,7 @@ int main(void)
         struct sockaddr_in a;
         socklen_t alen;
         uint16_t port;
-        static int64_t ulane[64];
+        static uint8_t ulane[64];
         static rctx_t U;
         int t_before = ticks();
         CHECK(ufd >= 0, "T5: udp socket");
