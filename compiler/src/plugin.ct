@@ -511,7 +511,12 @@ fn pl_lint_fn(d: List[Str]) -> Val {
     lf.push("name")
     lf.push(v_box(vS(d[1])))
     lf.push("line")
-    lf.push(v_box(vI(dvi(nline(d)))))
+    // v1 契约恒 0(pkgs/ctron/plugin.ct LintFn 注:fn 节点无行号戳,诊断以 msg 携 fn 名
+    // 定位)。2026-11-26 修:此前此处调 nline(d) —— fn 节点形态 SNNNNS* 的末槽是函数体
+    // 节点槽,未打戳时末槽即节点,nline 对非串末槽 byte_at = 非法访问:seed 路径自
+    // 10-05(byte_at 校验)起响亮中止「byte_at 目标需 Str」;原生路径读垃圾 → 行位随机、
+    // 布局敏感间歇「byte_slice: range out of bounds」(插件阶梯 lint_demo / 确定性双跑红)。
+    lf.push(v_box(vI(0)))
     lf.push("params")
     lf.push(v_box(cx_val(ps)))
     lf.push("ret")
