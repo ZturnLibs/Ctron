@@ -1,0 +1,61 @@
+// fx_or_f64 —— Result[F64, Str].or(默认值) 载荷回读 + 默认值直通(双臂逐字一致)
+// 2026-11-26 回归钉:发射面 .or 的 R 码臂曾以 (ct_i)(long) 读槽 —— F64 是按位型
+// 入槽的(ct_res_wrap 写侧 union 双关),读出即位型整数值再数值转 double,
+// Result[F64,_].or(dft) 全域错值(std.json jv_f64 → http.frm.body bj_f64 五例携带红);
+// 默认值亦曾被 (long) 截断。I64 两项 = 4138c7e6 修复的回归钉。
+fn half(ok: Bool) -> Result[F64, Str] {
+    if ok {
+        return Ok(0.75)
+    }
+    return Err("missing")
+}
+
+fn big(ok: Bool) -> Result[I64, Str] {
+    if ok {
+        return Ok(9223372036854775807)
+    }
+    return Err("missing")
+}
+
+fn main() -> I32 {
+    var nbad: I32 = 0
+    // F64:Ok 载荷(字面量默认 / 变量默认 / 非零默认不应盖掉载荷)
+    let a = half(true).or(0.0)
+    if a != 0.75 {
+        nbad += 1
+    }
+    let b = half(true).or(9.5)
+    if b != 0.75 {
+        nbad += 1
+    }
+    // F64:Err → 默认值直通(非整数值 / 变量形 / 内联链)
+    let c = half(false).or(1.5)
+    if c != 1.5 {
+        nbad += 1
+    }
+    var dflt: F64 = 2.25
+    let d = half(false).or(dflt)
+    if d != 2.25 {
+        nbad += 1
+    }
+    let e = half(false).or(3.5)
+    if e != 3.5 {
+        nbad += 1
+    }
+    // 嵌套 or 链(_co 名唯一化面)
+    let f = half(false).or(half(true).or(0.0))
+    if f != 0.75 {
+        nbad += 1
+    }
+    // I64:载荷 / 默认两支(11-19 修复回归钉)
+    let g = big(true).or(0)
+    if g != 9223372036854775807 {
+        nbad += 1
+    }
+    let h = big(false).or(-7)
+    if h != 0 - 7 {
+        nbad += 1
+    }
+    println("bad=" + nbad.to_string())
+    return 0
+}

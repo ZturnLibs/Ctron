@@ -1174,13 +1174,20 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     // 元素码经 ct_opt_elem_expr:Ident=#elem 侧条目/Call=返回型
                     // Result[I64,Str] → "6")
                     var rec6 = ct_opt_elem_expr(file, cal[1], env)
+                    // _co 行唯一化(T25 v2 收口:嵌套 or 链探针实证块作用域遮蔽'
+                    // 本就合法,唯一化为防御位——后件发射形变不再可撞名)
+                    var con = "_co" + nline(e)
+                    // F64 载荷位型双关回读(与 ct_res_wrap 写侧配对;同 Binary Or 臂/Option
+                    // 侧):槽内是位型,下方旧形 (ct_i)(long) 读出 = 位型整数值再数值转
+                    // double(Result[F64,_].or(dft) 全域错值;jv_f64(...,0.0) 实证),
+                    // 默认值亦须原样直通(旧 (long) 截断)。2026-11-26
+                    if rec6 == "f" {
+                        return "(\{ ct_res " + con + " = (" + obj + "); ((" + con + ".variant == 0) ? ((union \{ double _d; ct_i _i; })\{ ._i = (ct_i)(" + con + ").v })._d : (" + rdf + ")); })"
+                    }
                     var rdc = ct_ctype(ct_typeof(ag[1], env, file))
                     if rec6 == "6" {
                         rdc = "int64_t"
                     }
-                    // _co 行唯一化(T25 v2 收口:嵌套 or 链探针实证块作用域遮蔽'
-                    // 本就合法,唯一化为防御位——后件发射形变不再可撞名)
-                    var con = "_co" + nline(e)
                     return "(\{ ct_res " + con + " = (" + obj + "); (" + rdc + ")((" + con + ".variant == 0) ? ((ct_i)(long)" + con + ".v) : ((ct_i)(long)(" + rdf + "))); })"
                 }
                 var dflt = ct_expr(ag[1], env, file)
