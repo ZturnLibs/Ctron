@@ -23,6 +23,11 @@
 # 前置:仓库根 ctron + compiler/bin/ctron-{cc,chk,emit}
 #       (ci.sh [3/9] native.sh 产出;dev 回落由 ctron 内建,本脚本不依赖 PATH)。
 set -eu
+# 门禁纪律入码(2026-11-26):装机布局仿真(第 9 段)契约 = 零 env —— 显式 CTRON_STDPATH
+# 指路会盖掉「exe/../lib 探测 → 库根同级 pkgs 推导」(site 解析被引到被指路的那棵树,
+# zsite 即 W8902)。经 ctron gate / ctron task 运行时驱动器为任务步注入
+# CTRON_STDPATH=ROOT/lib/std(W4 波2 批2),故此处自行剥离;独立运行时本就无此变量。
+unset CTRON_STDPATH
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(CDPATH= cd -- "$DIR/../.." && pwd)
 CTRON="$ROOT/ctron"

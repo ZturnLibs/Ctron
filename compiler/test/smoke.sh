@@ -19,6 +19,13 @@ pass=0; fail=0
 ok()  { echo "  ok  : $1"; pass=$((pass+1)); }
 bad() { echo "  FAIL: $1"; fail=$((fail+1)); }
 
+# 门禁纪律入码(2026-11-26):本脚本必须在无 CTRON_STDPATH 的环境下跑 —— 夹具自带 std/
+# 扩展模块(strx/fsx/mathx/a/dom)不在主库,显式指路会覆盖夹具本地 std/ 解析 → W8901
+# 误红 11 例(此前只靠口头纪律「smoke 禁带 CTRON_STDPATH」)。经 ctron gate / ctron task
+# 运行时,驱动器为任务步注入 CTRON_STDPATH=ROOT/lib/std(W4 波2 批2,build 类任务所需),
+# 故此处自行剥离;脚本内需要指路的步骤各自按命令前缀显式带。
+unset CTRON_STDPATH
+
 [ -x "$HOST" ] || { echo "smoke.sh: 缺少宿主 seed $HOST(先: make -C \"$ROOT/compiler-c\")" >&2; exit 2; }
 
 echo "== 1) 黄金对照(run: parse → 语义 12 项 → 解释执行) =="
@@ -1445,20 +1452,24 @@ fi
 # == 3r) W5b entry AST 缓存(opt-in CTRON_AST_CACHE=1;load>parse 证伪见
 # COVERAGE 2026-10-28 批——机制保留默认关,本腿钉生命周期正确性)
 if [ -n "$(command -v shasum 2>/dev/null || command -v sha256sum 2>/dev/null || true)" ]; then
+    # 缓存根指入本腿临时目录(CTRON_AST_CACHE_DIR,2026-11-26):自造自清,不再动仓库
+    # .cache/ast —— meta_check 禁脚本私清缓存(唯一合法口 = ctron clean,而 clean 三域
+    # 不含 ast);目录位置与生命周期逻辑无关,冷/热/腐坏三径口径不变。
     export CTRON_AST_CACHE=1
-    rm -rf "$ROOT/.cache/ast"
+    export CTRON_AST_CACHE_DIR="$T/astcache"
+    rm -rf "$CTRON_AST_CACHE_DIR"
     "$COMP/ctc.sh" "$COMP/test/fx_optstr.ct" > "$T/w5_cold.out" 2>&1
-    W5N=$(ls "$ROOT/.cache/ast" 2>/dev/null | grep -c "ctast$")
-    W5S=$(ls "$ROOT/.cache/ast" 2>/dev/null | grep -c "\.sha$")
+    W5N=$(ls "$CTRON_AST_CACHE_DIR" 2>/dev/null | grep -c "ctast$")
+    W5S=$(ls "$CTRON_AST_CACHE_DIR" 2>/dev/null | grep -c "\.sha$")
     [ "$W5N" = "1" ] && [ "$W5S" = "1" ] && ok "W5b 冷径回填:ctast+sha 副签落盘" || bad "W5b 回填缺失(ctast=$W5N sha=$W5S)"
     "$COMP/ctc.sh" "$COMP/test/fx_optstr.ct" > "$T/w5_warm.out" 2>&1
     diff -q "$T/w5_cold.out" "$T/w5_warm.out" >/dev/null && ok "W5b 命中径输出与冷径一致" || bad "W5b 命中径分歧: $(diff "$T/w5_cold.out" "$T/w5_warm.out" | head -2 | tr '\n' '|')"
-    W5C=$(ls "$ROOT/.cache/ast"/*.ctast | head -1)
+    W5C=$(ls "$CTRON_AST_CACHE_DIR"/*.ctast | head -1)
     head -c 40 "$W5C" > "$W5C.t" && mv "$W5C.t" "$W5C"
     "$COMP/ctc.sh" "$COMP/test/fx_optstr.ct" > "$T/w5_corr.out" 2>&1
     diff -q "$T/w5_cold.out" "$T/w5_corr.out" >/dev/null && ok "W5b 腐坏回退 parse(输出不变,副签拒收)" || bad "W5b 腐坏未回退: $(diff "$T/w5_cold.out" "$T/w5_corr.out" | head -2 | tr '\n' '|')"
-    rm -rf "$ROOT/.cache/ast"
-    unset CTRON_AST_CACHE
+    rm -rf "$CTRON_AST_CACHE_DIR"
+    unset CTRON_AST_CACHE CTRON_AST_CACHE_DIR
 else
     ok "W5b 腿跳过(无 shasum/sha256sum,缓存禁用同 T20 口径)"
 fi

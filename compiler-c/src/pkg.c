@@ -614,10 +614,10 @@ static void ctcl_load(pkg* p, const char* path, pkg_res* r) {
                     push(&pend, "Ctron.ctcl", "E5046", "caps 的类型应为 list");
                 }
             } else if (strcmp(key, "tier") == 0) {
-                if (vkind == 0) {
-                    if (strcmp(vc, "core") != 0 && strcmp(vc, "alloc") != 0 && strcmp(vc, "std") != 0)
-                        push(&pend, "Ctron.ctcl", "E5046", "键 tier 值 '%s' 不符合 (core|alloc|std)", vc);
-                } else if (vkind > 0) {
+                /* 值域不在此校:属主 = 检查器 E5040.tier(2026-11-03 审计定谳,schema 无
+                   pattern);2026-11-26 随批同步 —— 此处硬编码曾致清单四线对拍 c 臂多报
+                   E5046、`ctron gate` 第 3 步红。类型检查保留。 */
+                if (vkind > 0) {
                     push(&pend, "Ctron.ctcl", "E5046", "tier 的类型应为 str");
                 }
             } else {

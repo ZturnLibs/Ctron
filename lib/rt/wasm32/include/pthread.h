@@ -13,6 +13,12 @@ typedef struct { long long x[8]; } pthread_mutexattr_t;
 #define PTHREAD_COND_INITIALIZER {0}
 
 int pthread_create(pthread_t* t, const pthread_attr_t* a, void* (*fn)(void*), void* arg);
+/* 线程属性三件:发射运行时 ct_spawn/ct_pool_new 设线程栈(f14ee726)所需声明面
+ * (2026-11-26 补,b995222a 同批例)—— spawn 在档位门即拦,属不可达死码,只需过
+ * 严格 clang 的 C99+ 隐式声明门(LLVM clang 16+ 为 error;bare/wasm32 双树同形)。 */
+int pthread_attr_init(pthread_attr_t* a);
+int pthread_attr_setstacksize(pthread_attr_t* a, size_t n);
+int pthread_attr_destroy(pthread_attr_t* a);
 int pthread_join(pthread_t t, void** ret);
 pthread_t pthread_self(void);
 int pthread_mutex_init(pthread_mutex_t* m, const pthread_mutexattr_t* a);

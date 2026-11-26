@@ -2,7 +2,10 @@
 // RAII 合同由发射面承接:Rust 镜像 break/continue 前逆序发射越界 Drop 局部
 // 析构;自举线 ctron_drop_unwind_to(循环体入口 drop 栈标记)。dtor 可观测
 // (println;双侧 rc=0;形状 = for-in,While+Drop 体走自举提升既有拒面)。
-//@ target: rust
+// 2026-11-26:撤 `//@ target: rust`(域外值,tests/README §标记:target ∈ full|web|bare,
+// meta_check 基线红)—— 自举线两径(ctron-cc / seed)本就 rc=0 出 "drop ran",按缺省
+// full 档入 suite 行为面;冻结 C 种子不支持 for-in 数组形(「for 需要 range 或数组」)
+// = suite「自举通过而宿主未过」分歧面,与 09c/10_trace 同列。
 
 struct Ticket {
     let id: I32

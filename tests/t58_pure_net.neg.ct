@@ -6,6 +6,10 @@
 // 翻转 NegGreen(E4020);里程碑完成时按翻转协议迁 check_suite 期望表。
 // 门面形态注(Task 6):传输走免费函数 net_*(net: StdNet 按值),能力审计
 // 锚保留 &Net 引用形参 fn —— 即本件的 probe 形。
+//@ fail: E4020
+// (标记注 2026-11-26:t58_ 前缀 = R 线 NegGreen 锚,suite.py 维持跳过、期望码由 Rust
+// check_suite 驱动;此处的 //@ fail 只声明本件钉的诊断码,补 meta_check「neg 须列
+// fail 码」—— 自举线对此形先报 E4010(caps)而非 E4020,故不入自举面。)
 use net.Net
 
 fn probe(net: &Net) -> I32 {

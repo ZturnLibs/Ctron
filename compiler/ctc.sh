@@ -44,7 +44,9 @@ ast_cache_env() {
         return 0
     fi
     AST_KEY=$("$HB" "$IN" | cut -d' ' -f1)_$("$HB" "$DIR/build/cc_$1.ct" | cut -d' ' -f1 | cut -c1-12)
-    AST_DIR="$ROOT/.cache/ast"
+    # 缓存根可覆盖(2026-11-26):smoke W5b 腿指入临时目录自造自清 —— 脚本不得私清
+    # 仓库 .cache(meta_check;合法口 ctron clean 的三域亦不含 ast)。缺省不变。
+    AST_DIR="${CTRON_AST_CACHE_DIR:-$ROOT/.cache/ast}"
     AST_CACHED="$AST_DIR/$AST_KEY.ctast"
     AST_CACHED_SHA="$AST_DIR/$AST_KEY.sha"
     mkdir -p "$AST_DIR"
