@@ -4873,3 +4873,93 @@ http+db 同地板漏并 E2020)——**逐请求符号核对 msyms 全局账**:
 
 **门禁终态**:db 50/50、ffi 38/0、net 13/6(携带)、http 112/6、
 suite 124/126+123/126 rc=0、smoke 237/0。
+
+## 2026-11-26:web 域包 E5030 回归根修 + panic 位置串同形 + 文档门解堵——smoke --full 255/0 首绿
+
+**缘起(11-24 独立复核,新会话)**:
+- **CI `ci.yml` 最后一次成功 = 2026-10-01**;抽样 10-20→11-06 每次卡在
+  `python3 tools/std_doc.py --check`(排在 `./ci.sh` 之前)→ **Linux 全量门禁自
+  10-20 起一次未跑到**,此前所有「全绿」均只是 macOS 本地结论。该步两段病史:
+  10-20→11-01 = 参考页漂移(未随批再生成);11-03 起 = 生成器本身失败
+  (`ctron-doc 对 compress.ct 两趟皆败: E5030 …Pair`)。
+- **`pages` 部署自 10-20(net PR #1)起阻塞**:`sync_site_spec --check` 漂移
+  (§11.2.2 局域网发现未同步站点副本)。
+- **口径勘误:此前「smoke 237 ok / 0 fail 完全绿」= 不带 `--full` 的 smoke**
+  (249−12 精确吻合:守卫块 590–706 的 12 项未执行);`--full` 当时 248/1,
+  唯一红 = 自举固定点。**报绿必带 `--full`。**
+
+**E5030 根因链**:
+- 2172372b(11-05)把 done 重入由「整跳」改为「重载走选择性合并」后,**嵌套层
+  重入(`redo && !top`)把已并入模块整模块并入中间模块展开体**(隔离重展开连
+  依赖一并 wholesale);中间模块自身未并入(`redo=false`),回到顶层合并时捎带
+  的同名声明被当作新撞名 → E5030。0c9da99f(msyms)修了工件三角,未覆盖此形。
+- 最小复现:入口 `use a.{pair}` 后 `use b.{rb}`(b 向 a 请求 pair + 一个账上
+  缺失的符号)→ E5030 pair;入口请求为超集(无缺失不重入)→ OK;入口自定义
+  同名 → E5030(真撞名,应拦)。
+- **基线勘定**(bd58dcbb = 10-17 尖,临时工作树实测):web 10 文件 8 过 —— 即
+  本次回归的受害面;**compress.ct(E2010 短数组字面量)与 view.ct(E5030 `text`
+  包内同名)在 10-17 即红**,系旧账非回归(文档技能「web:ctc.sh check 十文件
+  全 OK」说法勘误)。
+
+**修复 A(compiler/src/parse_pkg.ct)**:
+- 线程化 `rsyms` = 嵌套重入捎带的具名声明名账;顶层 dup 裁决:**`rsyms` 在册且
+  与视图既有者名槽外逐槽一致**(`pkg_decl_same`,形态表驱动递归比较;不走
+  ast_emit_node —— 其失败路径会打印 E-AST-* 诊断)= 同一定义绕路再入 → 跳过;
+  内容不同(另一来源 / 入口自定义)仍 E5030。
+- **重入不再重复捎带非具名声明**(Test/Impl/Trait…:已随首并带入视图;顶层 /
+  嵌套重入同规则)。10-17 基线对照(router.ct 合并视图 214→188):差 26 =
+  std.str test 块的**重复副本**,去重后声明集合与基线逐项相同(Fn 35 / FnPub 98
+  / Struct 8 / Test 47)—— 旧加载器在此形下本就重复带测试,非本修丢失。
+- decls 锁 544→545(`pkg_decl_same`)。
+
+**修复 B(panic 位置串;compiler/src/trans_expr.ct ploc_bname / eval_env.ct ebname)**:
+- 两帮手在 `ctron_entry()` 空时原样返回字面量 `"ANCHORINPUT"`,而该字面量在
+  ctc.sh seed 流程被换靶 sed 一并换成输入路径 → seed 解释/发射烙**全路径**,
+  原生 `run <file>` 流程取基名 → 自举固定点分歧(2736 处差异全部为此,归一后
+  逐字节相同)。修 = 回退值同走取基名;原生 bin 的外层自宿尾缀随之同形。
+
+**门禁新增(smoke +6)**:3d2 重入四件(嵌套 decls=6 / 顶层 decls=4 / 两真撞名
+守卫)、3d3 web 域包 check 面(此前 gate/smoke 无一步直查库内 web 包;在册
+compress.ct E2010 / view.ct E5030 须仍报登记码,翻绿提醒清账)、5b panic 位置串
+两流程同形。语料 `tests/modules/reentry_{carry,top,clash,origin_clash}`(C 种子
+不支持顶层 `pub struct`,夹具用 `pub fn`;两负例冻结种子不做合并故宿主列 rc=0,
+如实分歧)。
+
+**文档面**:站点 spec 同步(`website/docs/spec/11-net.zh.md`)+ 参考页全量再生成
+(std 27 + 域/包 55;漂移 8 页:std/json、net/net、db/pg、db/redis、db/rowmap、
+web/compress、web/json、pkg/pkg)。
+
+**门禁终态(11-26,全量重自举后)**:smoke --full **255 ok / 0 fail**(固定点
+首绿)、suite 124/126+123/126(modules 自举 23/25:余 dep_mutex_neg /
+use_alias_nat 旧账)、meta_check 4(基线)、drv_parity 136/0、std_doc --check
+逐字节一致、sync_site_spec 无漂移、mkdocs strict 零 WARNING、db 50/50、
+ffi 38/0、net 13/6、http 112/6(携带红,归因见下)。
+
+**携带红归因(12 例,无一是编译器回归;修复件另批)**:
+- net ×4(coro_hybrid / tcp_echo / udp_roundtrip / unix_sock):夹具缓冲仍是
+  `I64[N]` 旧 lane 约定 —— 缓冲门面 aa6fad0d(10-08)已平面化为 `var buf: U8[]`,
+  垫片按字节写,夹具未随迁(`buf[0]` 得 lane 位型 ≠ 字节)。改 `U8[N] = [0] ** N`
+  即绿(副本实测)。
+- net ×2(coro_hybrid_c_smoke workers=1/4):同一问题的纯 C 面 —— c_smoke.c
+  自声明 `ct_view6{int64_t*}` lane 模型(改 `uint8_t` 字节道即绿,副本实测)。
+- http ×5(i_multipart emit / x_serve default+coro / a_guard emit / a_body emit):
+  **`Result[F64, Str].or(默认值)` 发射臂读错载荷** —— trans_expr `.or` R 码臂以
+  `(ct_i)(long)` 读槽(位型当整数再数值转 double)、默认值经 `(long)` 截断;
+  4138c7e6(11-19)只补了 I64(rec6=="6")。库模块 `lib/http/frm/body.ct:737` 的
+  test 块 `bj_f64(b,"$.score",0.0) == 0.75` 随 use 并入各夹具,故四处同红
+  (位置串记入口名 + 模块行号 737)。探针:Ok 载荷 / Err 默认直通 / jv_f64 六项
+  全错,I64 两项正确;沙箱补「f 位型双关回读」后六项全对。
+- http ×1(sse_ws_a_wsproto interp):夹具笔误 `var c: U8[32] = [0×64]`
+  (3e8b5bf9,10-09)。
+
+**在册(本批发现,未修)**:
+- `pkgs/web/compress.ct`:① 短数组字面量 `[0]` 配定长数组 → E2010(待转
+  `[0] ** N`);② 仅 `use web.compress` 的消费方 `ctc.sh build` 链接失败 ——
+  传递依赖 http 的 deflate 垫片不在入口 `use` 根扫描面(垫片自动链接只扫入口)。
+- `pkgs/web/view.ct`:`text`(El 构造器)与 `web.core.text`(Resp 构造器)包内
+  同名,合并态真撞名 —— 公开 API 命名,待裁。
+- (h) 族再证:`parse(s)` 后 `match { Ok(es) => … }` 的跨模块 `Result[List…]`
+  载荷绑定在发射臂为垃圾值(探针 SEGV);语料头注已登记禁用,未立案新债。
+- `compiler-rust/examples/trans_probe.rs`:对端批③漏带的配套修复未提交(HEAD
+  上该示例调用旧签名 `trans_file(&fa)`),本批未触碰。
+- native.sh 冷缓存全量重建实测 ≈25 分钟(1482 s;8 产物皆走 seed 解释发射)。
