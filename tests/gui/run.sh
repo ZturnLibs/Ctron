@@ -1,24 +1,38 @@
 #!/bin/sh
 # tests/gui/run.sh —— GUI 泳道统一验收:S1–S9 阶梯一键全跑
 # 口径:任一夹具红即非零退出;s7/s9 仅构建链接(窗口交互验收用 --run 单独启动);
-# 全程 headless(无显示依赖),ci.sh [8/8] 门禁即跑本脚本。
+# 全程 headless(无显示依赖),ci.sh [8/8] 门禁即跑本脚本。唯一例外 s26_reload_d
+# 需真实窗口(GLFW/OpenGL):会话不可建窗(macOS 锁屏/Linux 无显示)时夹具以 77
+# 退出 = 阶梯显式 [skip] 带原因(不计红、不假绿;同 bare 门缺件跳过口径)。
 
 set -u
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 pass=0
 fail=0
+skip=0
 failed=""
+skipped=""
 
 for s in s1_smoke s2_ab s3_clay s4_events s5_golden s6_demo s7_window s8_cjk s9_window_cjk e8_corpus w2_fold w4_interp s10_when s11_each s12_input s13_item w4_hotreload w4_ctml_reload s14_bidi s15_bidi_ct s16_measure s17_bidi_layout s18_scroll s19_input_d s20_embed s21_frame_golden s23_sk_native s24_model_d s25_expr_d s26_reload_d s27_checkbox_d s28_hitreg_d s28_ft_flush s29_ev_expr_d s30_props_d s31_state s32_theme s33_focus s34_overlay s35_image s36_tick s37_size s38_hotkey s40_ev_args_d s41_run_d s41_font s42_comp s39_eachcomp s43_tab s44_textarea s45_contrast s46_fontfam s47_ime_d s48_crossfile_d s49_xfilecomp s50_dialogslot s51_ta_nav s52_event_seams s53_nested s54_input_var s55_menu_v2 s56_tree s58_split s59_combobox s60_link s61_drop s62_win s63_ellipsis s64_grid s65_canvas s66_cbx_var s67_comp_a s68_menu_acc s69_virtual s70_focus_req s71_after s72_contw s73_entry s73_treerec s74_ctcnew s75_maxlines s76_virtualtag s78_xfileview s79_palette s80_datepick s81_colorpick s82_anim s83_chart s84_chord s85_dragdrop s86_async s88_rtl s87_richtext s89_touch s90_a11y s91_win s92_typedprops s93_attreq s94_reach s95_defaults s96_evclause; do
-    if sh "$DIR/$s/run.sh" > /tmp/gui_ladder_$s.log 2>&1; then
+    rc=0
+    sh "$DIR/$s/run.sh" > /tmp/gui_ladder_$s.log 2>&1 || rc=$?
+    if [ "$rc" -eq 0 ]; then
         echo "  [ok] $s"
         pass=$((pass + 1))
+    elif [ "$rc" -eq 77 ]; then
+        echo "  [skip] $s($(tail -1 /tmp/gui_ladder_$s.log))"
+        skip=$((skip + 1))
+        skipped="$skipped $s"
     else
-        echo "  [FAIL] $s(日志: /tmp/gui_ladder_$s.log)"
+        echo "  [FAIL] $s(rc=$rc;日志: /tmp/gui_ladder_$s.log)"
         fail=$((fail + 1))
         failed="$failed $s"
     fi
 done
 
-echo "gui: $pass 过 / $fail 败"
+if [ "$skip" -gt 0 ]; then
+    echo "gui: $pass 过 / $fail 败 / $skip 跳过(环境前置未满足:$skipped)"
+else
+    echo "gui: $pass 过 / $fail 败"
+fi
 [ "$fail" -eq 0 ] || { echo "失败夹具:$failed" >&2; exit 1; }

@@ -8,6 +8,26 @@ ROOT=$(dirname "$(dirname "$(dirname "$DIR")")")
 EMIT="$ROOT/compiler/bin/ctron-emit"
 [ -x "$EMIT" ] || { echo "s26: 缺 compiler/bin/ctron-emit" >&2; exit 2; }
 
+# 真实窗口夹具:V1 须真建 GLFW/OpenGL 窗口,会话不可建窗时显式跳过(exit 77 =
+# 阶梯 [skip],不计红不假绿)。判据实证(2026-11-27):macOS 锁屏态 GLFW 报
+# "Failed to determine Monitor to center Window",raylib rlglInit 空指针调用
+# SIGSEGV 139——同一二进制解锁即绿;15 行纯 C raylib InitWindow 探针同崩同愈
+#(非夹具回归)。Linux 无显示会话同理(HEADLESS 不覆盖本夹具)。
+case "$(uname)" in
+    Darwin)
+        if [ "$(ioreg -n Root -d1 -a 2>/dev/null | grep -A1 '<key>IOConsoleLocked</key>' | grep -c '<true/>')" -gt 0 ]; then
+            echo "s26: [skip] 屏幕已锁定(IOConsoleLocked=true),真实窗口不可创建——解锁后重跑即验收"
+            exit 77
+        fi
+        ;;
+    Linux)
+        if [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
+            echo "s26: [skip] 无显示会话(DISPLAY/WAYLAND_DISPLAY 未设),真实窗口不可创建"
+            exit 77
+        fi
+        ;;
+esac
+
 sh "$ROOT/vendor/gui/build.sh" > /dev/null
 
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
