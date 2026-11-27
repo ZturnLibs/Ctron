@@ -1,4 +1,6 @@
 // fx_arr_nested.ct —— 嵌套 T[N][M] 全链(注解/字面/传参/跨 fn 返回/链式下标)
+// 传参拷贝载体 = 匿名结构体右值(语句表达式内块作用域数组的指针不得逃逸:gcc ASAN
+// stack-use-after-scope,-O1 起实参被调用帧覆盖,CI Linux smoke 实证;clang 碰巧成立)
 fn sum(m: I32[2][2]) -> I32 {
     var s: I32 = 0
     var i: I32 = 0
@@ -14,11 +16,33 @@ fn mk() -> I32[2][2] {
     return b
 }
 
+// [3][3] 钉收值临时量的全维声明:旧发射只取一层 a_elem 得 "int32_t*",临时量成
+// 指针数组 int32_t* t_q[3] 且拷贝量按指针算(24B ≠ 36B,末行是垃圾;[2][2] 恰好
+// 同为 16B 掩盖,clang/gcc 双宿实证)。非方阵形状另被检查器字面量维度判据挡住
+//(E2010 期望值取错维,在册),故钉用方阵。
+fn mk33() -> I32[3][3] {
+    var b: I32[3][3] = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+    return b
+}
+
+fn sum33(m: I32[3][3]) -> I32 {
+    var s: I32 = 0
+    var i: I32 = 0
+    while i < 3 {
+        s += m[i][0] + m[i][1] + m[i][2]
+        i += 1
+    }
+    return s
+}
+
 fn main() -> I32 {
     var m: I32[2][2] = [[1, 2], [3, 4]]
     println(sum(m).to_string())
     println(m[1][0].to_string())
     let r = mk()
     println(r[0][1].to_string())
+    let q = mk33()
+    println(q[2][2].to_string())
+    println(sum33(q).to_string())
     return 0
 }

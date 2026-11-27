@@ -943,7 +943,25 @@ fn ct_stmt(st: List[Str], env: List[Str], file: List[Str], hreg: List[Str]) -> L
                 //(值收自存储;旧误走 ArrLit 访问把 Args 当元素 → Args@0)
                 if st[4][0] != "ArrLit" {
                     var n9 = a_count(ty)
-                    var ec9 = ct_ctype(a_elem(ty))
+                    var e9 = a_elem(ty)
+                    if byte_slice(e9, 0, 1) == "a" {
+                        // 嵌套 a 码(a2a2i):全维链声明 + 整块拷贝。旧式只取一层
+                        // a_elem → C 类型 "int32_t*",把收值临时量声明成指针数组
+                        // int32_t* t_r[2],拷贝量 sizeof(int32_t*)*2 —— 仅 [2][2] 恰好
+                        // 同为 16B 不破,其余形状截断(拷贝量按指针算,非元素)。
+                        var dims9 = ""
+                        var rc9 = ty
+                        while rc9.len >= 3 && byte_slice(rc9, 0, 1) == "a" {
+                            dims9 = dims9 + "[" + a_count(rc9) + "]"
+                            rc9 = a_elem(rc9)
+                        }
+                        var ecn = ct_ctype(rc9)
+                        eln(ecn + " t_" + pat[1] + dims9 + ";", env)
+                        eln("memcpy(t_" + pat[1] + ", " + ct_expr(st[4], env, file) + ", sizeof(" + ecn + dims9 + "));", env)
+                        eln("if (ct_frn.pn < 128) \{ ct_frn.pool[ct_frn.pn].addr = (void**)&t_" + pat[1] + "; ct_frn.pool[ct_frn.pn].kind = 1; ct_frn.pool[ct_frn.pn].sz = sizeof(" + ecn + dims9 + "); ct_frn.pn += 1; } else \{ ct_frn.ovf = 1; }", env)
+                        return env_bind(env, pat[1], ty)
+                    }
+                    var ec9 = ct_ctype(e9)
                     eln(ec9 + " t_" + pat[1] + "[" + n9 + "];", env)
                     eln("memcpy(t_" + pat[1] + ", " + ct_expr(st[4], env, file) + ", sizeof(" + ec9 + ") * " + n9 + ");", env)
                     eln("if (ct_frn.pn < 128) \{ ct_frn.pool[ct_frn.pn].addr = (void**)&t_" + pat[1] + "; ct_frn.pool[ct_frn.pn].kind = 1; ct_frn.pool[ct_frn.pn].sz = sizeof(" + ec9 + ") * " + n9 + "; ct_frn.pn += 1; } else \{ ct_frn.ovf = 1; }", env)

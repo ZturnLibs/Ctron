@@ -1015,7 +1015,25 @@ fn ct_expr(e: List[Str], env: List[Str], file: List[Str]) -> Str {
                     } else {
                         rclo = "(ct_clop)(" + ct_expr(ag[3], env, file) + ")"
                     }
-                    return "ct_pred_par_c((ctron_list*)(" + rarr + "), (ct_i)(" + rinit + "), (ct_clop)(" + rclo + "))"
+                    var rrt = ct_typeof(ag[1], env, file)
+                    if or2(rrt == "L", ct_is_tlcode(rrt)) {
+                        return "ct_pred_par_c((ctron_list*)(" + rarr + "), (ct_i)(" + rinit + "), (ct_clop)(" + rclo + "))"
+                    }
+                    if rrt.len > 1 && byte_at(rrt, 0) == 97 {
+                        // 定长数组接收者(a<N><ec>)→ _ac 变体(base/n/w64),同 map 分支。
+                        // 此前漏本分支:数组被硬转 ctron_list* → 运行时从数组字节读
+                        // n/items(越界;clang 下栈布局碰巧成立,gcc 必错 → CI Linux
+                        // smoke conc_pmapclo 段错误/断言红)
+                        var rn = a_count(rrt)
+                        var rec = byte_slice(rrt, rrt.len - 1, rrt.len)
+                        var rw = "0"
+                        if or2(rec == "6", rec == "7") {
+                            rw = "1"
+                        }
+                        return "ct_pred_par_ac((void*)(" + rarr + "), " + rn + ", " + rw + ", (ct_clop)(" + rclo + "), (ct_i)(" + rinit + "))"
+                    }
+                    panic("emit:parallel 目标限 List")
+                    return ""
                 }
                 panic("emit:parallel." + m)
                 return ""
@@ -2730,7 +2748,12 @@ fn ct_call_args_tg(ag: List[Str], from: I32, env: List[Str], file: List[Str], ca
                 rc8 = a_elem(rc8)
             }
             var ace8 = ct_ctype(rc8)
-            ax = "(\{ " + ace8 + " t_acp" + i.to_string() + dims8 + "; memcpy(t_acp" + i.to_string() + ", " + ax + ", sizeof(" + ace8 + dims8 + ")); t_acp" + i.to_string() + "; })"
+            // 拷贝载体 = 匿名结构体,语句表达式产出结构体右值临时量(寿命延至整个
+            // 表达式结束)后取 .v 退化——旧式 "T t_acp[..]; …; t_acp" 让块作用域数组
+            // 的指针逃逸出语句表达式(gcc ASAN stack-use-after-scope;-O1 起实参被
+            // 调用帧覆盖,CI Linux smoke conc_arr_nested 实证;clang 碰巧成立)。
+            // 复合字面量做存储同判越界(gcc ASAN),勿回退。
+            ax = "(\{ struct \{ " + ace8 + " v" + dims8 + "; } t_acp" + i.to_string() + "; memcpy(t_acp" + i.to_string() + ".v, " + ax + ", sizeof(" + ace8 + dims8 + ")); t_acp" + i.to_string() + "; }).v"
         }
         if ct_env_has(aenv, "#fval") {
             ax = ct_env_ty(aenv, "#fval")

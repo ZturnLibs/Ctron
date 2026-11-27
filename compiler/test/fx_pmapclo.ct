@@ -22,5 +22,12 @@ fn main() -> I32 {
         return a + b
     })
     assert_eq(r, 6)
+    // 定长数组接收者走 _ac 变体(base/n/w64):此前 reduce 分支漏判,数组被硬转
+    // ctron_list*(从数组字节读 n/items,gcc 下必错);10 元素走 8 块分界
+    var ys: I32[10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    let r10 = parallel.reduce(ys, 0, |a: I32, b: I32| -> I32 {
+        return a + b
+    })
+    assert_eq(r10, 55)
     return 0
 }

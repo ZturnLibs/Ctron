@@ -8,5 +8,14 @@ fn main() -> I32 {
     var doubled = parallel.map(xs, |x| x * 2)
     var sum = parallel.reduce(doubled, 0, |acc, x| acc + x)
     println(sum.to_string())
+    // 10 元素链表 reduce:8 块分界 + 末块 hi 须钳到 n(旧式 (k+1)*per 越界读 items[10..])
+    var big = List[I32]()
+    var i = 0
+    while i < 10 {
+        big.push(i + 1)
+        i += 1
+    }
+    var bigsum = parallel.reduce(big, 0, |acc, x| acc + x)
+    println(bigsum.to_string())
     return 0
 }
