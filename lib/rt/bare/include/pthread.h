@@ -26,6 +26,10 @@ int pthread_mutex_lock(pthread_mutex_t* m);
 int pthread_mutex_unlock(pthread_mutex_t* m);
 int pthread_cond_init(pthread_cond_t* c, const void* a);
 int pthread_cond_wait(pthread_cond_t* c, pthread_mutex_t* m);
+/* timespec 文件作用域前置声明(2026-11-27):原型参数位首次出现的标签只有原型作用域
+ * (C11 6.2.1),与 time.h 的文件作用域 struct timespec 非同一类型 —— LLVM clang 23+
+ * 对调用点报 incompatible pointer types(Apple clang 不报);bare/wasm32 双树同形。 */
+struct timespec;
 int pthread_cond_timedwait(pthread_cond_t* c, pthread_mutex_t* m, const struct timespec* t);
 int pthread_cond_broadcast(pthread_cond_t* c);
 

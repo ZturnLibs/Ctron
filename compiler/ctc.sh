@@ -383,12 +383,44 @@ bare_build_pipeline() {
         "$BARE_CC" $TCPU $BFLAGS -isystem "$RT/include" -c "$SRC" -o "$SRC.bare.o" || { echo "ctc.sh: bare 编译失败(app 面)" >&2; return 1; }
         "$BARE_CC" $TCPU $BFLAGS -isystem "$RT/include" -c "$RT/src/bare_libc.c" -o "$SRC.libc.o" || { echo "ctc.sh: bare 编译失败(minilibc)" >&2; return 1; }
         "$BARE_CC" $TCPU $BFLAGS -isystem "$RT/include" -c "$RT/src/$TSTART.c" -o "$SRC.start.o" || { echo "ctc.sh: bare 编译失败(startup)" >&2; return 1; }
-        LG=""
-        case $TTGT in
-            arm)   command -v arm-none-eabi-gcc >/dev/null 2>&1 && LG=$(arm-none-eabi-gcc -mcpu=cortex-m4 -mfloat-abi=soft -mthumb -print-libgcc-file-name) ;;
-            riscv) command -v riscv64-unknown-elf-gcc >/dev/null 2>&1 && LG=$(riscv64-unknown-elf-gcc -march=rv32imac -mabi=ilp32 -print-libgcc-file-name) ;;
-        esac
-        "$BARE_LD" -T "$RT/link/$TLINK.ld" --gc-sections -s -z max-page-size=256 -o "$OUT" "$SRC.bare.o" "$SRC.libc.o" "$SRC.start.o" $LG || { echo "ctc.sh: bare 链接失败(ld.lld)" >&2; return 1; }
+        # 目标运行时库(compiler-rt builtins / libgcc)解析链(2026-11-27 补;此前只认 GNU
+        # 交叉 gcc,宿主 clang 通道下 LG 恒空 → 链接必报 __aeabi_* 未定义):
+        #   ① env CTRON_BARE_LIBGCC 指认 → ② GNU 交叉 gcc -print-libgcc-file-name →
+        #   ③ 宿主 clang 自带 compiler-rt(路径须实存:Apple / brew LLVM 对裸机靶常报出
+        #   不存在的路径)→ ④ rustup 目标 rlib(libcompiler_builtins-*.rlib;ar 归档,lld
+        #   可直链)。四级皆空 = 工具链不可用(门脚本据此 SKIP,非 BAD)。
+        LG="${CTRON_BARE_LIBGCC:-}"
+        if [ -n "$LG" ] && [ ! -f "$LG" ]; then LG=""; fi
+        if [ -z "$LG" ]; then
+            case $TTGT in
+                arm)   command -v arm-none-eabi-gcc >/dev/null 2>&1 && LG=$(arm-none-eabi-gcc -mcpu=cortex-m4 -mfloat-abi=soft -mthumb -print-libgcc-file-name 2>/dev/null) ;;
+                riscv) command -v riscv64-unknown-elf-gcc >/dev/null 2>&1 && LG=$(riscv64-unknown-elf-gcc -march=rv32imac -mabi=ilp32 -print-libgcc-file-name 2>/dev/null) ;;
+            esac
+        fi
+        if [ -n "$LG" ] && [ ! -f "$LG" ]; then LG=""; fi
+        if [ -z "$LG" ]; then
+            CLG=$("$BARE_CC" $TCPU -print-libgcc-file-name 2>/dev/null || true)
+            if [ -n "$CLG" ] && [ -f "$CLG" ]; then LG="$CLG"; fi
+        fi
+        if [ -z "$LG" ]; then
+            RH="${RUSTUP_HOME:-${HOME:-}/.rustup}"
+            case $TTGT in
+                arm)   RTDIRS="thumbv7em-none-eabi" ;;
+                riscv) RTDIRS="riscv32imac-unknown-none-elf riscv32imac-unknown-none" ;;
+            esac
+            for rtd in $RTDIRS; do
+                for rf in "$RH"/toolchains/*/lib/rustlib/"$rtd"/lib/libcompiler_builtins-*.rlib; do
+                    if [ -f "$rf" ]; then LG="$rf"; break; fi
+                done
+                [ -n "$LG" ] && break
+            done
+        fi
+        if [ -z "$LG" ]; then
+            echo "ctc.sh: bare target $TARGET 工具链不可用: 目标运行时库未找到(compiler-rt builtins / libgcc)" >&2
+            echo "  通道任选: ①rustup target add thumbv7em-none-eabi riscv32imac-unknown-none-elf ②GNU Arm Embedded(arm-none-eabi-gcc)/ riscv64-unknown-elf-gcc ③CTRON_BARE_LIBGCC=<库路径> 指认" >&2
+            return 2
+        fi
+        "$BARE_LD" -T "$RT/link/$TLINK.ld" --gc-sections -s -z max-page-size=256 -o "$OUT" "$SRC.bare.o" "$SRC.libc.o" "$SRC.start.o" "$LG" || { echo "ctc.sh: bare 链接失败(ld.lld)" >&2; return 1; }
     fi
     echo "ctc.sh: bare 体积口径(ELF 总量): $(wc -c < "$OUT" | tr -d ' ') 字节"
     return 0

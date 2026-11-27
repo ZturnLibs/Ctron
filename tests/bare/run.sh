@@ -202,7 +202,13 @@ for tgv in thumbv7em-none-eabi riscv32imac-unknown-none; do
             bad "12-$tgv" "08_bare 无成功锚(断言早退?): $(printf '%s' "$O8" | tail -1)"
         fi
     else
-        bad "13-$tgv" "08_bare 构建失败: $(tail -1 "$T/08b_b.out")"
+        # 工具链不可用(含目标运行时库缺席,ctc.sh 统一口径)= 环境登记跳过,同 ③⑤ 的判别
+        # (2026-11-27 补:此前构建败一律 BAD,无交叉工具链/运行库的机器上门必红)
+        if grep -q "工具链不可用" "$T/08b_b.out"; then
+            skp "13-$tgv" "工具链缺(诊断在册)——$(grep -o '工具链不可用.*' "$T/08b_b.out" | head -c 80)"
+        else
+            bad "13-$tgv" "08_bare 构建失败: $(tail -1 "$T/08b_b.out")"
+        fi
     fi
 done
 
@@ -219,7 +225,11 @@ for tgv in thumbv7em-none-eabi riscv32imac-unknown-none; do
             bad "14-$tgv" "Pool 用尽无 panic 输出: $(printf '%s' "$OPE" | tail -1)"
         fi
     else
-        bad "14-$tgv" "pool_exhaust 构建失败: $(tail -1 "$T/pex_b.out")"
+        if grep -q "工具链不可用" "$T/pex_b.out"; then
+            skp "14-$tgv" "工具链缺(诊断在册)——$(grep -o '工具链不可用.*' "$T/pex_b.out" | head -c 80)"
+        else
+            bad "14-$tgv" "pool_exhaust 构建失败: $(tail -1 "$T/pex_b.out")"
+        fi
     fi
 done
 
