@@ -130,8 +130,9 @@
  *   重新加锁 —— finalize/timers/pop 与 popper 认领全部在锁内串行。
  * 空闲策略(P3-A 改版):空队 = cv 时限退避等待(20µs→160µs 递增,事件量
  *   交付见上节;无条件超时自醒保看门狗/定时器有界)。
- * 栈(P9 起):mmap 栈 + 低地址 1 页 PROT_NONE guard(页粒度取 sysconf,
- *   darwin/arm64 页为 16KB,写死 4KB 会被 mprotect 取整放大、殃及栈本体);
+ * 栈(P9 起):mmap 栈 + 低地址 PROT_NONE guard 带(宽度 = max(页, 栈大小),见
+ *   rt_guard_sz;页粒度取 sysconf,darwin/arm64 页为 16KB,写死 4KB 会被 mprotect
+ *   取整放大、殃及栈本体);
  *   尺寸 env 可配(CTRON_RT_STACK_KB,缺省 1024 = 大 VA+惰性提交口径,T34
  *   最小符合径 a77f141f;匿名 mmap 零填充,惰性分页);空闲池(上限 256)
  *   复用;触顶 = sigaltstack 诊断链 rc=101(T34 最小径)。
@@ -241,6 +242,19 @@ static long rt_pagesize(void)
         if (ps <= 0) ps = 4096;
     }
     return ps;
+}
+
+/* guard 带宽度 = max(页粒度, 任务栈大小)。单页 guard 只拦得住「单帧 ≤ 1 页」的
+ * 越界:编译器真帧可远大于一页(gcc 下自举/用户函数单帧数 KB~十余 KB),序言压栈
+ * 一步跨过 guard 落到映射之外,rt_segv_handler 按「故障地址 ∈ 栈映射」判触顶即
+ * 漏判 → 恢复默认处置 = 裸 SIGSEGV,无诊断(tests/w7 stack_ovf:Linux/gcc rc=139
+ * 实证;macOS/clang 帧小、页 16KB,单页即够)。保护带 prot_NONE 不提交物理页,
+ * 只占虚拟地址,宽度随任务栈走:任何 ≤ 栈大小的单帧越界都落回保护带。 */
+static size_t rt_guard_sz(void)
+{
+    size_t ss = rt_stack_size();
+    size_t ps = (size_t)rt_pagesize();
+    return ss > ps ? ss : ps;
 }
 
 /* ═══════════════ 上下文切换(自绘;见文件头注) ═══════════════ */
@@ -712,8 +726,8 @@ static void timers_fire_locked(void)
 static unsigned char *stack_alloc(size_t *map_sz)
 {
     unsigned char *base;
-    long ps = rt_pagesize();
-    *map_sz = rt_stack_size() + (size_t)ps;
+    size_t g = rt_guard_sz();
+    *map_sz = rt_stack_size() + g;
     rt_lock();
     if (g_npool > 0) {
         base = g_pool[--g_npool];
@@ -724,7 +738,7 @@ static unsigned char *stack_alloc(size_t *map_sz)
     base = mmap(NULL, *map_sz, PROT_READ | PROT_WRITE,
                 MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (base == MAP_FAILED) return NULL;
-    (void)mprotect(base, (size_t)ps, PROT_NONE);         /* guard(可选失败不致命) */
+    (void)mprotect(base, g, PROT_NONE);                   /* guard 带(可选失败不致命) */
     return base;
 }
 
@@ -744,7 +758,7 @@ static void stack_retire(rt_coro *c)
     }
     c->nsegs = 0;
     c->stk_lo = c->stk_hi = NULL;
-    unsigned char *lo = c->stack + rt_pagesize();
+    unsigned char *lo = c->stack + rt_guard_sz();
     size_t ssz = rt_stack_size();
     long used = (long)ssz;                           /* 全脏兜底:整栈用满 */
     /* 栈自高端(top)向低端(guard)生长:已用字节 = top 端前缀。
@@ -1535,6 +1549,15 @@ static void rt_segv_handler(int sig, siginfo_t *si, void *uc)
             write(2, msg, sizeof msg - 1);
             _exit(101);
         }
+        for (const rt_seg *sg = c->segs; sg; sg = sg->nx) {   /* 增长段同判(段各带 guard 带) */
+            if ((const char *)fault >= (const char *)sg->base &&
+                (const char *)fault < (const char *)sg->base + sg->map_sz) {
+                static const char msg[] =
+                    "ctron_rt: task stack overflow(growth segment guard 命中;§7.1/T34)\n";
+                write(2, msg, sizeof msg - 1);
+                _exit(101);
+            }
+        }
         c = c->allnext;
     }
     signal(SIGSEGV, SIG_DFL);
@@ -1554,11 +1577,10 @@ static void ms_tramp(void);
 
 static unsigned char *ms_seg_alloc(size_t *map_sz)
 {
-    long ps = rt_pagesize();
     unsigned char *base = mmap(NULL, *map_sz, PROT_READ | PROT_WRITE,
                                MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (base == MAP_FAILED) return NULL;
-    (void)mprotect(base, (size_t)ps, PROT_NONE);         /* guard(同主栈) */
+    (void)mprotect(base, rt_guard_sz(), PROT_NONE);      /* guard 带(同主栈) */
     return base;
 }
 
@@ -1580,6 +1602,7 @@ void ctron_rt_stk_grow(void (*fn)(void *, void *), void *args, void *ret)
     rt_ctx from;
     char *saved_lo = c->stk_lo, *saved_hi = c->stk_hi;
     size_t msz;
+    size_t g;
     unsigned char *base;
     rt_seg *sg;
     if (!c || !c->stk_lo) return;            /* 不可达:low 强定义下才可能为 1 */
@@ -1590,7 +1613,8 @@ void ctron_rt_stk_grow(void (*fn)(void *, void *), void *args, void *ret)
         write(2, msg, sizeof msg - 1);
         _exit(101);
     }
-    msz = rt_stack_size() + (size_t)rt_pagesize();
+    g = rt_guard_sz();
+    msz = rt_stack_size() + g;
     base = ms_seg_alloc(&msz);
     sg = (rt_seg *)malloc(sizeof *sg);
     if (!base || !sg) {
@@ -1606,9 +1630,9 @@ void ctron_rt_stk_grow(void (*fn)(void *, void *), void *args, void *ret)
     c->nsegs++;
     /* 交接槽 + 栈界切新段(grow 帧在旧段,from 上下文随帧存续) */
     c->ms_fn = fn; c->ms_args = args; c->ms_ret = ret; c->ms_back = &from;
-    c->stk_lo = (char *)base + rt_pagesize();
-    c->stk_hi = c->stk_lo + (msz - (size_t)rt_pagesize());
-    rt_ctx_init(&sg->ctx, c->stk_lo, msz - (size_t)rt_pagesize(), ms_tramp);
+    c->stk_lo = (char *)base + g;
+    c->stk_hi = c->stk_lo + rt_stack_size();
+    rt_ctx_init(&sg->ctx, c->stk_lo, rt_stack_size(), ms_tramp);
     rt_swap(&from, &sg->ctx);
     /* 切回:恢复旧段栈界;本段随调用窗终结(LIFO 出链 munmap)——段上帧
      * 全数返回后其地址本就悬垂(与固定栈帧复用同契约),跨 park 停车段
@@ -1728,9 +1752,9 @@ void *ctron_rt_run(void (*fn)(void*), void *arg, void *key)
     if (!c->stack) { free(c); return NULL; }
     c->state = RT_ST_READY;
     c->desched_kind = 0;
-    rt_ctx_init(&c->ctx, c->stack + rt_pagesize(), rt_stack_size(), rt_tramp);
-    /* T34 栈面全量:初始栈界 = 主栈可用区(guard 页之上);增长段链空。 */
-    c->stk_lo = (char *)c->stack + rt_pagesize();
+    rt_ctx_init(&c->ctx, c->stack + rt_guard_sz(), rt_stack_size(), rt_tramp);
+    /* T34 栈面全量:初始栈界 = 主栈可用区(guard 带之上);增长段链空。 */
+    c->stk_lo = (char *)c->stack + rt_guard_sz();
     c->stk_hi = c->stk_lo + rt_stack_size();
     c->segs = NULL; c->nsegs = 0;
 
