@@ -5088,16 +5088,67 @@ ffi 38/0、net 13/6、http 112/6(携带红,归因见下)。
   最小可过栈 32MB → 4MB。门 = smoke 5c 文本钉(前缀/宏定义/多语句函数无前缀/宿主
   编译器下可编译运行);栈行为本体由 Linux CI 验收。
 
+**Linux 首次越过第 7 步:smoke 平台问题清偿(本机容器 Debian 12 aarch64 / gcc 12 预跑)**:
+预跑法 = 独立 worktree(`git worktree add --detach`)挂进容器,按 CI 顺序 make seed →
+build.sh → native.sh → drv_parity → smoke --full;期间不得在同一 worktree 另起 emit(并发
+写 `.cache/emit` 会让「发射器自发射」偶发红,自身干扰)。首战 drv_parity **142/0**(第 7 步
+已解),smoke --full **251 ok / 6 fail**,逐项:
+
+- **`parallel.reduce` 定长数组接收者**(trans_expr.ct):map 分支有「数组 → `_ac` 变体」,
+  reduce 分支没有,数组被硬转 `ctron_list*` —— 运行时从数组字节读 n/items。gcc 下
+  -O1/-O0 断言红、-O2 段错误,5/5;macOS 靠栈布局碰巧成立。修 = 走 `ct_pred_par_ac`。
+  同批:链表变体 `ct_pred_par_c` 末块 `hi` 未钳到 n(n=10 时越界读 items[10..15];
+  map 的链表变体有钳、reduce 没有)→ 补钳 + 空块不参与合并。钉:fx_pmapclo 加 10 元素
+  数组 reduce,fx_conc_parallel 加 10 元素链表 reduce。
+- **数组按值传参的拷贝载体**(trans_expr.ct 调用位):`({ T t_acp[N]; memcpy(…); t_acp; })`
+  让语句表达式内块作用域数组的指针逃逸 —— gcc ASAN `stack-use-after-scope`,-O1 起实参
+  被调用帧覆盖(fx_arr_nested 的 sum 得 0;一维 fx_arr_byval 同写法只是碰巧)。选型以
+  gcc/clang ASAN 实测:匿名结构体右值 `({ struct { T v[N]; } t; …; t; }).v` 两宿干净;
+  复合字面量做存储 gcc ASAN 同判越界。修 = 匿名结构体载体。
+- **跨函数返回嵌套数组的收值临时量**(trans_stmt.ct):只取一层 a_elem 得
+  `int32_t*`,声明成指针数组 `int32_t* t_q[3]`、拷贝量按指针算(24B ≠ 36B)→
+  `I32[3][3]` 返回后 q[2][2] 是垃圾(clang/gcc 双宿);此前只有 [2][2](恰 16B)成立。
+  修 = 全维链声明 + 整块拷贝(一维产物逐字不变);钉:fx_arr_nested 加 [3][3] 返回+传参。
+  顺带登记:非方阵嵌套字面量被检查器拒(E2010「期望 3,实得 2」取错维);行赋值
+  `m[i] = [..]` 发射成 `.d[i]`。
+- **自举解释器宿主在 Linux 不导出符号**:解释态调宿主 extern 一律「extern 符号未找到」
+  (std process.ct 自举单测 3j2 与发射臂 4c 红)。native.sh 头注与 driver_emit.ct 注释都写
+  「whole-archive + rdynamic」,smoke 也早为 `#[dlsym]` 用户程序在 Linux 加了 -rdynamic,
+  唯独 native.sh 自己的链接行没有(mac 可执行体全局符号默认对 dlsym 可见,ELF 不然)。
+  修 = native.sh 九条链接行 + tools/release.sh 预编译路径在 Linux 加 `-rdynamic`;
+  容器实证导出符号 0 → 14,process.ct rc=1 → 0。另:种子无 `env_set` 实现(seed 臂跑
+  process.ct rc=1 与平台无关,不在 smoke 面)。
+- **seed 解释 `compiler/test/stdpkg/src/main.ct`(smoke 3d 解释臂)累计分配需求
+  >65GB** / 4600 万次(`CTRON_MEM_DEBUG=1`;arena 块容量逐次翻倍到 32GB 仍在爬):macOS
+  靠页压缩峰值 RSS 0.7GB、跑 6 分钟才完;Linux 按真实触页计数必 OOM(容器 3.9GB:1~2.5
+  分钟 3.7GB 被杀;malloc 调参无效)。与 docs/linux-seed-memory-evidence.md 同域
+  (seed arena 纪律,在册),按其判据不销账,文档追加 11-27 复测一节。处置 = smoke 3d 在
+  Linux 的解释臂切自举解释器(0.7 秒,输出与 seed 逐字节同 63 行);macOS 仍走 seed
+  (此臂 6 分钟本身占 macOS smoke 17 分钟的三分之一,记账待治)。
+
+- **协程栈触顶漏判**(tests/w7 stack_ovf,rc=139):协程栈 = mmap + 低地址 1 页 PROT_NONE
+  guard,SIGSEGV 处理器按「故障地址 ∈ 栈映射」判触顶;gcc 下函数真帧可远大于一页,序言压栈
+  一步跨过 guard 落到映射之外 → 漏判成裸段错误。修 = `rt_guard_sz()` = max(页, 任务栈
+  大小),主栈/增长段/高水位扫描统一改用(prot_NONE 不提交物理页);处理器并判增长段。
+  Linux w7 3/3(stack_ovf rc=101),macOS 不变。
+
 **在册(余债)**:上述 gui ×5、s74 schema 块登记、fmt 对拍 Rust 线滞后;**gcc 栈帧根治**
 = 按函数登记数给帧池分档(不含循环的函数用小池;含循环者保持 128 —— 循环体内每迭代
 重登记、直到池满才转保守扫描,缩池须避开;需同步 morestack EST 底数 ct_ms_pre 2300
-与 GC 帧协议,另开专窗);nline/ncol 对「末槽为节点」一般不健壮(待以形态表判槽种加
+与 GC 帧协议,另开专窗);seed 解释 `use std.*` 重程序的 arena 累积(见
+证据文档 11-27 节);parallel.reduce 非单位元 init 的分块语义;非方阵嵌套字面量检查器
+E2010 取错维与行赋值 `.d[i]` 发射;nline/ncol 对「末槽为节点」一般不健壮(待以形态表判槽种加
 守卫);fn 节点打行号戳列 v2;上一条的 compress.ct E2010 / 传递依赖垫片链接 / view.ct
 text 撞名仍待裁;CI 第 22 步 gui 门在 Linux runner 上另需 X11/GL 开发头与 cmake(装
 vendor/gui),属环境供给面。
 
-**门禁终态(本轮修复后,本地 macOS)**:smoke --full **257 ok / 0 fail**(含新增 5c;自举
-固定点逐字节复现)、drv_parity **142/0**、GUI 阶梯 **95 过 / 6 败**(回到基线:6 败 =
-gui_driver 命中表越界 ×5 + s74 schema 块;`s26_reload_d` 解锁实跑绿,锁屏态走 [skip])。
-Linux:容器(Debian 12 aarch64 / gcc 12)上原崩溃用例 rc=0;x86-64 runner 以 CI 为准
-(结论见下一条)。
+**门禁终态(本轮全部修复后)**:
+- macOS:smoke --full **257 ok / 0 fail**(含新增 5c;自举固定点逐字节复现)、drv_parity
+  **142/0**、w7 3/3、rt_core/rt_reactor 冒烟绿、GUI 阶梯 **95 过 / 6 败**(基线:6 败 =
+  gui_driver 命中表越界 ×5 + s74 schema 块;`s26_reload_d` 解锁实跑绿,锁屏态走 [skip])。
+- Linux(容器 Debian 12 aarch64 / gcc 12,独立 worktree 预跑):drv_parity **142/0**、
+  smoke --full **257/0**(与 macOS 同数)、suite rc=0、rt_core/rt_reactor 冒烟绿、
+  w7 **3/3**、装机 smoke **43/0**、插件 **11/0**、bare 门 5 过 / 0 败 / 8 跳、wasm 门
+  1 过 / 0 败 / 7 跳(后两者为环境登记跳过)。
+- 未在本机预跑的面:17–21 bench(容器 4 vCPU 不具代表性)、23 fmt 对拍(容器无 Rust);
+  GUI 门 22 在 CI 因无 X11/GL 头整体跳过。**x86-64 runner 以 CI 为准,结论随 CI 补记。**
