@@ -349,9 +349,19 @@ else
 fi
 if "$COMP/bin/ctron-emit" run "$COMP/test/stdpkg/src/main.ct" > "$T/sd_native.c" 2>/dev/null; then
     cc -O1 -w -o "$T/sd.bin" "$T/sd_native.c" 2>/dev/null
-    "$COMP/ctc.sh" "$COMP/test/stdpkg/src/main.ct" > "$T/sd_seed.out" 2>&1
+    # 解释臂:macOS 走 seed(与 compiler/test/stdpkg/std 种子副本同源);Linux 走自举
+    # 解释器 —— seed 解释本程序时长寿命 arena 持续累积,CTRON_MEM_DEBUG 实测累计需求
+    # >65GB/4600 万次分配(块容量翻倍到 32GB),macOS 靠页压缩把 RSS 压到 0.7GB、跑
+    # 6 分钟才完;Linux 按真实触页计数必 OOM(容器 3.9GB:1 分钟 3.7GB 被杀;16GB
+    # runner 同理)—— docs/linux-seed-memory-evidence.md 同域在册债(seed 冻结,仅
+    # 引导)。自举解释器 0.7 秒,输出与 seed 逐字节相同(63 行,双平台实证)。
+    sd_arm="seed"
+    case "$(uname)" in
+        Linux) sd_arm="自举解释器"; "$COMP/bin/ctron-cc" run "$COMP/test/stdpkg/src/main.ct" > "$T/sd_seed.out" 2>&1 ;;
+        *) "$COMP/ctc.sh" "$COMP/test/stdpkg/src/main.ct" > "$T/sd_seed.out" 2>&1 ;;
+    esac
     timeout 15 "$T/sd.bin" > "$T/sd.got" 2>&1
-    diff -q "$T/sd.got" "$T/sd_seed.out" > /dev/null 2>&1 && ok "std 包 原生==解释 逐字一致" || bad "std 包 分歧"
+    diff -q "$T/sd.got" "$T/sd_seed.out" > /dev/null 2>&1 && ok "std 包 原生==解释 逐字一致(解释臂:$sd_arm)" || bad "std 包 分歧(解释臂:$sd_arm)"
 else
     bad "std 包 发射失败"
 fi

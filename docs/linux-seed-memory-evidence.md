@@ -141,3 +141,20 @@ G1 翻面(7de2291e)后本债的复测口径:
   seed 语料步即可复现(翻面后 interp 臂默认 GC=on,本债是否被 GC 治理顺带治愈,此一测便知;
   db interp 臂 G1-T7 批内已见 `byte_slice: range out of bounds` 新红形,同域取样点)。
 - **注意**:本债与发射产物(bin 形态)无关,勿与 emit RSS 混测。
+
+## 2026-11-27 复测:全量门首次越过第 7 步,本债在新负载上再现(未销账)
+
+- 触发:CI 全量门第 7 步(drv_parity)解封后,第 8 步 smoke 在 Linux 上首跑(本机容器
+  Debian 12 aarch64 / gcc 12,独立 worktree 按 CI 顺序预跑)。
+- 负载:smoke 3d 解释臂 —— seed 解释 `compiler/test/stdpkg/src/main.ct`(18 条
+  `use std.*`;程序本体只做几十次 map/set 微操作)。
+- 实测(`CTRON_MEM_DEBUG=1`):累计需求 >65GB、4600 万次分配,arena 块容量逐次翻倍到
+  32GB 仍在爬(单一长寿命 arena 持续累积);macOS 靠页压缩,峰值 RSS 0.7GB、耗时 6 分钟
+  跑完。Linux 容器(3.9GB):1~2.5 分钟涨到 3.7GB 被 OOM 杀;
+  `MALLOC_MMAP_THRESHOLD_` / `MALLOC_TRIM_THRESHOLD_` 调参无效(与 09-20 结论一致:
+  需求本身)。x86-64 runner(16GB)按同一机制推定同炸,待 CI 实证。
+- 处置:smoke 3d 在 Linux 的解释臂改走自举解释器(`ctron-cc run`:0.7 秒,输出与 seed
+  逐字节相同,63 行),macOS 仍走 seed。按上文判据「曲线仍线性爬」→ **本债不销账**;
+  发布链绕行(prebuilt)不变。
+- 待办(编译器线,另开专窗):用 `CTRON_FN_TRACE=1` 归因本负载的分配热点(09-21 三件
+  修复针对 emit 负载,本负载病灶未必相同);macOS 上此臂 6 分钟本身也应治理。
