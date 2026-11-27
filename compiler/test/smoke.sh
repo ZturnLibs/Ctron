@@ -719,6 +719,40 @@ P
     else
         bad "panic 位置串形态不一致: seed=[$(head -1 "$T/pl_s.out")] native=[$(head -1 "$T/pl_n.out")]"
     fi
+    echo "== 5c) 单 return 函数栈帧策略前缀(帧节点 3.2KB×内联实例不复用;gcc noinline/clang 空)=="
+    # 2026-11-27 回归钉(CI Linux 全量门第 7 步 drv_parity:trace record --fs 段错误):
+    # 每函数帧节点 ct_fr(pool[128]≈3.2KB)随内联实例在调用者帧内各占一份且不复用
+    #(地址经 ct_fp 链逃逸,gcc 不做 clang 的生命周期叠放)→ 一行访问器数百调用点把
+    # 自举解释器 t_call_mem 帧撑到 556KB,8MB 主栈十几层解释深度即 SIGSEGV。策略 =
+    # 单 return 函数前缀 CT_FR_NI(判据见 trans_emit.ct ct_fn 签名行)。文本钉在
+    # clang 宿主同样成立(宏展开为空,产物逐字不变);栈行为本体由 Linux CI 验收。
+    cat > "$T/fni.ct" <<'P'
+fn one(x: I32) -> I32 {
+    return x + 1
+}
+
+fn two(x: I32) -> I32 {
+    let y = x + 1
+    return y
+}
+
+fn main() -> I32 {
+    println(two(one(1)).to_string())
+    return 0
+}
+P
+    if "$COMP/bin/ctron-emit" run "$T/fni.ct" > "$T/fni.c" 2>"$T/fni.err" \
+       && grep -q '^#if defined(__GNUC__) && !defined(__clang__)' "$T/fni.c" \
+       && grep -q '^#define CT_FR_NI __attribute__((noinline))' "$T/fni.c" \
+       && grep -q '^CT_FR_NI int32_t t_one(' "$T/fni.c" \
+       && grep -q '^int32_t t_two(' "$T/fni.c" \
+       && ! grep -q '^CT_FR_NI int32_t t_two(' "$T/fni.c" \
+       && cc -O1 -w -o "$T/fni.bin" "$T/fni.c" 2>"$T/fni.cc" \
+       && [ "$("$T/fni.bin" 2>&1)" = "3" ]; then
+        ok "单 return 函数带 CT_FR_NI 前缀、多语句函数无前缀;宿主编译器下产物可编译运行"
+    else
+        bad "CT_FR_NI 策略文本钉失配: emit=[$(head -1 "$T/fni.err")] cc=[$(head -1 "$T/fni.cc")]"
+    fi
     echo "== 4c) std 全模块发射原生 parity(矩阵第三臂;known=iter 一项,余面=泛型 impl trait 面 v2;opt 已清 2026-10-23) =="
     emit_green=0
     emit_knownred=0

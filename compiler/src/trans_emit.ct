@@ -258,7 +258,21 @@ fn ct_fn(d: List[Str], file: List[Str], pass: Str) {
     if seq2(pass, "2") {
         // P9 栈面全量:序言机器直出(门=CTRON_MORESTACK;main 除外)
         var mspro = ct_ms_pre("t_" + d[1], d, file, rc)
-        println(ct_ctype(rc) + " t_" + d[1] + "(" + ct_params_str(d, file) + ") ")
+        // 单 return 函数(访问器/盒装构造/流构造)栈帧策略:每函数帧节点 ct_fr(pool[128]
+        // ≈3.2KB)随内联实例在调用者帧内各占一份——地址经 ct_fp 链逃逸,gcc 不做 clang
+        // 的生命周期叠放,一行访问器数百调用点即把调用者帧撑到 135KB/556KB(自举解释器
+        // Linux/gcc:8MB 主栈十几层解释深度即 SIGSEGV,CI drv_parity trace --fs 实证)。
+        // 判据 = 函数体恰一条 return 且无尾表达式 → 前缀 CT_FR_NI(gcc=noinline:帧只在
+        // 调用期间存在不再累积;clang 宏为空,照旧内联,产物不变)。
+        var frni = ""
+        if d[5].len == 3 {
+            if seq2(d[5][1][0], "Return") {
+                if seq2(d[5][2][0], "None") {
+                    frni = "CT_FR_NI "
+                }
+            }
+        }
+        println(frni + ct_ctype(rc) + " t_" + d[1] + "(" + ct_params_str(d, file) + ") ")
         if mspro.len > 0 {
             env = env_bind(env, "#mspro", mspro)
         }

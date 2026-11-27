@@ -275,6 +275,13 @@ println("static ctron_list* ctron_list_new(void) \{ ctron_list* l = (ctron_list*
             // 仅主线程,任务线程分配已退避 bump。主栈保守扫降级 CTRON_GC_CONSERV 逃逸档。
             println("typedef struct ct_frs \{ void** addr; int kind; size_t sz; } ct_frs;")
             println("typedef struct ct_fr \{ struct ct_fr* up; ct_frs pool[128]; int pn; int ovf; int sv[32]; int spn; } ct_fr;")
+            // CT_FR_NI:单 return 函数在 gcc 下 noinline(帧节点 3.2KB×内联实例不复用,
+            // 判据见 trans_emit.ct ct_fn 签名行;clang 有生命周期叠放,保持内联)
+            println("#if defined(__GNUC__) && !defined(__clang__)")
+            println("#define CT_FR_NI __attribute__((noinline))")
+            println("#else")
+            println("#define CT_FR_NI")
+            println("#endif")
             println("static __thread ct_fr* ct_fp = 0;")
             println("static void ct_fp_pop(void* p) \{ ct_fp = ((ct_fr*)p)->up; }")
             println("static int ct_gc_conserv = 0;")
