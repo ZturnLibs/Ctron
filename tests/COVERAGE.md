@@ -4963,3 +4963,141 @@ ffi 38/0、net 13/6、http 112/6(携带红,归因见下)。
 - `compiler-rust/examples/trans_probe.rs`:对端批③漏带的配套修复未提交(HEAD
   上该示例调用旧签名 `trans_file(&fa)`),本批未触碰。
 - native.sh 冷缓存全量重建实测 ≈25 分钟(1482 s;8 产物皆走 seed 解释发射)。
+
+## 2026-11-27:`.or` F64 发射修复 + 泳道 12 例携带红清偿 + `ctron gate` 解封 + 门尾部归因
+
+**提交谱(已推 origin,ae54d955..89d93fd5 八提交)**:84fc664d(`.or` F64)/ 8b5aa6b5
+(泳道夹具迁移)/ 3f633b33(驱动器 build 块)/ 1cbece0c(门禁解封四类)/ 93e6e606(lint
+宿主)/ 194fb79e(bare 门三态)/ 1165b1fd(发射模板定宽签名,Linux 自举)/ 89d93fd5
+(stdweb 豁免 W8901,wasm 门)。
+
+**泳道清偿(12 例携带红全部销账)**:
+- net 13/6 → **19/0**:夹具缓冲 `I64[N]` → `U8[N] = [0] ** N`(×4)+ C 冒烟
+  `ct_view6{int64_t*}` → `ct_view_w8u{uint8_t*}`(workers=1/4);http 的
+  `a_wsproto.ct` `U8[32] = [0×64]` 笔误 → 32 个 0。
+- http 112/6 → **118/0**:另 5 例 = `Result[F64, Str].or(默认值)` 发射臂缺陷 ——
+  trans_expr `.or` 的 R 码接收者臂以 `(rdc)((variant==0) ? ((ct_i)(long)v) :
+  ((ct_i)(long)dft))` 折回,F64 是按位型入槽的(ct_res_wrap 写侧 union 双关),读出即
+  位型整数再数值转 double;默认值一支亦被 (long) 截断。4138c7e6(11-19)只补了 I64。
+  修 = `rec6=="f"` 走位型双关回读 + 默认值直通(同函数 Binary Or 臂 / Option 侧既有形)。
+  探针:Ok 载荷 / Err 默认直通 / jv_f64 六项全错、I64 两项正确 → 修后全对。
+  门:smoke 3b 双臂对拍新增 `fx_or_f64`(修前发射臂 bad=6)。
+- db 50/50、ffi 38/0 维持。
+
+**`ctron gate` 解封(门自 10 月底起从未被完整跑过;本地逐段实跑)**:
+- 第 0 步:**驱动器三实现均不识 `ctron.ctcl` 的 build 块**(P2-C W1 只改了 schema 与
+  ctc.sh 消费面)→ `sh ctron gate` 在解析步即 `E5044 未知块 build`,全新检出(无原生件)
+  的 CI 第 0 步即停。三实现同形补齐(记录块/键白名单/值域同 schema);drv_parity 新增
+  6 例,**并修一处空洞对拍**:tk_side 从未把 bad/ 夹具拷入沙盒,既有 7 个负例两侧一致
+  报「缺清单」而恒绿 —— 补拷后成真对拍仍一致。drv_parity 136/0 → **142/0**。
+- 第 1 步:meta_check 4 处基线红清零(04e 撤域外 `target: rust` / t58 补 `//@ fail` /
+  smoke W5b 腿不再私清 `.cache/ast`:ctc.sh 新增 `CTRON_AST_CACHE_DIR`,指入临时目录)。
+  04e 入 suite 行为面:124/126+123/126 → **125/127+123/127**(冻结 C 种子不支持 for-in
+  数组形,分歧面 +1)。
+- 第 3 步:清单四线对拍 tier 值域 —— 11-03 定谳属主 = 检查器 E5040.tier、schema 去
+  pattern,但 C 宿主 pkg.c 与自举线 ctcl_chk.ct 的硬编码 E5046 值域检查未随撤。两处
+  同步撤(类型检查保留)。183 例 1 败 → ALL GREEN。
+- 第 8/13 步:**驱动器给任务步注入 `CTRON_STDPATH=ROOT/lib/std`**(W4 波2 批2),而
+  smoke.sh(11 例 W8901 误红)与 tests/dist/ctron_smoke.sh(装机布局 site 推导被引偏)
+  的契约都是零 env。此前只靠口头纪律「smoke 禁带 CTRON_STDPATH」,经门运行必红 ——
+  两脚本入口自行剥离,纪律入码。
+- 第 14 步:**lint 插件宿主对未打戳的 fn 节点取行号**(plugin.ct pl_lint_fn 调 nline(d);
+  fn 节点形态 SNNNNS* 末槽是函数体节点槽)→ nline 对非串末槽 byte_at = 非法访问。
+  seed 路径自 10-05(byte_at 校验)起确定性中止「byte_at 目标需 Str」;原生路径读垃圾、
+  **布局敏感间歇 panic**(基线 65865c56 原生 40/40、本次源码改动后 28/40;逐文件还原
+  三个改动文件的变体仍各以 1~13/40 失败 → 潜伏缺陷,非逻辑回归)。按 v1 契约填 0。
+  修后 seed 3/3、原生 40/40,插件阶梯 11/0。
+- 第 15 步 bare 门:minilibc pthread 声明面缺 pthread_attr_*(发射运行时自 f14ee726
+  起调用,严格 clang 下 bare 目标编译 4 错);ctc.sh bare 运行库只认 GNU 交叉 gcc
+  (宿主 clang 通道恒空 → __aeabi_* 未定义);run.sh ⑦⑧ 段构建败一律 BAD(与 ③⑤
+  「工具链不可用 = 跳过」不一致);`pthread_cond_timedwait` 原型位的 `struct timespec`
+  只有原型作用域(C11 6.2.1),LLVM clang 23+ 报 incompatible pointer types。
+  四项同批修:**默认工具链 10 过 / 0 败 / 4 跳;完整 LLVM 15/0/0;缺运行库 → 跳过**。
+
+**门尾部归因(14–23 步,均在会话前基线 65865c56 的工作树原生件上复现)**:
+- 22 gui:95 过 / 6 败(基线 94/7;s81 E5030 已由重入修复治好)。余 6:
+  ① ×5 `index out of bounds` 定位串记在入口名下,实在 pkgs/gui —— gui_driver.ct:505
+  `t.rects[j]`(s50_dialogslot / s55_menu_v2)、:1117 `t.rects[found]`(s56_tree /
+  s59_combobox)、gui_render.ct:1400 `t.nec[node]`(s28_hitreg_d):命中测试矩形表条目
+  少于按钮下标(库文件 10-09 后未改 → 编译器侧 List/Box 值语义回归,待专窗);
+  ② s74_ctcnew:`ctc new --gui` 脚手架清单的 `gui {}` / `dependencies {}` 块从未登记
+  schema(ctc.sh 自家 awk 读),P2-C W1 的清单校验 fail-closed 后即拒 —— 需四实现同步
+  (Python schema / C pkg.c / 自举 ctcl_chk.ct / Rust check.rs;后者并缺 plugin 块)。
+- 23 fmt parity:771 绿 / 4 分歧 = Rust 参考实现 `ctronr fmt` 对 GUI 内嵌标记中的中文
+  文本节点(如 `<button>保存</button>`)报 E1001 无法识别字符 —— Rust 线未移植内嵌 GUI
+  标记词法面。
+- 16–21(wasm 门 / bench / bench_ffi / gc bench / gc 确定性 / lang bench)在注入环境下
+  逐一通过。
+
+**Linux CI 信号与平台特有修复(推送 ae54d955..194fb79e 后 ci.yml 全量门首度越过文档门)**:
+- 第 6 步自举重建:`conflicting types for 'ctron_bit_i64' / 'ctron_clock_now_ns'` ——
+  发射前言把两宿主口定义为 `static long long f(int, long long, …)`(1ebecc06,10-29),
+  编译器源码 eval_call.ct 另有 `extern "c" fn …(op: I32, a: I64, …) -> I64` 声明,发射为
+  `extern int64_t f(int32_t…)`。Darwin 上 int64_t 即 long long 两者相容;Linux(LP64)
+  上 int64_t = long,gcc 判冲突。**Linux 自举自 10-29 起必死**,此前因文档门在前从未
+  跑到。修 = 模板签名改定宽类型(1165b1fd)。验证法(本机无 Linux gcc、Docker 未启):
+  `-include` 预置头把 int64_t/int32_t 替换为 long/int 模拟 LP64 —— 旧模板产物精确复现
+  CI 两错(ctron_cc.c:1017/1018),新模板 0 错;8 个自举产物 + 驱动器预检 0 错。
+- 第 16 步 wasm 门(macOS 默认工具链整段跳过;以 CTRON_WASM_CC 指 brew LLVM 真跑):
+  dom 一例红 —— `use stdweb.dom` 在显式 STDPATH 下报 W8901。segs_std 把 stdweb.* 与
+  std.* 同列为不落盘导入(内建命名空间,sem 按档位解析),W8901 未对其豁免;ctc.sh
+  build/emit 恒注入 STDPATH 故必中。修 = isstd 分支豁免(89d93fd5);对照
+  `use std.nosuchmod.{zz}` 仍 W8901。wasm 门 7/1 → **8 过 / 0 败 / 0 跳**。
+- 门内脚本可移植性静态扫(BSD `sed -i ''`/`stat -f`/`-framework`/brew 路径硬编码):零命中。
+- 噪声登记:native.sh 的 `xargs: unterminated quote / unmatched double quote` ——
+  ctc.sh emit_link_summary 以 `grep -o "ctron:link -l[^ ]*"` 收集链接标志,编译器自身
+  源码含打印该串的字面量 → 误抓出 `-l"),` 一类碎片,xargs 遇未配对引号报错。自举用
+  自有链接行不受影响;普通程序的 `#[link]` 标志不含引号。无害,待把收集锚限定为行首。
+
+**终验轮两项追查(本地 gate_local5 + CI 89d93fd5)**:
+
+- **s26_reload_d 新红 = 锁屏环境假红(非回归)**。gate_local5 GUI 阶梯 94 过 / 7 败(基线 6
+  败之外新增 s26_reload_d),单跑 3/3 段错误(rc=139,CTRON_GC=0 同崩),崩溃栈
+  `rlglInit ← InitWindow ← t_rt_window_loop_d`。排除项:把发射模板那两行签名改回旧写法
+  的产物同崩 → 与 1165b1fd 无关。定位依据 = 当时 `ioreg` `IOConsoleLocked=true`、
+  `CGSSessionScreenIsLocked=true`(屏幕锁定);s26 是阶梯里唯一真建 GLFW/OpenGL 窗口的
+  夹具(其余 headless)。决定性对照:15 行纯 C raylib `InitWindow` 探针锁屏时同崩(末行
+  `GLFW: Failed to determine Monitor to center Window`,窗口建不出 → rlglInit 空指针调用);
+  解锁后**同一个** s26 二进制与探针全绿。修 = GUI 阶梯增显式跳过通道(夹具以 77 退出 →
+  `[skip]` 带原因,不计红不假绿,同 bare 门缺件口径);s26 前置判据:macOS 锁屏 /
+  Linux 无 `DISPLAY`/`WAYLAND_DISPLAY` → 77。伪 ioreg 模拟锁屏验证 rc=77,解锁实跑绿。
+
+- **CI 第 7 步 drv_parity 140/2 = 自举解释器在 Linux/gcc 上栈溢出(长期潜伏)**。两例
+  `pkg trace record --fs`:sh 侧 rc=139、原生侧 rc=-1(两侧一致,非对拍分歧);被录程序
+  = 夹具源码 + 驱动器合成的 `MemFs`/`impl Fs`/`main`,由 `ctron-cc run` 解释执行。
+  复现环境 = Docker Debian 12 aarch64 + gcc 12(Docker Hub 拉取不通,取本机既有
+  pgvector 镜像装 gcc/gdb):同形驱动程序 rc=139;`ulimit -s 32768` 即过;同一程序
+  macOS/clang ≤2MB 即过。gdb:t_call_mem 序言 `stp x29,x30,[sp]` 故障,故障地址恰为
+  sp、SEGV_MAPERR、栈映射已满 8MB = 栈溢出(非空指针)。逐帧量:155 帧共 8.4MB,
+  t_run_stmt 138,480B/帧 ×40、t_call_mem 555,872B;`-fno-inline` 下同函数仅 4.8KB
+  → 内联实例所致。DWARF:`ct_frn`(`ct_fr`,3224B)在帧内以 3224 等距排 43 份,分属
+  被内联的单 return 小函数(t_cx_of 全文件 520 调用点、t_vV2 146、t_s4 39)。
+  **根因**:每个函数带一份 GC 帧节点 `ct_fr{pool[128]}`≈3.2KB;gcc 把小函数内联进调用者
+  后,各实例的帧节点因地址经 `ct_fp` 链逃逸而互不叠放(clang 做生命周期叠放,同一函数
+  7KB)。于是 Linux/gcc 下自举解释器每层解释调用耗约 560KB C 栈,8MB 主栈十几层即
+  溢出;macOS 只需 1–2MB,故从未显现。CI 此前从未跑到第 7 步。同理,Linux 上以 gcc
+  编译的普通 Ctron 程序递归深度上限也远低于 macOS。
+  修(trans_emit.ct ct_fn 签名行 + driver_emit.ct 前言):函数体恰一条 `return` 且无尾
+  表达式 → 签名前缀 `CT_FR_NI`;前言定义 `#if defined(__GNUC__) && !defined(__clang__)`
+  时为 `__attribute__((noinline))`,否则为空。帧只在调用期间存在、不再累积;GC 语义、
+  帧布局、clang 产物均不变。判据刻意不取「是否分配内存」—— `t_dvi_str` 是单 return
+  却调用 `ctron_i32_to_string` 分配,免帧需精确分类,风险高于控制内联。
+  实证(容器 gcc -O2):t_call_mem 555,872 → 7,472B(74×)、t_run_stmt 138,480 →
+  8,016B(17×)、t_eval_call 52,640 → 6,976B、t_eval_expr 24,512 → 8,544B;全文件
+  379 个函数无帧 ≥20KB(修前最大 556KB);原用例默认 8MB 栈 rc=0、输出与 macOS 一致;
+  最小可过栈 32MB → 4MB。门 = smoke 5c 文本钉(前缀/宏定义/多语句函数无前缀/宿主
+  编译器下可编译运行);栈行为本体由 Linux CI 验收。
+
+**在册(余债)**:上述 gui ×5、s74 schema 块登记、fmt 对拍 Rust 线滞后;**gcc 栈帧根治**
+= 按函数登记数给帧池分档(不含循环的函数用小池;含循环者保持 128 —— 循环体内每迭代
+重登记、直到池满才转保守扫描,缩池须避开;需同步 morestack EST 底数 ct_ms_pre 2300
+与 GC 帧协议,另开专窗);nline/ncol 对「末槽为节点」一般不健壮(待以形态表判槽种加
+守卫);fn 节点打行号戳列 v2;上一条的 compress.ct E2010 / 传递依赖垫片链接 / view.ct
+text 撞名仍待裁;CI 第 22 步 gui 门在 Linux runner 上另需 X11/GL 开发头与 cmake(装
+vendor/gui),属环境供给面。
+
+**门禁终态(本轮修复后,本地 macOS)**:smoke --full **257 ok / 0 fail**(含新增 5c;自举
+固定点逐字节复现)、drv_parity **142/0**、GUI 阶梯 **95 过 / 6 败**(回到基线:6 败 =
+gui_driver 命中表越界 ×5 + s74 schema 块;`s26_reload_d` 解锁实跑绿,锁屏态走 [skip])。
+Linux:容器(Debian 12 aarch64 / gcc 12)上原崩溃用例 rc=0;x86-64 runner 以 CI 为准
+(结论见下一条)。
