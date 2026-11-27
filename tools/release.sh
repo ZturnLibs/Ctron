@@ -20,12 +20,18 @@ README="$DIR/README.md"; [ -f "$README" ] || README="$DIR/compiler/README.md"
 sh "$DIR/compiler/build.sh"
 # CTRON_FROM_PREBUILT=1:跳过 seed 自举(Windows/linux 走此路——linux 上 seed 解释器
 # 内存冲破 runner 上限,见台账编译器线挂账),直接 cc 编译预发射 C;产物与自举链逐字节同源
+# Linux 链接须 -rdynamic(同 native.sh:解释口径 extern 直调桥 dlsym 取宿主符号,ELF
+# 可执行体默认不导出全局符号)
+RDL=""
+case "$(uname)" in
+    Linux) RDL="-rdynamic" ;;
+esac
 if [ "${CTRON_FROM_PREBUILT:-0}" = "1" ] && [ -f "$DIR/prebuilt/ctron-cc.c" ]; then
     mkdir -p "$DIR/compiler/bin"
-    cc -O2 -w -pthread -o "$DIR/compiler/bin/ctron-cc"   "$DIR/prebuilt/ctron-cc.c"
-    cc -O2 -w -pthread -o "$DIR/compiler/bin/ctron-chk"  "$DIR/prebuilt/ctron-chk.c"
-    cc -O2 -w -pthread -o "$DIR/compiler/bin/ctron-emit" "$DIR/prebuilt/ctron-emit.c"
-    cc -O2 -w -pthread -o "$DIR/compiler/bin/ctron-fmt"  "$DIR/prebuilt/ctron-fmt.c"
+    cc -O2 -w -pthread $RDL -o "$DIR/compiler/bin/ctron-cc"   "$DIR/prebuilt/ctron-cc.c"
+    cc -O2 -w -pthread $RDL -o "$DIR/compiler/bin/ctron-chk"  "$DIR/prebuilt/ctron-chk.c"
+    cc -O2 -w -pthread $RDL -o "$DIR/compiler/bin/ctron-emit" "$DIR/prebuilt/ctron-emit.c"
+    cc -O2 -w -pthread $RDL -o "$DIR/compiler/bin/ctron-fmt"  "$DIR/prebuilt/ctron-fmt.c"
 else
     sh "$DIR/compiler/native.sh"
 fi

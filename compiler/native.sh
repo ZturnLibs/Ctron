@@ -56,6 +56,16 @@ case "$(uname)" in
     *) WERR="" ;;
 esac
 
+# Linux:解释口径 extern 直调桥 = dlsym(RTLD_DEFAULT) 取宿主进程符号(头注
+# 「whole-archive + rdynamic」的后半边)。mac 可执行体的全局符号默认即对 dlsym 可见;
+# ELF 可执行体不加 -rdynamic 则动态符号表为空,解释态调宿主符号一律「extern 符号
+# 未找到」(CI Linux smoke 3j2/4c std process 自举红实证;本头注的 rdynamic 此前
+# 从未落到链接行)。全部自举件统一加:ctron-verify/doc 等在进程内解释插件代码同桥。
+RDL=""
+case "$(uname)" in
+    Linux) RDL="-rdynamic" ;;
+esac
+
 # W4 E1:ctron-cc 的 extern 符号源(域库 shim + raylib;缺席则纯解释器降级)
 GUI_O=""
 GUI_F=""
@@ -80,28 +90,28 @@ if [ -f "$ROOT/vendor/gui/build/libraylib.a" ]; then
     echo "native: ctron-cc 附带解释口径 extern 符号源(域库 shim + raylib)"
 fi
 
-cc -O2 -w -o "$BIN/ctron-cc" "$TMP/ctron_cc.c" $SHIM_O $GUI_O $GUI_F $WERR
+cc -O2 -w -o "$BIN/ctron-cc" "$TMP/ctron_cc.c" $SHIM_O $GUI_O $GUI_F $WERR $RDL
 echo "native: bin/ctron-cc(运行驱动)← $(wc -l < "$TMP/ctron_cc.c") 行 C"
 
-cc -O2 -w -o "$BIN/ctron-emit" "$TMP/ctron_emit.c" $SHIM_O $WERR
+cc -O2 -w -o "$BIN/ctron-emit" "$TMP/ctron_emit.c" $SHIM_O $WERR $RDL
 echo "native: bin/ctron-emit(发射驱动)← $(wc -l < "$TMP/ctron_emit.c") 行 C"
 
-cc -O2 -w -o "$BIN/ctron-chk" "$TMP/ctron_chk.c" $SHIM_O $WERR
+cc -O2 -w -o "$BIN/ctron-chk" "$TMP/ctron_chk.c" $SHIM_O $WERR $RDL
 echo "native: bin/ctron-chk(检查驱动)← $(wc -l < "$TMP/ctron_chk.c") 行 C"
 
-cc -O2 -w -o "$BIN/ctron-fmt" "$TMP/ctron_fmt.c" $SHIM_O $WERR
+cc -O2 -w -o "$BIN/ctron-fmt" "$TMP/ctron_fmt.c" $SHIM_O $WERR $RDL
 echo "native: bin/ctron-fmt(格式化驱动)← $(wc -l < "$TMP/ctron_fmt.c") 行 C"
 
-cc -O2 -w -o "$BIN/ctron-doc" "$TMP/ctron_doc.c" $SHIM_O $WERR
+cc -O2 -w -o "$BIN/ctron-doc" "$TMP/ctron_doc.c" $SHIM_O $WERR $RDL
 echo "native: bin/ctron-doc(iface 投影驱动)← $(wc -l < "$TMP/ctron_doc.c") 行 C"
 
-cc -O2 -w -o "$BIN/ctron-dep" "$TMP/ctron_dep.c" $SHIM_O $WERR
+cc -O2 -w -o "$BIN/ctron-dep" "$TMP/ctron_dep.c" $SHIM_O $WERR $RDL
 echo "native: bin/ctron-dep(依赖解析驱动,T49)← $(wc -l < "$TMP/ctron_dep.c") 行 C"
 
-cc -O2 -w -o "$BIN/ctron-verify" "$TMP/ctron_verify.c" $SHIM_O $WERR
+cc -O2 -w -o "$BIN/ctron-verify" "$TMP/ctron_verify.c" $SHIM_O $WERR $RDL
 echo "native: bin/ctron-verify(工件深验驱动,T50/L3 载体)← $(wc -l < "$TMP/ctron_verify.c") 行 C"
 
-cc -O2 -w -o "$BIN/ctron-ast" "$TMP/ctron_ast.c" $SHIM_O $WERR
+cc -O2 -w -o "$BIN/ctron-ast" "$TMP/ctron_ast.c" $SHIM_O $WERR $RDL
 echo "native: bin/ctron-ast(封印/序列化驱动,T50/S4-④)← $(wc -l < "$TMP/ctron_ast.c") 行 C"
 
 # W4 波1:用户驱动器 bin/ctron(Ctron 自写,compiler/driver/src/main.ct 单文件;
@@ -126,6 +136,6 @@ if [ -f "$DIR/driver/src/main.ct" ]; then
     sed -e "s|$DRV_SED_A||" -e "s|$DRV_SED_B||" "$DRV_C" > "$DRV_C.s"
     mv "$DRV_C.s" "$DRV_C"
     # W4 波1 批2:委派族 use proc → 垫片同链(纯 emit 单文件缺 ctron_proc_run_argv_rc 符号)
-    cc -O2 -w -o "$BIN/ctron" "$DRV_C" "$ROOT/lib/proc/c_src/ctron_proc.c" $WERR
+    cc -O2 -w -o "$BIN/ctron" "$DRV_C" "$ROOT/lib/proc/c_src/ctron_proc.c" $WERR $RDL
     echo "native: bin/ctron(用户驱动器,W4 波1)← $(wc -l < "$DIR/driver/src/main.ct") 行 Ctron"
 fi
